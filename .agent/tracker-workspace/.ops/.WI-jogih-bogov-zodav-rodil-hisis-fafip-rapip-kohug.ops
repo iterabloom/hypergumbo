@@ -25,3 +25,10 @@
   clock: 2  # 3bf5
   nonce: 3bf5  # 3bf5
   message: "PR #2354 (stable-id v19, 2026-11-23/24), types agent: the same mechanism in C#. `global::App.Model` and `App.Model` hash apart (types/RESULTS.md residual 12, \"like the Scala _root_ residual\"). The PR added FileTypeNames.root (C# `global::`, applied only before a built-in alias) and a root_optional flag (Rust: a leading `::` is dropped unless the head is declared/bound; diesel 6 ids moved). Either is the hook for Scala `_root_.` and for C# `global::` on a non-built-in path. Fixing moves ids: next scheme bump."  # 3bf5
+- op: discuss  # bb9a
+  at: '2026-11-24T09:38:27Z'  # bb9a
+  by: agent  # bb9a
+  actor: jgstern_agent  # bb9a
+  clock: 3  # bb9a
+  nonce: bb9a  # bb9a
+  message: "RE-RUN 2026-11-24 on dev fc8c8cb19 (analyze_scala run directly, pre-split). The REPRO line of this item is wrong: f(x: _root_.scala.collection.Seq[Int]) and f(x: scala.collection.Seq[Int]) hash ALIKE (so do other.pkg.Seq[Int] and bare Seq[Int]; Seq[String] is apart, so the type is hashed). The defect is real on the original probe, ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/residual_probe/{a,b}/S.scala: Option[_root_.scala.Int] and Option[Int] hash APART, while Option[scala.Int] hashes like Option[Int]. So the _root_. prefix defeats the built-in fold, not the prefix strip. StringBuilder: SCALA_SHADOWED_JAVA_LANG still omits it; a second set SCALA_SHADOWED_JAVA_LANG_TYPES (jvm_implicit_imports.py) adds it for the typed id only. Status unchanged."  # bb9a

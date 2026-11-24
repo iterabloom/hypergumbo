@@ -1,0 +1,24 @@
+- op: create  # 8760
+  at: '2026-11-24T10:11:17Z'  # 8760
+  by: agent  # 8760
+  actor: jgstern_agent  # 8760
+  clock: 1  # 8760
+  nonce: '8760'  # 8760
+  data:  # 8760
+    kind: invariant  # 8760
+    title: "rust: a call on a value returned by a function is bound to the last-declared same-named method at 0.85"  # 8760
+    status: violated  # 8760
+    priority: 2  # 8760
+    parent:  # 8760
+    tags:  # 8760
+    - rust  # 8760
+    - call_graph  # 8760
+    - analysis_quality  # 8760
+    isbefore: []  # 8760
+    duplicate_of: []  # 8760
+    not_duplicate_of: []  # 8760
+    pr_ref:  # 8760
+    description: "WHAT\nA Rust method call whose receiver is bound from a function's declared return type is not typed by that return type. With two in-repo methods of one name, the call is bound to ONE of them at confidence 0.85, and which one depends on declaration order and on other functions of the file. The 10.0.0 changelog says an ambiguous call stays unresolved rather than guessed; this path guesses.\n\nREPRO\nfx/rs/src/lib.rs: struct Conn and struct Other, each with fn execute(&self); fn get_db() -> Conn; then\n  let db = get_db(); db.execute();      (via_var)\n  get_db().execute();                   (via_chain)\n  let c = Conn::new(); c.execute();     (via_ctor, the control)\n- impl Other last, the file holding only those three callers: via_var and via_chain -> Other::execute at 0.85 (wrong), via_ctor -> Conn::execute.\n- impl Conn last (fx/rs_swapped): all -> Conn::execute. So the last-declared same-named method wins.\n- impl Other last, after adding two more functions that annotate a variable also named db (let db: Conn = get_db(); and a parameter db: &Conn): via_var now -> Conn::execute, via_chain still -> Other::execute. So a same-named variable in ANOTHER function of the file supplies the type.\n- One execute only (fx/rs_single): -> Conn::execute at 0.85 (right, by name alone).\n\nMEASURED\nFixtures only. Not counted on any corpus tree: how many Rust call edges rest on a name-only pick among several same-named methods is not known.\n\nNOT CHECKED\n- The code path (rust.py was not read): the mechanism above is inferred from the four fixture arms.\n- The rust-analyzer backend.\n- Whether the edge carries any ambiguity marker a consumer could read (confidence is 0.85 in every arm).\n- Trait methods, generic returns, Result<Conn, E> / Option<Conn> returns, methods across crates.\nRelated, distinct: WI-milak (done) fixed the same last-wins shape for implements edges; ADR-0006 names file-scoped variable maps as a known cause of false edges.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # 8760
+    fields:  # 8760
+      statement: "A call whose receiver type is not known, and whose method name is declared by more than one in-repository type, is not bound to one of them."  # 8760
+      root_cause: "Not read in the code. Observed on fixtures: a receiver bound from a function's declared return type is untyped, and the call is then bound by method name to the last-declared candidate, or by the type of a same-named variable in another function of the file."  # 8760
