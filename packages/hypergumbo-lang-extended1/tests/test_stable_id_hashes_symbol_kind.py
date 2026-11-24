@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/fennel.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/gleam.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/hack.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -73,6 +74,25 @@ pub fn area(s: Shape) -> Float {
 }
 """
 
+_HACK = """\
+<?hh
+namespace App;
+
+class Box {
+  public function run(): int { return 1; }
+}
+
+interface Shape {
+  public function area(): float;
+}
+
+trait Loggable {
+  public function log(): void {}
+}
+
+function main(): void {}
+"""
+
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -82,6 +102,8 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
                frozenset({"function", "variable"})),
     "gleam": ("gleam", "analyze_gleam", "demo.gleam", _GLEAM,
               frozenset({"function", "type", "type_alias"})),
+    "hack": ("hack", "analyze_hack", "demo.hack", _HACK,
+             frozenset({"function", "method", "class", "interface", "trait", "namespace"})),
 }
 
 
