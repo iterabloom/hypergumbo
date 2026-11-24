@@ -1,0 +1,21 @@
+- op: create  # 4add
+  at: '2026-11-24T08:00:03Z'  # 4add
+  by: agent  # 4add
+  actor: jgstern_agent  # 4add
+  clock: 1  # 4add
+  nonce: 4add  # 4add
+  data:  # 4add
+    kind: work_item  # 4add
+    title: "csharp: a using alias directive (using H = X.Y;) emits its imports edge to the alias name instead of the imported name"  # 4add
+    status: todo_hard  # 4add
+    priority: 3  # 4add
+    parent:  # 4add
+    tags:  # 4add
+    - docstring_audit  # 4add
+    - analysis_quality  # 4add
+    isbefore: []  # 4add
+    duplicate_of: []  # 4add
+    not_duplicate_of: []  # 4add
+    pr_ref:  # 4add
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. csharp.py:1907 tries find_child_by_type(node, 'identifier') before the qualified_name fallback, so `using H = System.EventHandler;` emits imports -> csharp:H:0-0:namespace:namespace. r25, v07."  # 4add
+    fields: {}  # 4add

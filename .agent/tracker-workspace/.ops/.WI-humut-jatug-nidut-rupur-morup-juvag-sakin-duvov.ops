@@ -1,0 +1,21 @@
+- op: create  # 6202
+  at: '2026-11-24T08:01:03Z'  # 6202
+  by: agent  # 6202
+  actor: jgstern_agent  # 6202
+  clock: 1  # 6202
+  nonce: '6202'  # 6202
+  data:  # 6202
+    kind: work_item  # 6202
+    title: "tier_projection.group_records merges a record lacking the varying key into a same-remainder group, contradicting its lossless contract"  # 6202
+    status: todo_hard  # 6202
+    priority: 4  # 6202
+    parent:  # 6202
+    tags:  # 6202
+    - docstring_audit  # 6202
+    - code_hygiene  # 6202
+    isbefore: []  # 6202
+    duplicate_of: []  # 6202
+    not_duplicate_of: []  # 6202
+    pr_ref:  # 6202
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. group_records keys groups by the remaining fields only (tier_projection.py:93-95): group_records([{'reason':'r'},{'reason':'r','pass':'a'}],'pass','passes') returns [{'reason':'r','passes':['a']}], and two identical key-less records come back as one group. Latent: every current producer sets the varying key (limits.py:110-114, 160-168; all_analyzers.py:233/246/373). A third list added to _GROUPED_LIMITS would hit it. r35, v10."  # 6202
+    fields: {}  # 6202

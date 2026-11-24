@@ -1,0 +1,21 @@
+- op: create  # e7b2
+  at: '2026-11-24T08:00:46Z'  # e7b2
+  by: agent  # e7b2
+  actor: jgstern_agent  # e7b2
+  clock: 1  # e7b2
+  nonce: e7b2  # e7b2
+  data:  # e7b2
+    kind: work_item  # e7b2
+    title: "py_def_use: a with ... as d[k] (or fh.a[k]) target does not record the index k as a use"  # e7b2
+    status: todo_hard  # e7b2
+    priority: 3  # e7b2
+    parent:  # e7b2
+    tags:  # e7b2
+    - docstring_audit  # e7b2
+    - analysis_quality  # e7b2
+    isbefore: []  # e7b2
+    duplicate_of: []  # e7b2
+    not_duplicate_of: []  # e7b2
+    pr_ref:  # e7b2
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. Of 18 with-statement shapes run through the real Python CFG and py_def_use, `with open(x) as d[k]:` and `with open(x) as fh.a[k]:` miss the read of k. Because cfg.unaccounted_names keys statements by node_type (WI-vakog) and uncovered_semantic_lines is also empty, neither completeness gate reports it. r21, v06."  # e7b2
+    fields: {}  # e7b2

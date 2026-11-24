@@ -1,0 +1,21 @@
+- op: create  # 47e2
+  at: '2026-11-24T08:00:15Z'  # 47e2
+  by: agent  # 47e2
+  actor: jgstern_agent  # 47e2
+  clock: 1  # 47e2
+  nonce: '47e2'  # 47e2
+  data:  # 47e2
+    kind: work_item  # 47e2
+    title: "java: an on-demand import (import a.b.client.*;) binds its last package segment as a class name, so a variable named like that segment is typed as the package"  # 47e2
+    status: todo_hard  # 47e2
+    priority: 3  # 47e2
+    parent:  # 47e2
+    tags:  # 47e2
+    - docstring_audit  # 47e2
+    - analysis_quality  # 47e2
+    isbefore: []  # 47e2
+    duplicate_of: []  # 47e2
+    not_duplicate_of: []  # 47e2
+    pr_ref:  # 47e2
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. _extract_imports (java.py:816-849) never checks for '*': `import com.foo.client.*;` binds client -> com.foo.client. A call client.send() then gets dst_ref module com.foo.client and call_construct=function (java.py:2667, 3607-3626); the control `import com.foo.other.*;` gives external/method. _java_type_names says a type-import-on-demand binds nothing (java.py:1960-1961). r14, v05."  # 47e2
+    fields: {}  # 47e2

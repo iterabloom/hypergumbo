@@ -26,3 +26,10 @@
   clock: 2  # e7ef
   nonce: e7ef  # e7ef
   message: "2026-11-07 docstring audit (dev 4f2feb451b): still reproduces at cfg.py:2363 (key (stmt.line, stmt.col, stmt.node_type) vs statement_match_key at :290-295). A name read in a with header with the enter statement's uses cleared: current code returns [], the statement_match_key-style key returns the name. r06, v11."  # e7ef
+- op: discuss  # 74cf
+  at: '2026-11-24T08:01:27Z'  # 74cf
+  by: agent  # 74cf
+  actor: jgstern_agent  # 74cf
+  clock: 3  # 74cf
+  nonce: 74cf  # 74cf
+  message: "2026-11-24 docstring audit (dev 7e204b35b): still reproduces (cfg.py:2487), and real extractor input reaches it: `with open(x) as d[k]:` and `with open(x) as fh.a[k]:` through the shipped py_def_use miss the read of k; the shipped gate returns nothing, a statement_match_key-style key returns {'k'}, and uncovered_semantic_lines is empty too. The extractor miss is filed separately. r21, v06."  # 74cf

@@ -1,0 +1,21 @@
+- op: create  # 089d
+  at: '2026-11-24T08:00:09Z'  # 089d
+  by: agent  # 089d
+  actor: jgstern_agent  # 089d
+  clock: 1  # 089d
+  nonce: 089d  # 089d
+  data:  # 089d
+    kind: work_item  # 089d
+    title: "js_ts: drop the stale JSX Route comment and the dead 'route' member of the callback/middleware kind checks"  # 089d
+    status: todo_hard  # 089d
+    priority: 4  # 089d
+    parent:  # 089d
+    tags:  # 089d
+    - docstring_audit  # 089d
+    - code_hygiene  # 089d
+    isbefore: []  # 089d
+    duplicate_of: []  # 089d
+    not_duplicate_of: []  # 089d
+    pr_ref:  # 089d
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. js_ts.py:8222-8226 says JSX <Route> markers are hand-built in _extract_symbols and named after their component; they are built by make_route_symbol (js_ts.py:5562-5572), named for the route. make_route_symbol returns kind function (base.py:1406, 'route is not a symbol kind'), so the 'route' in target.kind in ('function', 'method', 'route') (js_ts.py:8229, 8291) never matches. No output change. r09, v07."  # 089d
+    fields: {}  # 089d

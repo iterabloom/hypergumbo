@@ -1,0 +1,21 @@
+- op: create  # c678
+  at: '2026-11-24T07:59:51Z'  # c678
+  by: agent  # c678
+  actor: jgstern_agent  # c678
+  clock: 1  # c678
+  nonce: c678  # c678
+  data:  # c678
+    kind: work_item  # c678
+    title: "cpp: a . call on a unique_ptr/shared_ptr FIELD (impl_.get(), impl_.reset()) is typed as the pointee and binds the pointee's same-named method"  # c678
+    status: todo_hard  # c678
+    priority: 3  # c678
+    parent:  # c678
+    tags:  # c678
+    - docstring_audit  # c678
+    - analysis_quality  # c678
+    isbefore: []  # c678
+    duplicate_of: []  # c678
+    not_duplicate_of: []  # c678
+    pr_ref:  # c678
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. _extract_field_types_cpp stores a smart-pointer field's unwrapped pointee (cpp.py:600-614) and _cpp_receiver_class returns it whatever the operator (cpp.py:2046-2047). Field std::unique_ptr<Impl> impl_: impl_.get() binds Impl::get (receiver=declared_type). The same call on a parameter does not; the module docstring says a smart pointer's own . member is not the pointee's. r20, v04."  # c678
+    fields: {}  # c678
