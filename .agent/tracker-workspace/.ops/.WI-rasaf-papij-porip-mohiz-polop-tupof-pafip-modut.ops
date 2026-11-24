@@ -1,0 +1,23 @@
+- op: create  # c299
+  at: '2026-11-24T10:12:25Z'  # c299
+  by: agent  # c299
+  actor: jgstern_agent  # c299
+  clock: 1  # c299
+  nonce: c299  # c299
+  data:  # c299
+    kind: work_item  # c299
+    title: "flask: a Blueprint's url_prefix is not applied to its routes' paths"  # c299
+    status: todo_hard  # c299
+    priority: 3  # c299
+    parent:  # c299
+    tags:  # c299
+    - python  # c299
+    - flask  # c299
+    - frameworks  # c299
+    - analysis_quality  # c299
+    isbefore: []  # c299
+    duplicate_of: []  # c299
+    not_duplicate_of: []  # c299
+    pr_ref:  # c299
+    description: "WHAT\nA Flask Blueprint's url_prefix is not applied to its routes' paths.\n\nREPRO\nfx/f3_prefix/app.py:\n  bp = Blueprint(\"auth\", __name__, url_prefix=\"/auth\")\n  @bp.route(\"/login\", methods=[\"POST\"])\n  app.register_blueprint(bp)\n-> route node \"POST /login\". Expected POST /auth/login.\nThe reviewer reports that a FastAPI router's prefix IS applied on 10.0.0 (not re-run).\n\nMEASURED\nFixture only.\n\nNOT CHECKED\n- A prefix given at registration: app.register_blueprint(bp, url_prefix=\"/auth\").\n- Nested blueprints; a blueprint declared in one file and registered in another.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # c299
+    fields: {}  # c299

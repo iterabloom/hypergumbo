@@ -1,0 +1,23 @@
+- op: create  # 972c
+  at: '2026-11-24T10:12:32Z'  # 972c
+  by: agent  # 972c
+  actor: jgstern_agent  # 972c
+  clock: 1  # 972c
+  nonce: 972c  # 972c
+  data:  # 972c
+    kind: work_item  # 972c
+    title: "flask: a route with no methods argument mints no route node (default GET)"  # 972c
+    status: todo_hard  # 972c
+    priority: 3  # 972c
+    parent:  # 972c
+    tags:  # 972c
+    - python  # 972c
+    - flask  # 972c
+    - frameworks  # 972c
+    - analysis_quality  # 972c
+    isbefore: []  # 972c
+    duplicate_of: []  # 972c
+    not_duplicate_of: []  # 972c
+    pr_ref:  # 972c
+    description: "WHAT\nA Flask route with no methods argument gets a route concept with no method and NO route node, so it is absent from the route list. Flask's default for such a route is GET.\n\nREPRO\nfx/f1_plain/app.py:\n  @app.route(\"/\")\n  def index(): ...\n-> function index carries concept route (framework flask, path \"/\", method None); no node with route_path exists. With methods=[\"POST\"] on the same decorator a route node \"POST /\" is minted (fx/f5_mixed).\n\nMEASURED\nFixture only. The reviewer saw the same on 10.0.0 as an empty [] method in the routes command.\n\nNOT CHECKED\n- The routes command's own output on dev (the map was read, not the command).\n- Method-less route forms of other frameworks.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # 972c
+    fields: {}  # 972c
