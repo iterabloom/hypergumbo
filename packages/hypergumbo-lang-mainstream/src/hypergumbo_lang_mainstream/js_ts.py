@@ -18,7 +18,9 @@ extract:
   namespaces/modules, named functions and methods, the variable a function or
   object literal is bound to; INV-fabih), so two ``class Inner`` in two
   namespaces or functions get distinct ids and deleting the first does not
-  move the second. Classes, interfaces, enums and type aliases mint
+  move the second. A callable labels the chain by its name and hashed
+  signature (``_jsts_callable_label``; since v19), so the locals of a getter
+  and its setter or of two redeclared functions do not tie. Classes, interfaces, enums and type aliases mint
   ``overload_arity.scoped_table_stable_id``. A top-level declaration's scope
   is empty, and a member of a top-level class has its class as its scope.
   The emitted ``qualified_name`` carries the enclosing classes and
@@ -338,6 +340,7 @@ from hypergumbo_core.analyze.base import (
     make_route_symbol,
     make_typed_stable_id,
     make_variable_stable_id,
+    layout_free,
     node_text as _node_text,
     declares_async,
     FileTypeNames,
@@ -2056,6 +2059,18 @@ def normalize_jsts_signature(
     for index, pattern in enumerate(patterns):
         normalized = normalized.replace(_TS_PATTERN_STAND_IN.format(index), pattern)
     return normalized
+
+
+
+def _jsts_callable_hashed(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """What a JS/TS callable's typed stable_id hashes beside its name and
+    scope: its normalized signature (:func:`normalize_jsts_signature`), or
+    ``None`` when it does not normalize.
+
+    The one reader for the callable's own id and for its label in the scope
+    chain of what it declares (:func:`_jsts_callable_label`), so the two
+    cannot disagree."""
+    return normalize_jsts_signature(_extract_jsts_signature(node, source, hashed=True))
 
 
 def _extract_jsts_return_type_name(signature: str | None) -> str | None:
@@ -4488,17 +4503,60 @@ def _jsts_qualified_ancestors(
     return ancestor_labels(node, label)
 
 
-#: Nodes whose name opens a scope a JS/TS stable_id hashes (INV-fabih).
+#: Type and namespace nodes whose name labels a scope a JS/TS stable_id
+#: hashes (INV-fabih).
 _JSTS_NAMED_SCOPES: frozenset[str] = frozenset({
-    "class_declaration", "abstract_class_declaration", "function_declaration",
-    "generator_function_declaration", "method_definition",
+    "class_declaration", "abstract_class_declaration",
+})
+#: Callable nodes, labelled by name and hashed signature
+#: (:func:`_jsts_callable_label`).
+_JSTS_CALLABLE_SCOPES: frozenset[str] = frozenset({
+    "function_declaration", "generator_function_declaration", "method_definition",
+})
+#: A value that is a callable: the variable or property bound to it labels
+#: the scope with the callable's signature.
+_JSTS_CALLABLE_VALUES: frozenset[str] = frozenset({
+    "arrow_function", "function_expression", "function", "generator_function",
 })
 
 
+def _jsts_callable_label(name: str, callable_node: "tree_sitter.Node", source: bytes) -> str:
+    """A callable's label in the scope chain (:func:`_jsts_scope`): ``name``
+    and what the callable's own id hashes beside it
+    (:func:`_jsts_callable_hashed`), canonically spaced (``layout_free``):
+    ``r(a)``, ``m(number)void``, ``static run(x)``.
+
+    A bare name is shared by a getter and its setter, by two redeclared
+    ``function r``, by same-named consts in two sibling blocks, and the
+    declarations local to them tied (WI-finam, the defect WI-podor fixed for
+    Swift; since scheme v19). A callable whose hashed text is ``()`` keeps
+    its bare name, so what it declares hashes what it did; a name followed
+    by ``(`` is never a bare name, so the spellings cannot meet. A static
+    member's label starts with ``static``. A getter and its setter need no
+    word: a setter takes one parameter, so its label always differs from
+    its getter's (``p`` or ``p()number`` against ``p(v)`` / ``p(number)``)."""
+    text = layout_free(_jsts_callable_hashed(callable_node, source) or "", separators=True)
+    label = name if text in ("", "()") else name + text
+    if callable_node.type == "method_definition" and _jsts_is_static(callable_node):
+        label = f"static {label}"
+    return label
+
+
+def _jsts_bound_value_label(
+    name: str, value: Optional["tree_sitter.Node"], source: bytes,
+) -> Optional[str]:
+    """The label of a variable or property bound to ``value``: the
+    callable's label when ``value`` is a callable, else ``name``."""
+    if value is not None and value.type in _JSTS_CALLABLE_VALUES:
+        return _jsts_callable_label(name, value, source)
+    return name
+
+
 def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The names of every scope enclosing ``node``, outermost first: classes,
+    """The labels of every scope enclosing ``node``, outermost first: classes,
     TypeScript ``namespace`` / ``module`` blocks, named functions and methods,
-    and the variable a function or object literal is bound to (INV-fabih).
+    the variable a function or object literal is bound to, and the property
+    key an object literal or a callable is bound to (INV-fabih).
 
     What every JS/TS stable_id hashes beside the symbol's own name. The
     emitted ``qualified_name`` carries classes and namespaces but no
@@ -4506,6 +4564,17 @@ def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     functions ``a`` and ``b`` share it; hashing it alone would tie their ids,
     and deleting the first would move the second. A top-level symbol has an
     empty scope; a member of a top-level class has its class chain.
+
+    A callable (a function or method, or the variable or property a
+    function value is bound to) is labelled by :func:`_jsts_callable_label`:
+    its name and the signature its own id hashes, ``static`` in front of a
+    static member; one hashing ``()`` keeps its bare name. Until scheme v19 every callable was its bare name (``static
+    <name>`` since v17), so the locals of a getter and its setter, of two
+    redeclared functions or of two same-named consts in sibling blocks tied
+    (WI-finam). A property key (``a: { m() {} }``, ``a: function () {}``)
+    labels the chain when its value is an object literal or a callable (a
+    name: an identifier key; a string, number or computed key names none),
+    so two ``m`` of two objects under two keys no longer tie.
 
     A declarator labels a scope only when it binds one ``identifier``, as a
     variable-bound callable must to be named after it. Its ``name`` field is
@@ -4518,23 +4587,33 @@ def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     Such a declarator adds nothing; same-named callbacks it would have told
     apart are numbered by occurrence, as at file scope.
 
-    A ``static`` method labels ``static <name>`` (scheme v17): a class may
-    declare ``static run()`` beside ``run()``, and with the bare name for both
-    every callback or local class inside the pair tied. An instance method
-    keeps its bare name, so what it holds keeps its id.
+    Left tied: two callables of one name and one signature (``function
+    s(a)`` declared twice), methods whose key is computed or a string (no
+    name is read for them), objects assigned to member expressions
+    (``x.a = { m() {} }``).
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
-        if n.type == "method_definition" and _jsts_is_static(n):
+        if n.type in _JSTS_CALLABLE_SCOPES:
             member = _find_name_in_children(n, source)
-            return None if member is None else f"static {member}"
+            return None if member is None else _jsts_callable_label(member, n, source)
         if n.type in _JSTS_NAMED_SCOPES:
             return _find_name_in_children(n, source)
+        if n.type == "pair":
+            key = n.child_by_field_name("key")
+            value = n.child_by_field_name("value")
+            if (key is None or key.type != "property_identifier" or value is None
+                    or (value.type != "object" and value.type not in _JSTS_CALLABLE_VALUES)):
+                return None
+            return _jsts_bound_value_label(_node_text(key, source), value, source)
         if n.type in ("internal_module", "module", "variable_declarator"):
             name = n.child_by_field_name("name")
             if name is None or (
                 n.type == "variable_declarator" and name.type != "identifier"
             ):
                 return None
+            if n.type == "variable_declarator":
+                return _jsts_bound_value_label(
+                    _node_text(name, source), n.child_by_field_name("value"), source)
             return _node_text(name, source)
         return None
     return ancestor_labels(node, label)
@@ -5534,8 +5613,7 @@ def _extract_tree_symbols(
                 signature = _extract_jsts_signature(node, source)
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_jsts_signature(
-                    _extract_jsts_signature(node, source, hashed=True))
+                norm_sig = _jsts_callable_hashed(node, source)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
                     name=name,
@@ -5608,8 +5686,7 @@ def _extract_tree_symbols(
                         signature = _extract_jsts_signature(value_node, source)
 
                         # Typed stable_id (spec §6 typed tier)
-                        norm_sig = normalize_jsts_signature(
-                            _extract_jsts_signature(value_node, source, hashed=True))
+                        norm_sig = _jsts_callable_hashed(value_node, source)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
@@ -5887,8 +5964,7 @@ def _extract_tree_symbols(
 
                 # Typed stable_id for non-route methods (spec §6 typed tier)
                 if stable_id is None:
-                    norm_sig = normalize_jsts_signature(
-                        _extract_jsts_signature(node, source, hashed=True))
+                    norm_sig = _jsts_callable_hashed(node, source)
                     if norm_sig:
                         stable_id = make_typed_stable_id(
                             kind, norm_sig,
@@ -5996,8 +6072,7 @@ def _extract_tree_symbols(
                         signature = _extract_jsts_signature(child, source)
 
                         # Typed stable_id (spec §6 typed tier)
-                        norm_sig = normalize_jsts_signature(
-                            _extract_jsts_signature(child, source, hashed=True))
+                        norm_sig = _jsts_callable_hashed(child, source)
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
@@ -6049,8 +6124,7 @@ def _extract_tree_symbols(
                     end_col=node.end_point[1],
                 )
                 signature = _extract_jsts_signature(node, source)
-                norm_sig = normalize_jsts_signature(
-                    _extract_jsts_signature(node, source, hashed=True))
+                norm_sig = _jsts_callable_hashed(node, source)
                 qualified_name = _make_jsts_qualified_name(
                     _jsts_qualified_ancestors(node, source), anon_name, lang,
                 )
