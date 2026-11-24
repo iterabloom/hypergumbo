@@ -30,6 +30,13 @@ strictly reduces ERROR nodes. **Both passes below go through it and both use the
 bytes it returns**: Pass 2 re-reads and re-parses the file, so rewriting in Pass 1
 alone would desynchronise the two passes' spans.
 
+Preprocessor branches in identity (WI-sifar, scheme v19): a class, protocol,
+method or property hashes the ``#if`` / ``#ifdef`` / ``#else`` branches open
+at it (``_objc_branch_slot`` over ``c_family_open_guards``), so two whole
+``@implementation Foo`` under ``#ifdef A`` and its ``#else`` no longer tie; a
+declaration outside every branch, and every declaration of a header whose
+only conditional is its include guard, hashes what it did.
+
 Three-pass analysis:
 - Pass 1: Extract all symbols from all files and collect methods into a global registry
 - Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
@@ -97,6 +104,8 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.c_family import c_family_scope_chain
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
@@ -480,6 +489,19 @@ def _get_enclosing_class_objc(
     return None  # pragma: no cover - defensive
 
 
+def _objc_branch_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """The qualified-name slot an Objective-C stable id hashes: the
+    preprocessor branches open at ``node`` (``c_family_open_guards``,
+    WI-sifar) and ``name``, or ``""`` outside every branch, so only a guarded
+    declaration's id differs from what it was. Two ``@implementation Foo``
+    (or ``@interface``, ``@protocol``) under ``#ifdef A`` and its ``#else``
+    tied, with their methods and properties, until scheme v19; a whole-file
+    include guard is not a branch."""
+    return nested_qualified_name(
+        c_family_scope_chain(node, source, types=False, guards=True), name,
+    )
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -548,7 +570,10 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    stable_id=_analyzer.compute_stable_id(node, kind="class", name=class_name, file_stable_id=file_stable_id),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="class", name=class_name, file_stable_id=file_stable_id,
+                        qualified_name=_objc_branch_slot(node, source, class_name),
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -577,7 +602,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="protocol", name=protocol_name, file_stable_id=file_stable_id),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="protocol", name=protocol_name, file_stable_id=file_stable_id,
+                        qualified_name=_objc_branch_slot(node, source, protocol_name),
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
@@ -615,7 +643,10 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    stable_id=_analyzer.compute_stable_id(node, kind="method", name=full_name, file_stable_id=file_stable_id),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="method", name=full_name, file_stable_id=file_stable_id,
+                        qualified_name=_objc_branch_slot(node, source, full_name),
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "objc"),
                     line_span=end_line - start_line + 1,
@@ -645,7 +676,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="property", name=full_name, file_stable_id=file_stable_id),
+                    stable_id=_analyzer.compute_stable_id(
+                        node, kind="property", name=full_name, file_stable_id=file_stable_id,
+                        qualified_name=_objc_branch_slot(node, source, full_name),
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
