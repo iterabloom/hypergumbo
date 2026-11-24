@@ -92,7 +92,9 @@ _CORE = "hypergumbo-core/src/hypergumbo_core"
 #: (path under packages/, enclosing function, NewType) of every NewType
 #: constructor call in shipped source, with its number of calls. Each is
 #: where a value of that kind is minted (for ``NodeId``: the factories, the
-#: boundary ``read_node_id`` and the finalize rewrite ``relativize_node_id``).
+#: boundary ``read_node_id``, the finalize rewrite ``relativize_node_id`` and
+#: ``id_with_column``, which writes the ``@<column>`` suffix of ADR-0036
+#: Ruling 1 into an id a factory built).
 MINT_SITES = {
     (f"{_CORE}/analyze/base.py", "_short_sha256", "StableId"): 1,
     (f"{_CORE}/analyze/base.py", "mint_scip_stable_id", "StableId"): 1,
@@ -100,6 +102,7 @@ MINT_SITES = {
     (f"{_CORE}/analyze/base.py", "mint_shape_id", "ShapeId"): 1,
     (f"{_CORE}/repo_fingerprint.py", "compute_repo_fingerprint_field", "RepoFingerprint"): 1,
     (f"{_CORE}/analyze/base.py", "make_symbol_id", "NodeId"): 1,
+    (f"{_CORE}/analyze/base.py", "id_with_column", "NodeId"): 1,
     (f"{_CORE}/analyze/base.py", "make_file_id", "NodeId"): 1,
     (f"{_CORE}/analyze/base.py", "make_module_import_dst", "NodeId"): 1,
     (f"{_CORE}/ir.py", "_canonical_external_id", "NodeId"): 1,
