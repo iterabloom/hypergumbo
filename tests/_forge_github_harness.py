@@ -49,9 +49,11 @@ sources the lib and runs a snippet (for lib-level functions like
 
 from __future__ import annotations
 
+import atexit
 import functools
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -66,8 +68,18 @@ def _gh_free_path() -> str:
     cannot be found" are the same statement. Replacing ``PATH`` wholesale is
     what makes that true; see the module docstring for why every cheaper trick
     fails.
+
+    The directory is removed when the process exits. It holds one symlink per
+    executable (about 3,250 on the development machine), and every test
+    process builds its own, xdist workers included; kept, 839 of them took 2.1
+    of a tmpfs ``/tmp``'s 3.0 million inodes in twelve days and the tracker
+    tests failed with ``No space left on device``. ``atexit`` does not run
+    when a process is killed by a signal or leaves through ``os._exit``: such
+    a process still leaves its directory behind.
     """
-    shadow = Path(tempfile.mkdtemp(prefix="hg-gh-free-path-")) / "bin"
+    root = tempfile.mkdtemp(prefix="hg-gh-free-path-")
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    shadow = Path(root) / "bin"
     shadow.mkdir()
     seen: set[str] = set()
     for directory in os.environ.get("PATH", "").split(os.pathsep):
