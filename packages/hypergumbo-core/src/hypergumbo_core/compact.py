@@ -17,17 +17,20 @@ between them based on the requested output mode:
   need fewer items; flat codebases need more).
 - Token-budget tier mode emits successively-larger views
   (``DEFAULT_TIERS`` = 4k / 16k / 64k by default; configurable via
-  ``--tier``). ``format_tiered_behavior_map`` + ``generate_tier_filename``
+  ``--budgets``). ``format_tiered_behavior_map`` + ``generate_tier_filename``
   materialize them, selecting each tier with ``select_by_connectivity``.
   ``select_by_tokens``, a centrality-only selector, is kept but has no
   production caller.
 - ``select_by_connectivity`` — UnionFind / frontier algorithm that
   prefers component-bridging edges, so the included subgraph is
-  connected rather than a disjoint top-N. Seeded with
-  ``CROSS_CUTTING_EDGE_TYPES`` (canonicalized via the ADR-0023 §6
-  fold so ``http_calls`` / ``grpc_calls`` / ``graphql_calls`` /
-  ``routes_to`` / ``di_resolves`` / ``message_queue`` etc. all map
-  to ``calls`` / ``dispatches_to`` / ``event_publishes``).
+  connected rather than a disjoint top-N. It starts from the seeds its
+  caller passes: the tiered path passes its forced entrypoints and the
+  under-represented-language seeds; the compact view also seeds the
+  endpoints of ``CROSS_CUTTING_EDGE_TYPES`` edges (canonicalized via
+  the ADR-0023 §6 fold so ``http_calls`` / ``grpc_calls`` /
+  ``graphql_calls`` / ``routes_to`` / ``di_resolves`` /
+  ``message_queue`` etc. all map to ``calls`` / ``dispatches_to`` /
+  ``event_publishes``).
 - Language-proportional selection (``min_per_language``) + under-
   represented-language seeding so a Rust + JS repo doesn't produce a
   Rust-only sketch when the budget is tight.

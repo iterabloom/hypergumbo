@@ -105,7 +105,8 @@ output path of its own.
 
 Default failure behavior
 ------------------------
-The validator does NOT fail ``hypergumbo run`` by default. Violations are:
+The validator does NOT fail ``hypergumbo survey`` (or its deprecated alias
+``run``) by default. Violations are:
 
 * Written into the artifact's ``validation_report`` section.
 * Summarized to stderr, one line per non-empty validator class

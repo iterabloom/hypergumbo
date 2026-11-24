@@ -19,7 +19,8 @@ one place a model is fetched. Analysis loads from the cache only.
 One model backs these: ``microsoft/unixcoder-base``
 (``_load_embedding_model``) serves README description extraction, and
 ``sketch.py``'s config discovery and extraction import
-``_load_embedding_model`` and ``NEGATIVE_PATTERNS`` from here directly.
+``_load_embedding_model`` from here directly; the extraction reads its probe
+embeddings through ``probe_embeddings``.
 A second model, ModernBERT, ranked the sketch's Additional Files until
 measurement 0033 found the ranking slow, unrepeatable and no better than
 file role and depth; that code and its per-file embedding cache are gone,
@@ -61,7 +62,9 @@ Callers must handle BOTH. ``extract_readme_description_embedding`` does: it
 catches :class:`EmbeddingsUnavailable` and degrades to the result its
 import-guard branch returns, and :func:`_warn_embeddings_unavailable`
 warns once per process rather than per call. Consumers outside this module
-(see ``sketch.py``) degrade to their heuristic path.
+(see ``sketch.py``) take the same branch as when the library will not import:
+the config extraction falls back to its heuristic extractor, and the config
+discovery finds no extra files.
 
 The probe is deliberately NOT strengthened to demand weights: a first
 install legitimately has the library and no weights, and the remedy,
@@ -166,7 +169,7 @@ _EMBEDDINGS_UNAVAILABLE_WARNED = False
 def _warn_embeddings_unavailable(exc: BaseException) -> None:
     """Warn ONCE per process that semantic enhancement is being skipped.
 
-    Once, not per call site: six consumers degrade independently and a
+    Once, not per call site: three consumers degrade independently and a
     per-consumer warning would bury the sketch it is attached to. The remedy is
     named because "couldn't connect to huggingface.co" tells a user what failed
     but not what to do about it.

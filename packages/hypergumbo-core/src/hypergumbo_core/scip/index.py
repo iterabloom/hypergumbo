@@ -96,9 +96,10 @@ Edge cases intentionally handled by skip rather than raise:
 
   Consequence, stated plainly: unlike the tree-sitter analyzers, which
   emit an ``:unresolved`` dst for such a call, a Rust call into a
-  dependency or the stdlib produces no edge at all under this backend
-  (open: WI-gojum, "external calls recorded accurately", pending ADR-0012
-  Steps 2-3).
+  dependency or the stdlib produces no edge at all under this backend,
+  because the rust-analyzer translate supplies no ``resolve_external_dst``
+  arm (scip-python's translate does, so its external calls survive as
+  unresolved dsts).
 * Malformed SCIP symbol strings (``parse_scip_symbol`` raises) — skipped
   with no warning. A buggy upstream emitter must not abort the whole
   translation pass; downstream analyses will simply see missing symbols
@@ -126,7 +127,8 @@ Edge cases intentionally handled by skip rather than raise:
   endpoints, so the rule holds for a library caller that supplies no
   resolver. Its parity-side consequence — the remaining SCIP Symbols
   carry a moniker-derived identity the tree-sitter arm never shares — is
-  WI-gojum's, not this module's. (history: WI-jikok, INV-kukiz)
+  not this module's to resolve: the merge pass gives a folded record the
+  incumbent's id (see "Identity" below). (history: WI-jikok, INV-kukiz)
 
 Identity (``stable_id``, INV-kutid):
 

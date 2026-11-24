@@ -18,9 +18,11 @@ This module provides the core storage operations for the tracker:
   detection on add().
 - **CRUD:** add(), update(), discuss(), lock/unlock methods with advisory
   file locking (flock) around appends.
-- **Durability:** Each op is written and fsynced under the per-file flock and
-  mirrored to the out-of-repo journal (`journal.mirror_op`) inside the same
-  lock, so no working-tree git operation can lose it.
+- **Durability:** Each item op is written and fsynced under the per-file flock
+  and mirrored to the out-of-repo journal (`journal.mirror_op`) inside the
+  same lock, so no working-tree git operation can lose it. The global
+  edit-mode log (below) is flocked and fsynced but not mirrored: it is
+  gitignored and outside `.ops/`, so checkout and sync never touch it.
 - **Custom-field key gate:** add() and update() pass every custom-field key
   being written through `check_field_key` (in the store, not just the CLI, so
   every writer is gated): a key may not reuse a core attribute name, nor differ
@@ -522,8 +524,9 @@ def _compute_simhash(text: str) -> int:
     Hash each token with a lightweight hash, accumulate bit-position votes,
     threshold to produce a fingerprint of _SIMHASH_BITS width.
 
-    Uses FNV-like hashing for speed and good distribution within
-    the target bit range.
+    Hashes each token with SHA-1 (``usedforsecurity=False``) masked to
+    the low _SIMHASH_BITS bits, for good distribution within the target
+    bit range.
     """
     tokens = _tokenize(text)
     if not tokens:
@@ -534,7 +537,7 @@ def _compute_simhash(text: str) -> int:
     mask = (1 << _SIMHASH_BITS) - 1
 
     for token in tokens:
-        # Use a fast hash: FNV-1a adapted to _SIMHASH_BITS
+        # SHA-1 of the token, masked to _SIMHASH_BITS
         h = int(hashlib.sha1(token.encode(), usedforsecurity=False).hexdigest(), 16) & mask
         for i in range(_SIMHASH_BITS):
             if h & (1 << i):

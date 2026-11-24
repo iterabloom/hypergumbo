@@ -71,8 +71,11 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   when there is no usable slot. ``prefer_exact_owner`` narrows the survivors to
   rows whose module IS the slot, so a receiver call on ``requests.Session`` is
   not credited to the package function ``requests.get`` (INV-vusum). A c/cpp
-  slot is the file's comma-joined ``#include`` list; ``module_hint_disjuncts``
-  splits it per header (INV-funuf) and, in c/cpp only, maps a C++ C-library
+  slot lists the headers the file can see, its own ``#include`` lines and
+  what in-repo headers include transitively (``include_closure``); two or
+  more are stored once as a ``module-set-`` handle (``module_sets``).
+  ``module_hint_disjuncts`` expands the handle and splits the list per header
+  (INV-funuf) and, in c/cpp only, maps a C++ C-library
   header to its C stem through ``_CXX_C_LIBRARY_HEADERS`` (``<cstdio>`` reaches
   the ``stdio`` rows, WI-hilot). The c/cpp analyzers ask
   ``declared_by_an_included_header`` through the same rule (WI-rimon), so a

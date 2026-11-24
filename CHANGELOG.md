@@ -197,6 +197,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Docs state the full suite's schedule**: 01:00, 09:00 and 21:00 UTC.
 - **The smart-test playbook states explicit-run gating and new-def refusals.**
 - **Audits 0028 and 0029 record the verdicts on the deleted framework rows**: 28 route rows, then the other 136.
+- Module docstrings corrected in 36 source files (staleness audit).
 
 ## [10.0.0] - 2026-11-16
 

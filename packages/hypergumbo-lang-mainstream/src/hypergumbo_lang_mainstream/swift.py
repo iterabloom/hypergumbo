@@ -16,7 +16,9 @@ This analyzer uses tree-sitter to parse Swift files and extract:
   ``repeat each T``, ``~Copyable``, and the ``inout`` / ``borrowing`` /
   ``consuming`` / ``@escaping`` / ``@autoclosure`` / type attribute / ``...`` /
   ``!`` beside a type -- and ``normalize_swift_signature`` keeps those
-  decorations beside the FQN-stripped core. Until scheme v15 the renderers
+  decorations beside the core, which is also hashed as written, its
+  qualifier included (``Feature.State`` and ``Other.State`` differ; see
+  IMPORTED TYPE NAMES below). Until scheme v15 the renderers
   read six type node kinds and dropped the rest, so ``f(x: some P)`` hashed
   as ``f()``. A function's and an ``init``'s argument labels are hashed
   (``labels=True``: ``f(from:)`` is not ``f(to:)``; an ``_`` parameter
@@ -129,12 +131,14 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      argument labels in Swift's order (defaults may be omitted, a variadic
      absorbs, a trailing closure binds a function-typed parameter), an exact
      binding before a defaulted one. When the construction's type declaration
-     is known -- ``T(...)`` resolved to a type, or ``self.init`` /
-     ``Self.init`` in that type's own body -- an init in the body of another
-     same-named type is not a candidate; for ``T.init``, ``super.init`` and
-     ``self.init`` in an extension only the dotted-owner suffix check
-     (``_swift_owner_matches``) filters, and an init declared in an extension
-     always stays a candidate. A delegating ``self.init`` never runs its own
+     is known -- ``T(...)`` resolved to a type, ``self.init`` /
+     ``Self.init`` in that type's own body, or ``T.init`` / ``super.init``
+     naming a type this file declares where the call can see it (the lexical
+     lookup below) -- an init in the body of another same-named type is not
+     a candidate; otherwise (``self.init`` in an extension, or a ``T.init`` /
+     ``super.init`` whose type this file does not declare in view) only the
+     dotted-owner suffix check (``_swift_owner_matches``) filters. An init
+     declared in an extension always stays a candidate. A delegating ``self.init`` never runs its own
      init. Several in the deciding tier is core
      ``overload_arity.choose_overload``'s ambiguous record
      (``resolution_quality="ambiguous"``, confidence 1/sqrt(N)). None -- a
@@ -157,7 +161,8 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Swift-specific extraction
-logic -- plus one override of ``parse_source``, which gives a backtick raw
+logic -- plus one override of ``parse_source``, which parses a copy with
+every inner ``$`` spelled ``_`` (see above) and gives a backtick raw
 identifier containing spaces (Swift 6.1's spelling for a test name) one
 canonical, underscored spelling, so a symbol's name and id do not depend on
 the grammar release (INV-bisok).

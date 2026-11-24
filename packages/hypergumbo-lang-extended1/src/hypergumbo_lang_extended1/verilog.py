@@ -54,8 +54,9 @@ The last two are also what a real checker or UDP instance parses as, so the
 type name decides. A name the repository declares as a module or interface
 is an instantiation of it. Otherwise a name it declares as a checker, a
 program or a UDP (``primitive``) in any file is not a module instantiation
-and emits nothing (pass 1 records those names in ``_other_units``; they are
-not symbols). A name declared nowhere is an external module, exactly as for
+and emits nothing (pass 1 records those names in the run record's
+``other_units``; they are not symbols). A name declared nowhere is an
+external module, exactly as for
 ``module_instantiation``: the port list must not decide whether an edge
 exists. Three shapes of ``checker_instantiation`` are never a module
 (``_instantiated_type``): one with no instance name (how a task enable

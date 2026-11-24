@@ -55,7 +55,7 @@ judgment" carveout permits, already used by :mod:`qualified_name_axis` and
 
 THE FACTS INSIDE HAVE HOMES, AND THIS IS THE ACTIONABLE HALF. A return type
 lives in ``FileAnalysis.method_return_types`` -- the language-neutral registry
-that go, rust, scala and swift populate in Pass 1 and that the base analyzer
+that go, rust, scala, swift and fsharp populate in Pass 1 and that the base analyzer
 aggregates across files into ``_method_return_type_registry`` (objc keeps a
 same-shaped registry on its own ``FileAnalysis``) -- or in the
 registered ``return_type`` / ``inferred_return_type`` meta keys, which java,
@@ -250,7 +250,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=347,
+        line=351,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "scala", "swift", "objc"),
@@ -292,7 +292,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=309,
+        line=313,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp", "go", "rust", "swift"),
@@ -342,7 +342,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2691,
+        line=2694,
         anchor="resolved_nav_sym.signature",
         fact="return_type",
         note="Navigation-target return type.",
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2892,
+        line=2895,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",
@@ -362,7 +362,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=7718,
+        line=7723,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

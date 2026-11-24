@@ -63,8 +63,9 @@ running it.
 
 THE NUMBERING IS ``block_hash``'s. Ordinals index ``Block.statements``; this
 module walks the tree again because it also needs each statement's parent, and
-its own test checks, on every source file of this repository, that the two
-walks number the same statements in the same order.
+its own test checks, on every third core-package source file under 60 KB,
+that the two walks number the same statements in the same order (the whole
+set was checked once, when this was written).
 
 IMPORT-TIME BLOCKS (a module body, a class body outside any function) are
 reported like any other, but no test's record says it ran their statements:

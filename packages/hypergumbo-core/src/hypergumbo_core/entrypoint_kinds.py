@@ -251,7 +251,7 @@ _ROLE_BY_NAME: Final[dict[str, EntrypointRoleSpec]] = {r.name: r for r in ENTRYP
 
 #: The roles whose production entries say a language HOSTS AN APPLICATION, so
 #: that language's library exports are demoted (entrypoints'
-#: ``_SEMANTIC_KINDS``). Reflective classes, the library API itself, tests and
+#: ``APPLICATION_KINDS``). Reflective classes, the library API itself, tests and
 #: shape fallbacks do not.
 APPLICATION_ROLES: Final[tuple[str, ...]] = (
     ROLE_PROGRAM_START,

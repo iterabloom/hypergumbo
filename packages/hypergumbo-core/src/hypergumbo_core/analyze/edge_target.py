@@ -31,8 +31,10 @@ What this module provides
 - :func:`in_tree_file_id` -- the lookup for a file named by path. The node is
   built in the language the file's own analyzer uses (``taxonomy.get_language``),
   so a fish script that sources ``x.sh`` reaches the bash file node rather than
-  a fish-language twin of it. A file the taxonomy gives no language has no node
-  and is a miss.
+  a fish-language twin of it. A file the taxonomy gives no language is a miss,
+  unless the calling analyzer passes its own language and file endings
+  (``own_lang`` / ``own_suffixes``: Robot, Meson, Make, requirements files),
+  when it is a node in that language.
 - :func:`search_path_candidates` -- the candidate paths for an import a
   language looks up along a search path of root directories (Protocol
   Buffers, Thrift, Cap'n Proto, a Makefile ``include``): the importing file's
@@ -120,7 +122,7 @@ def in_tree_file_id(
 
     ``own_lang`` / ``own_suffixes``: the calling analyzer's language and the
     endings of the file names it reads, for an analyzer whose files the
-    taxonomy names no language for (Robot ``.resource``, Meson
+    taxonomy names no language for (Robot ``.robot``, Meson
     ``meson.build``). Such a file is still a node of the run, in the
     analyzer's language; without these it would be a miss. The taxonomy's
     language, when it names one, still wins.
