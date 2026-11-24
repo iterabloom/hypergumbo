@@ -54,3 +54,18 @@
   clock: 6  # ca3e
   nonce: ca3e  # ca3e
   message: "2026-11-23: unchanged after PR #2347. On dev 49bc5c6e4, a.ts importing from 'lit' still gives typescript:npm:0-0:lit:package with path ''. That PR made the boundary-node factory write <external> for an empty path (the same file's other two stand-ins, typescript:lit:0-0:html:external_symbol and typescript:lit:0-0:module:external_symbol, have path '<external>'), but the npm package node is not minted by that factory. Adopting <external> for it moves every npm stand-in's stable id, so it is listed for a ruling in WI-hodin-kizis-nugir-simuv-ritat-vihuz-vatof-jiris (point 7)."  # ca3e
+- op: update  # 43a4
+  at: '2026-11-24T12:57:39Z'  # 43a4
+  by: agent  # 43a4
+  actor: jgstern_agent  # 43a4
+  clock: 7  # 43a4
+  nonce: 43a4  # 43a4
+  set:  # 43a4
+    status: done  # 43a4
+- op: discuss  # 2040
+  at: '2026-11-24T12:57:39Z'  # 2040
+  by: agent  # 2040
+  actor: jgstern_agent  # 2040
+  clock: 8  # 2040
+  nonce: '2040'  # 2040
+  message: "DONE in PR #2370 (merged 2026-11-24, dev 1acbf00b2), under the owner's ruling on WI-hodin point 7 (adopt <external>).\nBEHAVIOURAL EVIDENCE: this item's own fixture, a.ts with import {html} from 'lit', full survey on merged dev (closure/hulup.json):\n  typescript:npm:0-0:lit:package            path '<external>'\n  typescript:lit:0-0:html:external_symbol   path '<external>'\n  typescript:lit:0-0:module:external_symbol path '<external>'\nOne no-anchor spelling of node.path in the artifact, where there were two.\nCORRECTION to the discussion of 2026-11-23: adopting <external> does NOT move the npm stand-in's stable id. Symbol.path is not a hash input; make_dependency_stable_id hashes the declaring manifest's path, which stays '' for \"no manifest\". 51-tree comparison: 629 package stand-ins changed path, 0 stable ids of stand-ins moved, 0 node ids changed by this fix.\n"  # 2040

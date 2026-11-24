@@ -1,0 +1,22 @@
+- op: create  # 756a
+  at: '2026-11-24T12:57:46Z'  # 756a
+  by: agent  # 756a
+  actor: jgstern_agent  # 756a
+  clock: 1  # 756a
+  nonce: 756a  # 756a
+  data:  # 756a
+    kind: work_item  # 756a
+    title: "typescript: a parameter whose decorator arguments contain a colon hashes its own name and the decorator's argument text"  # 756a
+    status: todo_soft  # 756a
+    priority: 3  # 756a
+    parent:  # 756a
+    tags:  # 756a
+    - v20_residual  # 756a
+    - typescript  # 756a
+    - stable_id  # 756a
+    isbefore: []  # 756a
+    duplicate_of: []  # 756a
+    not_duplicate_of: []  # 756a
+    pr_ref:  # 756a
+    description: "WHAT\nTypeScript: a parameter whose DECORATOR ARGUMENTS contain a colon hashes the decorator's argument text and the parameter's own name into the callable's stable id. The names-first normalizer keeps the text after the parameter's first colon, and here the first colon is inside the decorator call.\n\nREPRO (dev after PR #2370, analyze_javascript run directly, one class per directory)\n  m(@Up(new P().v({ t: 'jpeg' })) file?: F)      a1a44b08\n  m(@Up(new P().v({ t: 'jpeg' })) renamed?: F)   1b07bf77   (only the parameter's name differs: MOVES)\n  m(@Up(new P().v({ t: 'png' })) file?: F)       74b020f3   (only a decorator argument differs: MOVES)\nControl, no colon in the decorator: m(@Up() file?: F) and m(@Up() renamed?: F) share e25444b3.\nReal instance: nest sample/29-file-upload/src/app.controller.ts line 38, uploadFileAndPassValidation (@UploadedFile(new ParseFilePipeBuilder().addFileTypeValidator({ fileType: 'jpeg' })...) file?: Express.Multer.File).\n\nMEASURED\nFixture, and the one nest method found by the 51-tree comparison. Not counted on a corpus.\n\nA fix changes hashed input for such parameters: needs a scheme bump (owner-ruled). The ts package's report (ts/RESULTS.md, residual 1) names the string-literal variant of the same cut.\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 756a
+    fields: {}  # 756a

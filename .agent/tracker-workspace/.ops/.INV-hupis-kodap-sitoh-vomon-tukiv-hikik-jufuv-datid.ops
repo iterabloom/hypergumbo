@@ -38,3 +38,10 @@
   clock: 3  # 05f5
   nonce: 05f5  # 05f5
   message: "REPORTED, NOT RE-RUN (same outside review, 10.0.0, ripgrep): in HiArgs::from_low_args the map showed calls to EncodingMode::Some, ParseResult::Ok and BinaryDetection::is_none, which are std Option / Result operations credited to in-repository types. It reads as this invariant's shape (a receiver of unknown type, a method name some in-repo type declares); whether it is the same code path was not checked."  # 05f5
+- op: discuss  # c7f2
+  at: '2026-11-24T12:57:39Z'  # c7f2
+  by: agent  # c7f2
+  actor: jgstern_agent  # c7f2
+  clock: 4  # c7f2
+  nonce: c7f2  # c7f2
+  message: "OWNER, in session 2026-11-24: queued NEXT after stable-id v20 (PR #2370, merged), ahead of the fifteen open items that wait for a scheme bump: first WI-tazuk (the call-resolution fixture in every mainstream language), then INV-hupis (the Rust wrong-class binding). The decision on a shared resolution layer waits for the fixture's matrix: ~/hypergumbo_lab_notebook/notebookjournal_11242026_0538.md."  # c7f2

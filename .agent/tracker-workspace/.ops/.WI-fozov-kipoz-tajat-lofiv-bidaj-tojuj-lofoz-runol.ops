@@ -1,0 +1,23 @@
+- op: create  # 57db
+  at: '2026-11-24T12:57:40Z'  # 57db
+  by: agent  # 57db
+  actor: jgstern_agent  # 57db
+  clock: 1  # 57db
+  nonce: 57db  # 57db
+  data:  # 57db
+    kind: work_item  # 57db
+    title: "tests/_forge_github_harness.py leaks a 3,250-symlink temp directory per test process: /tmp ran out of inodes and 450 tracker tests errored"  # 57db
+    status: todo_hard  # 57db
+    priority: 2  # 57db
+    parent:  # 57db
+    tags:  # 57db
+    - v20_residual  # 57db
+    - ci_infrastructure  # 57db
+    - test_infrastructure  # 57db
+    - developer_experience  # 57db
+    isbefore: []  # 57db
+    duplicate_of: []  # 57db
+    not_duplicate_of: []  # 57db
+    pr_ref:  # 57db
+    description: "WHAT\ntests/_forge_github_harness.py line 70: _gh_free_path() builds, once per process (functools.lru_cache), a directory /tmp/hg-gh-free-path-XXXX/bin holding a symlink to every executable on PATH except gh, about 3,250 entries, with tempfile.mkdtemp. Nothing removes it. Each test process that uses the harness leaks one; an xdist run leaks one per worker. /tmp is tmpfs with 3,009,047 inodes.\n\nMEASURED 2026-11-24\n839 such directories dated Nov 12 to Nov 24 held 2,163,168 inodes; /tmp was at 3,009,027 of 3,009,047 inodes (100%) with 6.8 GB of bytes free. The pre-PR self-selected run of PR #2370 then failed: 1 failed and 450 errors, every one a hypergumbo-tracker test (test_tui*, test_trackerset) at fixture setup, OSError 28 \"No space left on device\" / \"could not create numbered dir with prefix ops-journal\"; 41,356 other tests passed. After rm -rf of the 839 directories (inodes 10%) the same run passed 44,724.\n\nREPRO\nls -d /tmp/hg-gh-free-path-* | wc -l before and after any test run that imports the harness; df -i /tmp.\n\nASKED\nThe shadow directory is removed when its process ends (atexit, or built under a pytest-managed temporary directory), and a test pins that no hg-gh-free-path directory outlives the run. Sweep: any other mkdtemp / TemporaryDirectory(delete=False) in tests/ and packages/*/tests that is never removed (not enumerated).\n\nNOT CHECKED\nOther leakers in /tmp (10,291 top-level entries named tmpXXXXXX held 13,852 inodes in all; their creators were not traced). LIVE.md's landmine said to re-run a step that reds on \"No space left\" in /tmp; a re-run does not cure an inode leak.\n\nEvidence: ~/hypergumbo_lab_notebook/v20_11242026/prepr1/ (selected.log, the run that failed) and prepr2/ (the run that passed).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 57db
+    fields: {}  # 57db
