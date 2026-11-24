@@ -249,7 +249,9 @@ def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
     the innermost only (``inner::go``); a nested namespace's is ``a::inner``.
     The id's name slot is the symbol's name (ADR-0036 Ruling 1), the last
     word. The stable_ids are the values they had: they already hashed the
-    full path."""
+    full path. The two procs' values moved once, with stable-id scheme v19,
+    when a proc's hashed kind became ``function`` instead of the role word
+    ``proc`` (WI-lilab); the namespaces' did not."""
     syms = {s.name: s for s in _symbols(
         analyze_tcl, tmp_path, "src/n.tcl",
         "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n"
@@ -263,7 +265,7 @@ def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
     assert syms["top"].meta is None
     assert {n: s.stable_id for n, s in syms.items()} == {
         "a": f"{STABLE_ID_PREFIX}5f8ecf75437ae496", "inner": f"{STABLE_ID_PREFIX}67a662494d8be518",
-        "go": f"{STABLE_ID_PREFIX}5a06c54a2c6ba3bd", "top": f"{STABLE_ID_PREFIX}94b7459b9a4080ad",
+        "go": f"{STABLE_ID_PREFIX}ba15e0831859c946", "top": f"{STABLE_ID_PREFIX}5bed44f4601f21b0",
     }
 
 

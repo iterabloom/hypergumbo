@@ -24,6 +24,9 @@ Implementation approach:
   and, for ``proc ::top`` or ``namespace eval ::glob``, the ``::`` itself
   (``..top``), while the name held the word as declared. The stable_id's
   inputs (the word, the innermost namespace, the chain) are unchanged.
+- The stable id hashes the kind the Symbol reports: a proc hashes
+  ``function``, where it hashed the role word ``proc`` until stable-id scheme
+  v19 (WI-lilab); a namespace already hashed ``namespace``.
 - A call resolves the way Tcl resolves a command name
   (:func:`_resolve_callee`): ``::a::b`` from the global namespace, any other
   name first in the namespace the calling proc runs in (a command
@@ -402,7 +405,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, short_name, "function"),
                     stable_id=self.compute_stable_id(
-                        node, kind="proc", name=hashed_name,
+                        node, kind="function", name=hashed_name,
                         qualified_name=nested_member_qualified_name(ns_path, hashed_name, "::"),
                         file_stable_id=file_anchor,
                     ),
