@@ -124,7 +124,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **IPC and WebSocket channels reach their handlers.**
 - **A cobra handler's edge starts at its command.**
 - **A node id's name slot is its sanitized name**, optionally plus `@<column>` (JavaScript callbacks, same-line twins); a mismatch is a validation error.
-- **No two nodes share an id**: Vue nested templates, repeated Svelte events and Make targets, event and message stand-ins. The validator reports any.
+- **No two nodes share an id**: Vue nested templates, repeated Svelte events and Make targets, event and message stand-ins, same-line twins in Swift (`T.init@15`). The validator reports any.
 - **Boundary ids never carry an empty path or name.**
 - **Edge endpoints are valid ids** for Bash commands, Bazel labels, Terraform module sources, Ansible includes, qualified Rust attributes.
 - **Imports reach the imported file**: proto, Thrift, Cap'n Proto, Make, requirements, Terraform, Ruby `require_relative`. Phantom file nodes are gone.

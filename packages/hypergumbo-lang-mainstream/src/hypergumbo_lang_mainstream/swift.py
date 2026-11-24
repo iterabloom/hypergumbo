@@ -1698,8 +1698,7 @@ def _extract_parsed_symbols(
                     # ``signature``, whose parameter types contain commas.
                     meta={"arg_labels": _swift_parameter_labels(node, source)},
                 )
-                analysis.symbols.append(symbol)
-                analysis.node_for_symbol[symbol.id] = node
+                analysis.add_symbol(symbol, node)
                 # Register by qualified name only (AMB-METHOD invariant).
                 # Methods are NOT registered by bare name to prevent
                 # short-name collisions when multiple types define the
@@ -1762,8 +1761,7 @@ def _extract_parsed_symbols(
                     is_exported=any(m in type_modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
-                analysis.symbols.append(symbol)
-                analysis.node_for_symbol[symbol.id] = node
+                analysis.add_symbol(symbol, node)
                 analysis.symbol_by_name[type_name] = symbol
 
         # Standalone protocol declaration (for older grammar versions)
@@ -1804,8 +1802,7 @@ def _extract_parsed_symbols(
                     is_exported=any(m in proto_modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
-                analysis.symbols.append(symbol)
-                analysis.node_for_symbol[symbol.id] = node
+                analysis.add_symbol(symbol, node)
                 analysis.symbol_by_name[type_name] = symbol
 
         # ERROR node recovery: tree-sitter-swift fails on certain patterns
@@ -1841,8 +1838,7 @@ def _extract_parsed_symbols(
                     line_span=end_line - start_line + 1,
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
-                analysis.symbols.append(symbol)
-                analysis.node_for_symbol[symbol.id] = node
+                analysis.add_symbol(symbol, node)
                 analysis.symbol_by_name[type_name] = symbol
 
         # Enum CASES, emitted as kind="field" (a case is a named value of the
@@ -1902,8 +1898,7 @@ def _extract_parsed_symbols(
                         is_exported=True,
                         qualified_name=qualified,
                     )
-                    analysis.symbols.append(sym)
-                    analysis.node_for_symbol[sym.id] = child
+                    analysis.add_symbol(sym, child)
                     analysis.symbol_by_name[full_name] = sym
 
         # Protocol REQUIREMENTS, so a reverse slice from a protocol finds more
@@ -1978,8 +1973,7 @@ def _extract_parsed_symbols(
                     is_exported=True,
                     qualified_name=qualified,
                 )
-                analysis.symbols.append(sym)
-                analysis.node_for_symbol[sym.id] = node
+                analysis.add_symbol(sym, node)
                 analysis.symbol_by_name[full_name] = sym
 
         # Computed property (var x: T { get { ... } })
@@ -2035,8 +2029,7 @@ def _extract_parsed_symbols(
                         is_exported=any(m in modifiers for m in ("public", "open")),
                         qualified_name=prop_qualified,
                     )
-                    analysis.symbols.append(symbol)
-                    analysis.node_for_symbol[symbol.id] = node
+                    analysis.add_symbol(symbol, node)
                     analysis.symbol_by_name[full_name] = symbol
 
         # STORED properties / top-level bindings (history: WI-jusus).
@@ -2116,8 +2109,7 @@ def _extract_parsed_symbols(
                     is_exported=any(m in modifiers for m in ("public", "open")),
                     qualified_name=qualified,
                 )
-                analysis.symbols.append(sym)
-                analysis.node_for_symbol[sym.id] = node
+                analysis.add_symbol(sym, node)
                 analysis.symbol_by_name[full_name] = sym
 
         # Subscript declaration
@@ -2167,8 +2159,7 @@ def _extract_parsed_symbols(
                 qualified_name=sub_qualified,
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
             )
-            analysis.symbols.append(symbol)
-            analysis.node_for_symbol[symbol.id] = node
+            analysis.add_symbol(symbol, node)
             analysis.symbol_by_name[full_name] = symbol
 
         # Initialisers and deinitialisers get symbols of their own, so their
@@ -2177,8 +2168,7 @@ def _extract_parsed_symbols(
         elif node.type in ("init_declaration", "deinit_declaration"):
             lifecycle = _swift_lifecycle_symbol(node, source, file_path, run_id, file_stable_id)
             if lifecycle is not None:
-                analysis.symbols.append(lifecycle)
-                analysis.node_for_symbol[lifecycle.id] = node
+                analysis.add_symbol(lifecycle, node)
                 analysis.symbol_by_name[lifecycle.name] = lifecycle
 
     return analysis
