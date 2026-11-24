@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
 
@@ -118,7 +119,7 @@ def test_a_local_of_a_bare_callable_keeps_its_id(tmp_path: Path) -> None:
 
 
 _PINNED: dict[tuple[str, str, int], str] = {
-    ("a.js", "h", 0): "hgstableid18:bd14312405a0dcd9",
+    ("a.js", "h", 0): f"{STABLE_ID_PREFIX}bd14312405a0dcd9",
 }
 
 

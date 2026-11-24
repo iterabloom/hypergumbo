@@ -14,7 +14,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **`stable_id_scheme` v15 → v18** (`hgstableid18:`): many digests change, most in Swift, Rust and Scala (spec: "`stable_id_scheme` version history").
+- **`stable_id_scheme` v15 → v19** (`hgstableid19:`): many digests change, most in Swift, Rust, Scala, Kotlin, C, C++ and JS/TS (spec: "`stable_id_scheme` version history").
+- **Some node kinds are corrected**: Gleam custom types are `type` and aliases `type_alias`; Odin and V structs and unions are `struct`, `union`; a V function with a receiver is `method`.
+- **A Vue or Svelte component's file node is `vue:` / `svelte:`**, also when only its script was read (was `typescript:` / `javascript:`).
 - **Many node ids are respelled; their stable ids are not**: Rust and Perl members (`A..run`), Tcl, Julia, Robot, Maven, reStructuredText, linker stand-ins.
 - **Linker stand-ins are named `<role>:<name>`** (`message_sender:ping`); the bare name is in `meta`.
 - **Every file node's `name` is its repo-relative path.**
@@ -87,7 +89,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Swift names containing `$` are read whole.**
 - **A comment inside a declaration no longer moves its id.**
 - **Layout is not hashed in more places**: a TypeScript type's leading `&` or `|`, attribute text, F# primed types, untyped names in every language.
-- **Whitespace inside a TypeScript regex default stays meaningful.**
+- **A JS/TS default value no longer changes the id**; a destructured parameter is in the signature whole.
+- **More names callers never write are not hashed**: TypeScript interface-member, object-type and type-predicate parameters, Go interface-literal parameters.
+- **Built-in spellings of one type hash alike**: C# `string` / `System.String`, Swift `Int` / `Swift.Int`, Go `byte` / `uint8`, Solidity `uint` / `uint256`, Rust `::std::X` / `std::X`.
+- **Julia and Solidity imported types hash by their import path**; TypeScript's rewrite no longer depends on colon spacing.
+- **Preprocessor alternatives no longer share a hash**: C, C++, CUDA, HLSL, GLSL, Objective-C (include guards are not hashed); Rust inner `#![cfg]` and `cfg_attr`.
+- **Rust `cfg` `any` / `all` argument order does not change the id.**
+- **Same-named locals of different functions no longer share a hash**: Kotlin, Python, Scala, Dart, PHP, JS/TS, C++, HLSL.
+- **Nine analyzers hash the kind they report**: Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl, V.
+- **Vue and Svelte script members anchor on the component's file.**
+- **Layout is not hashed in three more places**: an Elixir module name, a Vue or Svelte bound expression, a PHP `#` comment inside a type.
+- **Vue 3.4 shorthand directives (`:album`) are read one by one.**
+- **V unions named by one capital letter are emitted.**
+- **SCIP: same-named local functions of one class get separate nodes.**
 
 #### Entry points
 
