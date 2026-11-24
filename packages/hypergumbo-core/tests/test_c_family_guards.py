@@ -105,6 +105,9 @@ def test_include_guards_are_not_branches() -> None:
         "// header\n#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif /* FOO_H */\n",
         "#if !defined(FOO_H)\n#define FOO_H 1\nint f(void) { return 1; }\n#endif FOO_H\n",
         "#if !defined FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n// end\n",
+        # ``#pragma once`` before the guard: both idioms in one header
+        "#pragma once\n#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n",
+        "// c\n#  pragma   once /* both */\n\n#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n",
         # no line break at the end of the file
         "#ifndef FOO_H\r\n#define FOO_H\r\nint f(void) { return 1; }\r\n#endif",
     ):
@@ -126,6 +129,10 @@ def test_a_guard_that_is_not_the_whole_file_is_a_branch() -> None:
         "#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#else\nint h(void);\n#endif\n": 3,
         # a later directive after its #endif
         "#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n#ifdef Z\n#endif\n": 3,
+        # another directive before it, even another pragma or a second once
+        "#pragma pack(1)\n#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n": 4,
+        "#pragma once\n#include <x.h>\n#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n": 5,
+        "#pragma once extra\n#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n#endif\n": 4,
         # no #endif (the file ends inside it)
         "#ifndef FOO_H\n#define FOO_H\nint f(void) { return 1; }\n": 3,
         # no #define at all
