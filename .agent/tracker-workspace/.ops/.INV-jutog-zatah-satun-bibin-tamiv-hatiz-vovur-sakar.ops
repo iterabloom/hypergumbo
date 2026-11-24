@@ -1,0 +1,24 @@
+- op: create  # 98a7
+  at: '2026-11-24T20:41:59Z'  # 98a7
+  by: agent  # 98a7
+  actor: jgstern_agent  # 98a7
+  clock: 1  # 98a7
+  nonce: 98a7  # 98a7
+  data:  # 98a7
+    kind: invariant  # 98a7
+    title: "A resolved call edge's destination depends on declaration order in 9 of 17 mainstream languages (24 fixture cells, confidence 0.78-0.9)"  # 98a7
+    status: violated  # 98a7
+    priority: 2  # 98a7
+    parent:  # 98a7
+    tags:  # 98a7
+    - call_graph  # 98a7
+    - analysis_quality  # 98a7
+    - call_matrix  # 98a7
+    isbefore: []  # 98a7
+    duplicate_of: []  # 98a7
+    not_duplicate_of: []  # 98a7
+    pr_ref:  # 98a7
+    description: "STATEMENT\nA call edge marked resolved names the same destination whichever order the same-named candidates are declared in. When the analyzer cannot tell the candidates apart, the call is unresolved with its candidates kept (the rule symbol_resolution.py states: no guessing among candidates).\n\nOBSERVED: 24 cells in 9 of the 17 mainstream languages bind a decoy at confidence 0.78 to 0.9 in one declaration order and the right symbol in the other.\n  objc        6 cells: every message send, by selector, including a receiver declared `Conn *c` (0.9)\n  rust        5 cells: variable from a return, chain, trait default method, local bound from an external call, `use util::helper` (0.85)  [INV-hupis]\n  groovy      5 cells: variable from a return, inherited, local bound from an external call, untyped parameter, imported class (0.85 / 0.78)\n  csharp      3 cells: inherited, local bound from an external call, imported class (0.85 / 0.78)\n  javascript  1 cell: import with an explicit .js extension (0.815)\n  php, ruby, swift  1 cell each: the imported function (0.85)\n  cpp         1 cell: an unqualified call binds a `static` function of another .cpp file when that file sorts FIRST (0.85)\nA tenth case never binds a decoy but still depends on order: java resolves `Util.helper()` at 0.95 or leaves it unresolved depending on where a same-named class of another package sorts.\nNo such cell in go, kotlin, lua, perl, python, scala, typescript.\nOne item per language is filed with the tag call_matrix.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/<language>__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw <language>\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # 98a7
+    fields:  # 98a7
+      statement: "A call edge marked resolved names the same destination whichever order the same-named candidates are declared in; when the analyzer cannot tell the candidates apart the call is unresolved, candidates kept."  # 98a7
+      root_cause: "Not traced for any language. Observed only: 24 fixture cells in 9 of 17 mainstream languages flip between the right symbol and a decoy when two declarations (or two files) swap order; swapping the class names changes nothing."  # 98a7
