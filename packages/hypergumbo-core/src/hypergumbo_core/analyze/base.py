@@ -53,7 +53,13 @@ Shared Components
   enclosing context node), safe on nesting deeper than Python's recursion
   limit
 - **ID generation and stable identity**: ``make_symbol_id`` / ``make_file_id``
-  build node ids; a separate layer builds the content-addressed
+  build node ids. Two declarations with one name and one kind on one line
+  would share an id, so a later one at another start column gets
+  ``@<column>`` in its name slot (``distinguish_same_line_id``, applied as
+  symbols are added by ``FileAnalysis.add_symbol`` or afterwards by
+  ``distinguish_same_line_ids``; ``id_with_column`` writes the suffix). The
+  same node emitted twice at one column keeps its id, so the validator still
+  reports it. A separate layer builds the content-addressed
   ``stable_id`` that survives re-analysis. ``assemble_stable_id`` is the
   construction chokepoint (ADR-0035 §1), with typed and route-shaped variants
   (``make_typed_stable_id``, ``make_route_stable_id``) and post-pass

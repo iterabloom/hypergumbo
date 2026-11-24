@@ -32,7 +32,10 @@ IT REFUSES, AND THE RUN IS NOT NARROWED, WHEN:
 * the selector met code it cannot answer by statement: a block the index has
   never seen, a new method whose bases it cannot follow to source,
   import-time code (a new decorated def among it), a file that does not
-  parse. A new def is named in the refusal.
+  parse. A new def is named in the refusal;
+* it would leave out every test the index holds in the run set's files
+  ("it would leave no test to run"): pytest exits 5 when it runs nothing,
+  and CI reads that as a failed selection, so the files run whole.
 
 WHAT IT LEAVES OUT. A test of the run set's files, as the index spells it, that
 the selector did not select, coverage can speak for, and whose file is

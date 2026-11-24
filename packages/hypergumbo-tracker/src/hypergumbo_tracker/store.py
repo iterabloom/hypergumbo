@@ -18,6 +18,15 @@ This module provides the core storage operations for the tracker:
   detection on add().
 - **CRUD:** add(), update(), discuss(), lock/unlock methods with advisory
   file locking (flock) around appends.
+- **Two-user sharing:** A human and an agent uid can share one tracker. Ops
+  files are opened 0o664 and `.ops/` is made setgid 2775, with the umask
+  cleared so the mode bits hold; `_ensure_dir_group_writable` repairs a
+  directory the writer owns. When the other user owns an ops file without
+  group-write, `_take_ownership_via_tmp` copies it to a temp file in the
+  same directory and renames it over the original atomically, so readers
+  never see a half-replaced file. `_append_op` refuses (CorruptFileError)
+  to append to an item whose op log does not compile, until a human
+  inspects it.
 - **Durability:** Each item op is written and fsynced under the per-file flock
   and mirrored to the out-of-repo journal (`journal.mirror_op`) inside the
   same lock, so no working-tree git operation can lose it. The global
@@ -34,6 +43,12 @@ This module provides the core storage operations for the tracker:
   discuss_clear, lock/unlock, freeze/unfreeze, repair_drift and edit-mode
   on/off, and LockedFieldError for touching a field locked on HEAD or any
   Lamport branch.
+- **Discussion limits:** An agent's discuss() on an item is refused with
+  DiscussionRateLimitError once that item's discussion today (UTC) reaches
+  200,000 estimated tokens (4.4 chars per token, counting the day's
+  discuss and summarize messages by anyone). Any discuss() other than a
+  clear warns, without refusing, when the item already has 20 or more
+  entries, and suggests --summarize.
 - **Freeze:** freeze() copies the ops file to a read-only `.frozen` sentinel;
   `_append_op` refuses agent writes while it exists and a human write
   refreshes it. drift_check() compares ops file and sentinel byte-for-byte;

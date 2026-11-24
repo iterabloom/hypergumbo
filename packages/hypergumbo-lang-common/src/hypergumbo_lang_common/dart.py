@@ -24,7 +24,19 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract classes, functions, methods, constructors, getters, setters, enums, mixins, extensions, fields, top-level variables;
    record each type's heritage clauses
-2. Pass 2: Detect calls, imports, and instantiations using NameResolver
+2. Pass 2: Detect calls, imports, and instantiations using NameResolver.
+   A receiver's class is inferred from parameter types, constructor
+   assignments and the declared return type of the call that initialised
+   it, so ``db.save()`` resolves to ``Database.save``. A bare call whose
+   name three or more methods share (``ListNameResolver``,
+   ``ambiguity_threshold=3``) is dropped: the AMB-METHOD guard. A bare call
+   that binds to a different class's method only on weak evidence
+   (``defer_bare_method_call``; its own class's method binds), or that ties
+   among candidates one of which is a method (``defer_unresolved_tie``),
+   becomes an unresolved edge carrying the call site's enclosing class, for
+   the inherited-calls linker to settle. ``register_symbol`` keeps fields and
+   top-level variables out of the call registry, so neither shadows a
+   function or method.
 3. post_process: resolve the heritage clauses over every class and mixin of the
    run into ``extends`` / ``implements`` / ``includes`` edges. The analyzer
    labels these itself rather than leaving them to the shared inheritance
