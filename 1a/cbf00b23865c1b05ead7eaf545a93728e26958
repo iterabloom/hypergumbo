@@ -1,0 +1,22 @@
+Original commit body from 4c82d380b0d7a294f9ad5dd8fb4c2ff5887b6779:
+
+Stable-id scheme v19 -> v20 (owner ruling 2026-11-24: one bump for three items' fixes). Nine commits and the test manifest.
+
+What moves stable ids
+- C++, CUDA, HLSL, GLSL: a parameter's pointer, reference, array and function-pointer marks are hashed beside its type, as written (f(int) and f(int*), g(T&) and g(T&&) tied). Nothing is evaluated: int a[] and int* a stay apart.
+- C++: a member function's const, volatile and ref-qualifiers are hashed (d() and d() const tied).
+- TypeScript: an outer parameter's ? and ... are hashed before its type, the spelling interface members have had since v19.
+
+What moves no stable id
+- A build target's node id carries its target's language where the slot read "manifest".
+- An npm package stand-in's path is <external>.
+- Seven template languages (eex, heex, leex, ftl, vm, jsp, jinja) join the language axis; their files get file nodes.
+- C-family parameter entries carry "declarator"; the meta key's description says so. SCHEMA_VERSION unchanged.
+
+Measured: dev fc8c8cb19 against the branch at c4f68a124, 51 trees, PYTHONHASHSEED=0. Declared symbols moved 22,664 of 324,172: C++ 18,484 of 48,253, TypeScript 2,174 of 69,221, CUDA 1,978 of 2,768, GLSL 28 of 498; no other language, no stand-in. None added or removed; no name, kind, span, qualified_name or signature differs. 59 node ids renamed (build targets), 47 file nodes new; with the renames applied, edges and entry lists are identical.
+
+Not measured: HLSL in the 51 trees (one tree measured by the package, 0 of 20); a tree where a view-template linker renders jinja, ftl, vm or jsp.
+
+Tests: whole self-selected suite 44,724 passed; each package alone with its manifest tests passed; check-claims-coverage, check-io-allowlist, check-id-construction, line citations pass; no new test-only-reachable callable.
+
+Addresses WI-pohom-turot, WI-siror-bupaz (point 3), WI-hodin-kizis (points 4 and 7), WI-hulup.
