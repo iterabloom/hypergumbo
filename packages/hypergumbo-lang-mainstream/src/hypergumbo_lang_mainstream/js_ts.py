@@ -255,8 +255,8 @@ does not end the tag at its ``>``; a self-closing ``<script src=... />`` has
 no body and is skipped.
 
 A component yields ONE file symbol however many blocks it has (WI-rolub;
-``_parse_sfc_blocks``): its language is ``typescript`` when any block is
-TypeScript, else ``javascript``, and its span covers every block. Each block
+``_parse_sfc_blocks``): its language is the component's own (``vue``,
+``svelte``; WI-vavag), and its span covers every block. Each block
 is still parsed and walked on its own (its members keep their block's
 language), but all blocks fold that one file symbol's identity anchor, and
 pass 2 anchors every block's file-level edges (imports, requires) on it.
@@ -301,6 +301,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.supply_chain import own_package_name
+from hypergumbo_core.taxonomy import get_language
 from hypergumbo_core.js_package_entry import (
     is_node_core_module, nearest_package_root, package_entry, probe_file,
 )
@@ -5152,8 +5153,8 @@ def _extract_tree_symbols(
             path (INV-kokaj mirror of INV-vaguj). Tests calling this
             helper directly may pass ``None``.
         file_lang: Language of the FILE this tree is part of, when it differs
-            from the tree's own ``lang``: a JavaScript ``<script>`` block in a
-            component whose other block is TypeScript (WI-rolub). The file
+            from the tree's own ``lang``: a ``<script>`` block of a ``vue`` or
+            ``svelte`` component (WI-rolub, WI-vavag). The file
             pseudo-node and the members' file-identity anchor take it; the
             members keep ``lang``. Defaults to ``lang``.
     """
@@ -8449,14 +8450,16 @@ def _parse_sfc_blocks(
     and a JavaScript ``context="module"`` block beside a TypeScript instance
     block a ``javascript:`` and a ``typescript:`` file node for one file.
 
-    The file symbol's language is ``typescript`` when any block is TypeScript
-    (the superset: a component with a TypeScript block is type-checked as
-    TypeScript), else ``javascript``; every block is extracted with that
-    ``file_lang`` so all blocks' copies of the pseudo-node share its id, the
-    first copy is kept, and its span is widened to cover every block. Members
-    keep their own block's language.
+    The file symbol's language is the component's own (``taxonomy.get_language``
+    of the path: ``vue``, ``svelte``), the slot the component analyzers anchor
+    on and the one ``file_records`` keeps, so a component no template edge
+    names still has its file node there and its members fold that node's
+    stable id (WI-vavag); every block is extracted with that ``file_lang`` so
+    all blocks' copies of the pseudo-node share its id, the first copy is
+    kept, and its span is widened to cover every block. Members keep their
+    own block's language.
     """
-    file_lang = (
+    file_lang = get_language(file_path) or (
         "typescript" if any(b.is_typescript for b in blocks) else "javascript"
     )
     parsed: list[_ParsedFile] = []

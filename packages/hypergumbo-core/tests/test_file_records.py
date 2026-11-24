@@ -287,6 +287,42 @@ class TestFoldKeepsProvenance:
         assert first.derived_from == [own.id, "edge:js-stub"]
 
 
+    def test_one_id_from_both_producers_folds_with_both_provenances(self) -> None:
+        """WI-vavag: the script analyzer mints the component's node in its own
+        ``vue:`` slot, so the template analyzer's edge and the linker's are
+        identical with no rewiring; the fold still keeps the linker's statement
+        of which placeholder it consumed."""
+        own = _file("vue", "src/App.vue")
+        kid = _file("vue", "src/Kid.vue")
+        a, b = _member("vue", "src/App.vue", "a"), _member("vue", "src/App.vue", "b")
+        template = Edge.create(
+            src=own.id, dst=kid.id, edge_type="imports", line=1, origin="vue",
+            origin_run_id="run", evidence_type="import", meta={"component_name": "Kid"},
+        )
+        resolved = Edge.create(
+            src=own.id, dst=kid.id, edge_type="imports", line=3,
+            origin="js-module-linker", origin_run_id="run",
+            evidence_type="import_resolution", derived_from=[own.id, "edge:stub"],
+        )
+        # Control: a relation between two members is deduplicate_edges' alone.
+        call, again = _edge(a.id, b.id, "calls"), _edge(a.id, b.id, "calls")
+        again.origin, again.derived_from = ["recovery"], [a.id, "edge:call-stub"]
+        # A relation with the file node at one end only, either end.
+        from_file, from_file_too = _edge(own.id, a.id, "calls"), _edge(own.id, a.id, "calls")
+        to_file, to_file_too = _edge(b.id, own.id), _edge(b.id, own.id)
+        for edge, origin in ((from_file_too, "x-linker"), (to_file_too, "y-linker")):
+            edge.origin, edge.derived_from = [origin], [origin, "edge:s"]
+        assert unify_file_pseudo_symbols(
+            [own, kid, a, b],
+            [template, resolved, call, again, from_file, from_file_too, to_file, to_file_too],
+        ) == {}
+        assert template.origin == ["vue", "js-module-linker"]
+        assert template.derived_from == [own.id, "edge:stub"]
+        assert (from_file.origin, from_file.derived_from) == (["test", "x-linker"], ["x-linker", "edge:s"])
+        assert (to_file.origin, to_file.derived_from) == (["test", "y-linker"], ["y-linker", "edge:s"])
+        assert call.origin == ["test"] and call.derived_from is None
+
+
 class TestFileReferenceDst:
     @staticmethod
     def _dst(root: Path, lang: str, importer: str, import_path: str) -> str | None:

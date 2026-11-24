@@ -10,7 +10,7 @@ imported ``.svelte`` file. These tests run the whole pipeline on components
 that import each other and pin, for every path of the tree:
 
 - exactly one file pseudo-symbol;
-- it is the component's own-language node wherever a producer anchored on it;
+- it is the component's own-language node, whichever producers named it;
 - every edge of both former nodes starts or ends at it, and none is lost;
 - the symbols declared in a ``<script>`` keep the ``stable_id`` the JavaScript
   analyzer gives them on its own.
@@ -174,19 +174,35 @@ def test_a_component_import_ends_on_the_imported_files_node(
     assert stand_ins == []
 
 
-def test_a_reference_does_not_re_slot_the_imported_files_node(
+def test_a_component_only_referred_to_has_its_node_in_its_own_slot(
     survey: tuple[Path, dict],
 ) -> None:
-    """``Child.svelte`` and ``VChild.vue`` are only referred to; each keeps the
-    one node, and the stable id, the script analyzer gave it."""
+    """``Child.svelte`` and ``VChild.vue`` are only referred to, so the script
+    analyzer is the only producer of their node: it is in the component's own
+    slot all the same, and the script's members sit under it (WI-vavag)."""
     from hypergumbo_core.analyze.base import make_file_stable_id
 
     _, data = survey
     per_path = _file_nodes(data)
-    for path in ("src/Child.svelte", "src/VChild.vue"):
+    contains = {(e["src"], e["dst"]) for e in data["edges"] if e["type"] == "contains"}
+    for path, language in (("src/Child.svelte", "svelte"), ("src/VChild.vue", "vue")):
         (node,) = per_path[path]
-        assert node["id"] == f"javascript:{path}:1-1:file:file"
-        assert node["stable_id"] == make_file_stable_id("javascript", path)
+        assert node["id"] == f"{language}:{path}:1-1:file:file"
+        assert node["language"] == language
+        assert node["stable_id"] == make_file_stable_id(language, path)
+        # No node of the path is in a script language's file slot.
+        assert not [
+            n["id"] for n in data["nodes"]
+            if n["path"] == path and n["id"].startswith(("typescript:", "javascript:"))
+            and n["id"].endswith(":1-1:file:file")
+        ]
+    # Reach: Child.svelte's script declares ``label``; it keeps its language
+    # and is contained by the component's node.
+    (label,) = [
+        n for n in data["nodes"] if n["path"] == "src/Child.svelte" and n["name"] == "label"
+    ]
+    assert label["language"] == "javascript"
+    assert (per_path["src/Child.svelte"][0]["id"], label["id"]) in contains
 
 
 def test_the_scripts_import_placeholder_is_still_demoted(
