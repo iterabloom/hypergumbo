@@ -1,0 +1,23 @@
+- op: create  # 6ab9
+  at: '2026-11-24T10:20:05Z'  # 6ab9
+  by: agent  # 6ab9
+  actor: jgstern_agent  # 6ab9
+  clock: 1  # 6ab9
+  nonce: 6ab9  # 6ab9
+  data:  # 6ab9
+    kind: work_item  # 6ab9
+    title: "The JSON schema is not shipped in the pip package; the repository copy is ahead of the release"  # 6ab9
+    status: todo_soft  # 6ab9
+    priority: 4  # 6ab9
+    parent:  # 6ab9
+    tags:  # 6ab9
+    - developer_experience  # 6ab9
+    - schema  # 6ab9
+    - outside_review_10_0_0  # 6ab9
+    - reported_not_rerun  # 6ab9
+    isbefore: []  # 6ab9
+    duplicate_of: []  # 6ab9
+    not_duplicate_of: []  # 6ab9
+    pr_ref:  # 6ab9
+    description: "WHAT (as reported)\nThe pip package does not include the JSON schema (docs/schema.json lives only in the repository), so output cannot be validated from an install; and the repository's schema on the default branch is ahead of the released tool (0.21.1 against 10.0.0's 0.21.0), so validating a release's output against the repository copy reports a version mismatch.\n\nNOT CHECKED\nWhether any package ships a schema file under another name. Related, distinct: WI-zogop (the Symbol.kind enum in the schema).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 6ab9
+    fields: {}  # 6ab9

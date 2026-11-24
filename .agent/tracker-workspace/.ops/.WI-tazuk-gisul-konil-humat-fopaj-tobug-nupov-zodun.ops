@@ -1,0 +1,24 @@
+- op: create  # bd8e
+  at: '2026-11-24T10:20:12Z'  # bd8e
+  by: agent  # bd8e
+  actor: jgstern_agent  # bd8e
+  clock: 1  # bd8e
+  nonce: bd8e  # bd8e
+  data:  # bd8e
+    kind: work_item  # bd8e
+    title: "One call-resolution fixture in every language: variable from a return, chained call, constructor, inherited, ambiguous, imported"  # bd8e
+    status: todo_soft  # bd8e
+    priority: 3  # bd8e
+    parent:  # bd8e
+    tags:  # bd8e
+    - call_graph  # bd8e
+    - analysis_quality  # bd8e
+    - test_infrastructure  # bd8e
+    - outside_review_10_0_0  # bd8e
+    - reported_not_rerun  # bd8e
+    isbefore: []  # bd8e
+    duplicate_of: []  # bd8e
+    not_duplicate_of: []  # bd8e
+    pr_ref:  # bd8e
+    description: "WHAT (proposed by the reviewer; the owner was receptive in session)\nOne fixture, written once per language, that pins the same call shapes everywhere: two classes that both declare execute(), a factory get_db() returning one of them, and\n  db = get_db(); db.execute()      get_db().execute()      c = Conn(); c.execute()\nplus an inherited method, an ambiguous name that must stay unresolved, and an imported callee. The reviewer's table on 10.0.0: Java, Python, Swift resolve all three; C#, Go, Kotlin, TypeScript leave the chain unresolved; Rust binds two of three to the wrong class at 0.85.\nRe-run on dev fc8c8cb19 by the filing agent: the Rust and TypeScript rows only (fixtures ~/hypergumbo_lab_notebook/outside_review_11242026/fx/rs, fx/tsx; items filed the same day for each).\n\nWHY\nThe same three ideas give three behaviours across eight analyzers; ADR-0029 already replaced per-language copies of inherited-call resolution with one shared linker, and variable/return typing (ADR-0006) and imports (ADR-0007) stayed per-language. The fixture shows divergence without deciding anything; whether to build a shared resolver is a separate decision for the owner and is NOT asked here.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # bd8e
+    fields: {}  # bd8e
