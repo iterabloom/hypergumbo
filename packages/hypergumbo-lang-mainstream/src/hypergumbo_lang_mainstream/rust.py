@@ -107,7 +107,8 @@ through ``rust_hashed_qualified_name``), so ``#[cfg(unix)] fn open()`` and
 Since scheme v19 (WI-sifar) an inner ``#![cfg(...)]`` at the head of such a
 block's body is that block's guard, hashed in the outer spelling, and a
 ``#[cfg_attr(P, cfg(Q))]`` is a guard (``_rust_guard``); a file's own
-``#![cfg]`` is not read.
+``#![cfg]`` is not read; the arguments of ``any(...)`` / ``all(...)`` are
+sorted, and nothing else in a predicate is rewritten (``_rust_predicate``).
 
 Parity with the SCIP backend
 ----------------------------
@@ -1020,8 +1021,9 @@ def _rust_cfg_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     of it would move with no tie resolved, and the ``#[cfg] mod x;`` that
     guards a module file from its parent is not read either.
 
-    The predicate is hashed as written, not evaluated: editing a guard moves
-    the id of what it guards.
+    The predicate is hashed as written, not evaluated, but for the order of
+    the arguments of ``any`` / ``all`` (:func:`_rust_predicate`): editing a
+    guard moves the id of what it guards.
     """
     items = [*_preceding_attribute_items(node), *_rust_inner_attribute_items(node)]
     guards = sorted(guard for item in items if (guard := _rust_guard(item, source)) is not None)
@@ -1096,10 +1098,21 @@ def _rust_predicate(segment: list["tree_sitter.Node"], source: bytes) -> str:
     """A ``cfg`` predicate (one part of a token tree) as text: a call-shaped
     predicate (``any(...)``, ``all(...)``, ``not(...)``) rebuilt from its
     arguments, each read the same way; any other (``unix``, ``feature =
-    "x"``) as written."""
+    "x"``) as written.
+
+    The arguments of ``any`` and ``all`` are sorted (by their canonical
+    spacing), so ``any(a, b)`` and ``any(b, a)`` hash alike (owner ruling
+    2026-11-23, WI-sifar); nothing more is done: no evaluation, no
+    simplification, no de-duplication (``any(a, a)`` stays), no rewriting of
+    ``not``. An argument list already in order is rebuilt as it was, so its
+    guard hashes as before.
+    """
     if len(segment) == 2 and segment[0].type == "identifier" and segment[1].type == "token_tree":
+        name = node_text(segment[0], source)
         arguments = [_rust_predicate(s, source) for s in _rust_token_segments(segment[1])]
-        return f"{node_text(segment[0], source)}({', '.join(arguments)})"
+        if name in ("any", "all"):
+            arguments.sort(key=lambda argument: layout_free(argument, separators=True))
+        return f"{name}({', '.join(arguments)})"
     return source[segment[0].start_byte:segment[-1].end_byte].decode("utf-8", "replace")
 
 

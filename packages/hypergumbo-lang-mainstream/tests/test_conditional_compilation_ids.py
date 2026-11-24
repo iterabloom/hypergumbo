@@ -474,3 +474,38 @@ def test_rust_cfg_attr_keeps_only_its_cfg(tmp_path: Path) -> None:
     plain = g("\n", "d")
     assert lean == mixed
     assert doc_only == plain != lean
+
+
+def _guarded_fn_id(tmp_path: Path, attr: str) -> str | None:
+    root = tmp_path / str(abs(hash(attr)))
+    ids = _ids(analyze_rust, root, "src/lib.rs", f"{attr}\npub fn g() {{}}\n")
+    return next(v for k, v in ids.items() if k[1] == "g")
+
+
+def test_rust_any_and_all_arguments_are_sorted(tmp_path: Path) -> None:
+    """The arguments of ``any(...)`` / ``all(...)`` are sorted, at any depth
+    (inside ``not``, ``all``, a ``cfg_attr``'s predicate), and nothing more is
+    done to a predicate (WI-sifar): no evaluation, no simplification, no
+    de-duplication, no rewriting of ``not``."""
+    same = [
+        ("#[cfg(any(unix, windows))]", "#[cfg(any(windows, unix))]"),
+        ('#[cfg(all(feature = "x", unix))]', '#[cfg(all(unix, feature = "x"))]'),
+        ("#[cfg(all(any(b, a), c))]", "#[cfg(all(c, any(a, b)))]"),
+        ("#[cfg(not(any(b, a)))]", "#[cfg(not(any(a, b)))]"),
+        ("#[cfg_attr(any(b, a), cfg(x))]", "#[cfg_attr(any(a, b), cfg(x))]"),
+        ("#[cfg_attr(p, cfg(all(y, x)))]", "#[cfg_attr(p, cfg(all(x, y)))]"),
+        # sorted by canonical spacing, so layout cannot change the order
+        ('#[cfg(any(a  =  "1", a = "0"))]', '#[cfg(any(a = "1", a = "0"))]'),
+    ]
+    for one, two in same:
+        assert _guarded_fn_id(tmp_path, one) == _guarded_fn_id(tmp_path, two), (one, two)
+    apart = [
+        ("#[cfg(any(a, b))]", "#[cfg(all(a, b))]"),
+        ("#[cfg(any(a, a, b))]", "#[cfg(any(a, b))]"),
+        ("#[cfg(any(a))]", "#[cfg(a)]"),
+        ("#[cfg(not(any(a, b)))]", "#[cfg(all(not(a), not(b)))]"),
+        ("#[cfg(not(a))]", "#[cfg(a)]"),
+        ("#[cfg(foo(b, a))]", "#[cfg(foo(a, b))]"),
+    ]
+    for one, two in apart:
+        assert _guarded_fn_id(tmp_path, one) != _guarded_fn_id(tmp_path, two), (one, two)
