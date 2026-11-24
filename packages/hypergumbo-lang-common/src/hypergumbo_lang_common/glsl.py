@@ -28,7 +28,12 @@ extends tree-sitter-c) and mints the ADR-0035 producer stable_id over them with
 ``overload_arity.declared_arity_stable_id`` (typed tier). Uniforms, inputs,
 outputs, varyings and attributes take the same formula with no arity. Before,
 none of them computed a stable_id and two overloads nulled each other on the
-backstop floor key. Structs keep the table formula.
+backstop floor key. Structs keep the table formula (stamped here). Since scheme v19 the
+qualified name a function or a shader variable hashes, and a struct's name, is led by the
+preprocessor branches open at it (``_glsl_hashed_name``, WI-sifar), so ``f``
+under ``#ifdef FAST`` and under its ``#else`` no longer tie; an unguarded
+declaration hashes its bare name as before, and a whole-file include guard is
+not a branch.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the GLSL-specific extraction
@@ -55,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    make_declaration_stable_id,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
@@ -62,7 +68,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.analyze.c_family import (
-    c_family_parameter_list, c_family_parameters,
+    c_family_parameter_list, c_family_parameters, c_family_scope_chain,
 )
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import (
@@ -77,6 +83,14 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("glsl")
+
+def _glsl_hashed_name(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """The qualified name a GLSL stable id hashes: ``name``, led by the
+    preprocessor branches open at ``node`` (``#ifdef FAST/f``; GLSL has no
+    other scope a declaration could tie in), joined by ``/`` as
+    ``overload_arity.nested_qualified_name`` joins a chain."""
+    return "/".join([*c_family_scope_chain(node, source, types=False, guards=True), name])
+
 
 # GLSL file extensions
 GLSL_EXTENSIONS = ["*.vert", "*.frag", "*.glsl", "*.geom", "*.tesc", "*.tese", "*.comp"]
@@ -208,7 +222,7 @@ def _extract_glsl_symbols(
                     id=symbol_id,
                     stable_id=declared_arity_stable_id(
                         kind="function", lang="glsl", path=rel_path,
-                        name=func_name, qualified_name=func_name,
+                        name=func_name, qualified_name=_glsl_hashed_name(node, source, func_name),
                         arity=declared_arity(meta),
                     ),
                     shape_id=None,
@@ -243,7 +257,12 @@ def _extract_glsl_symbols(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    # The backstop's table formula, its name led by the
+                    # preprocessor branches (WI-sifar): an unguarded struct
+                    # gets the value the backstop would give it.
+                    stable_id=make_declaration_stable_id(
+                        "struct", "glsl", rel_path, _glsl_hashed_name(node, source, struct_name),
+                    ),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="struct",
@@ -291,7 +310,7 @@ def _extract_glsl_symbols(
                         id=symbol_id,
                         stable_id=declared_arity_stable_id(
                             kind=kind, lang="glsl", path=rel_path, name=var_name,
-                            qualified_name=var_name, arity=None,
+                            qualified_name=_glsl_hashed_name(node, source, var_name), arity=None,
                         ),
                         shape_id=None,
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)

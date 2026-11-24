@@ -36,8 +36,11 @@ anchor, and carries ``meta["src_stands_in_for"] = "unnamed_definition"``
 Each definition records its parameters, types included, in
 ``meta["parameters"]`` (``c_family_parameters``) and mints the ADR-0035
 producer stable_id over them with ``overload_arity.declared_arity_stable_id``,
-its qualified name carrying the enclosing namespaces and classes
-(``c_family_scope_chain``). Without that stable_id only the backstop floor
+its qualified name carrying the enclosing namespaces and classes and, since
+scheme v19, the preprocessor branches open at the definition
+(``c_family_scope_chain(guards=True)``, WI-sifar: ``__global__ void k()``
+under ``#ifdef FAST`` and under its ``#else`` tied until then; a whole-file
+include guard is not a branch). Without that stable_id only the backstop floor
 key (kind, path, name) would remain, which the overloads ``f(int)`` /
 ``f(float)`` share, so both would go null (history: WI-tusad).
 
@@ -292,7 +295,7 @@ def _extract_cuda_symbols(
                 param_list = c_family_parameter_list(node)
                 if param_list is not None:
                     meta[PARAMETERS_KEY] = c_family_parameters(param_list, source)
-                qualified = "::".join([*c_family_scope_chain(node, source), func_name])
+                qualified = "::".join([*c_family_scope_chain(node, source, guards=True), func_name])
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
