@@ -235,6 +235,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     file_anchor_symbol,
+    layout_free,
     make_file_id,
     make_route_symbol,
     make_symbol_id,
@@ -247,7 +248,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id, narrow_by_arity,
-    parameter_entry,
+    parameter_entry, scoped_table_stable_id,
 )
 from hypergumbo_core.behaviours import (
     CALLBACK_MODIFIER,
@@ -2681,7 +2682,14 @@ def _nearest_enclosing_module_resolvable(
 def _module_symbol(
     node: "tree_sitter.Node", file_path: str, run_id: str, full_name: str,
 ) -> Symbol:
-    """The ``module`` symbol of a ``defmodule`` / ``defprotocol`` / ``defimpl``."""
+    """The ``module`` symbol of a ``defmodule`` / ``defprotocol`` / ``defimpl``.
+
+    Its stable_id is the table formula (``module:elixir:path:name``) the
+    run's backstop gave it, over the name in canonical spacing
+    (``layout_free``, WI-radim): ``defmodule Foo . Bar`` and ``defmodule
+    Foo.\n  Bar`` are the module ``Foo.Bar``, and the backstop hashed each
+    name as written. A name written the usual way hashes what it did. The
+    displayed name stays as written."""
     span = _span_of(node)
     return Symbol(
         id=make_symbol_id(
@@ -2694,6 +2702,8 @@ def _module_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
+        stable_id=scoped_table_stable_id(
+            kind="module", lang="elixir", path=file_path, name=layout_free(full_name)),
     )
 
 
