@@ -2,6 +2,7 @@
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py
+# covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py
 """A built-in type and its other spelling hash alike in a typed stable id.
 
 WI-juzom (owner decision for stable-id scheme v19: one type, one spelling in
@@ -35,6 +36,12 @@ spelling Go code and its standard library write most (``[]byte``, ``any``).
 Controls: a file that declares its own ``byte``, ``uint8`` or ``any``, two
 types that are not aliases (``uint`` / ``uint32``), and a non-empty interface.
 
+Rust: a path from the crate root, ``::std::fmt::Display``, is the path
+``std::fmt::Display`` unless the file declares its own ``std`` (``mod std``)
+or binds the name to another path (``use foo as std;``): the root is dropped
+(``FileTypeNames.root`` with ``root_optional``). A qualified path's ``::``
+(``<T as Iterator>::Item``) is no root.
+
 Each case declares one symbol in two files at the same path; ``SAME`` asserts
 one id, ``APART`` two.
 """
@@ -48,12 +55,14 @@ import pytest
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream.csharp import analyze_csharp
 from hypergumbo_lang_mainstream.go import analyze_go
+from hypergumbo_lang_mainstream.rust import analyze_rust
 from hypergumbo_lang_mainstream.swift import analyze_swift
 
 _ANALYZERS: dict[str, tuple[str, Callable[[Path], AnalysisResult]]] = {
     "csharp": ("C.cs", analyze_csharp),
     "swift": ("s.swift", analyze_swift),
     "go": ("p.go", analyze_go),
+    "rust": ("lib.rs", analyze_rust),
 }
 
 
@@ -168,6 +177,22 @@ SAME: dict[str, tuple[str, str, str, str]] = {
     "go-interface-method": ("go", _go("type I interface { N(x []uint8) }"),
                             _go("type I interface { N(x []byte) }"), "I.N"),
     "go-field": ("go", _go("type S struct { B []uint8 }"), _go("type S struct { B []byte }"), "S.B"),
+    # Rust: a path from the crate root is the path
+    "rust-root": ("rust", "pub fn f(x: std::fmt::Arguments) {}\n",
+                  "pub fn f(x: ::std::fmt::Arguments) {}\n", "f"),
+    "rust-root-prelude": ("rust", "pub fn f(x: String) {}\n", "pub fn f(x: ::std::string::String) {}\n", "f"),
+    "rust-root-generic-return": ("rust", "pub fn f(x: Vec<serde::de::IgnoredAny>) -> std::io::Result<()> { Ok(()) }\n",
+                                 "pub fn f(x: Vec<::serde::de::IgnoredAny>) -> ::std::io::Result<()> { Ok(()) }\n",
+                                 "f"),
+    "rust-root-through-use": ("rust", "use std::fmt;\npub fn f(x: &dyn fmt::Display) {}\n",
+                              "use std::fmt;\npub fn f(x: &dyn ::std::fmt::Display) {}\n", "f"),
+    "rust-root-field": ("rust", "pub struct S { pub a: std::time::Duration }\n",
+                        "pub struct S { pub a: ::std::time::Duration }\n", "S::a"),
+    "rust-root-impl-header": ("rust", "pub struct X;\nimpl std::fmt::Display for X {\n"
+                                      "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { Ok(()) }\n}\n",
+                              "pub struct X;\nimpl ::std::fmt::Display for X {\n"
+                              "    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { Ok(()) }\n}\n",
+                              "X::fmt"),
     # a dictionary key named by a kind import (no label to skip in Swift)
     "swift-kind-import-key": ("swift", "import struct Foundation.URL\n" + _sw("func f(_ m: [URL: Int]) {}"),
                               "import struct Foundation.URL\n"
@@ -225,6 +250,14 @@ APART: dict[str, tuple[str, str, str, str]] = {
     "go-uint-uint32": ("go", _go("func F(x uint) {}"), _go("func F(x uint32) {}"), "F"),
     "go-int32-int64": ("go", _go("func F(x int32) {}"), _go("func F(x int64) {}"), "F"),
     "go-nonempty-interface": ("go", _go("func F(x interface{ M() }) {}"), _go("func F(x any) {}"), "F"),
+    # Rust: a file whose std is its own keeps the crate root's apart
+    "rust-root-mod-std": ("rust", "mod std { pub mod fmt { pub struct Arguments; } }\n"
+                                  "pub fn f(x: std::fmt::Arguments) {}\n",
+                          "mod std { pub mod fmt { pub struct Arguments; } }\n"
+                          "pub fn f(x: ::std::fmt::Arguments) {}\n", "f"),
+    "rust-root-use-alias": ("rust", "use core as std;\npub fn f(x: std::fmt::Arguments) {}\n",
+                            "use core as std;\npub fn f(x: ::std::fmt::Arguments) {}\n", "f"),
+    "rust-root-two-crates": ("rust", "pub fn f(x: ::serde::Error) {}\n", "pub fn f(x: ::toml::Error) {}\n", "f"),
     # a tuple's element labels stay in the hash
     "swift-tuple-labels": ("swift", _sw("func f(_ t: (a: Int, b: Int)) {}"),
                            _sw("func f(_ t: (c: Int, d: Int)) {}"), "B.f"),
@@ -241,3 +274,22 @@ def test_two_spellings_of_one_built_in_type_hash_alike(tmp_path: Path, case: str
 def test_another_type_or_an_unresolved_spelling_hashes_apart(tmp_path: Path, case: str) -> None:
     first, second = _pair(tmp_path, APART[case])
     assert first != second
+
+
+@pytest.mark.parametrize(("tokens", "expected"), [
+    # a root after a keyword or where a type starts is dropped
+    (["impl", "::", "std", "::", "X", "for", "::", "a", "::", "B"],
+     ["impl", "std", "::", "X", "for", "a", "::", "B"]),
+    (["<", "::", "a", "::", "B", ">"], ["<", "a", "::", "B", ">"]),
+    (["$0", ":", "::", "a", "::", "B"], ["$0", ":", "a", "::", "B"]),
+    # a positional parameter's associated type, a qualified path: no root
+    (["$0", "::", "Target", ":", "Q"], ["$0", "::", "Target", ":", "Q"]),
+    (["<", "$0", "as", "Tr", ">", "::", "Out"], ["<", "$0", "as", "Tr", ">", "::", "Out"]),
+])
+def test_a_rust_header_root_is_read_only_where_a_type_starts(
+        tokens: list[str], expected: list[str]) -> None:
+    from hypergumbo_core.analyze.base import file_type_names, resolving_type_names
+    from hypergumbo_lang_mainstream.rust import _rust_canonical_paths
+    names = file_type_names([], separator="::", quotes='"', root="::", root_optional=True)
+    with resolving_type_names(names):
+        assert _rust_canonical_paths(tokens) == expected

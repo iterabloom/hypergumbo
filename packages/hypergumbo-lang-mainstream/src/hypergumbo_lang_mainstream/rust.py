@@ -1209,23 +1209,38 @@ def _rust_impl_label(impl: "tree_sitter.Node", source: bytes) -> Optional[str]:
          for i, t in enumerate(tokens)]))
 
 
+#: Keywords a header path can follow with no space (``impl ::std::X``,
+#: ``for ::a::B``, ``dyn ::a::B``): a ``::`` after one opens a root path.
+_RUST_PATH_KEYWORDS = frozenset({"impl", "for", "dyn", "as", "where", "mut", "const", "unsafe"})
+
+#: The tokens a type starts after, so a ``::`` after one opens a root path
+#: (``<::a::B>``, ``T: ::a::B``); after any other (``$0 :: Target``, a
+#: positional type parameter's associated type) it continues a path.
+_RUST_ROOT_AFTER = frozenset({*_RUST_PATH_KEYWORDS, "<", ",", "(", "[", "&", "+", "=", ":", "*", "->"})
+
+
 def _rust_canonical_paths(tokens: list[str]) -> list[str]:
     """``tokens`` with each path (``fmt :: Display``) written through the
     file's ``use`` declarations (:func:`_rust_type_names`): ``impl fmt::Display
     for X`` under ``use std::fmt`` and ``impl std::fmt::Display for X`` are one
-    header (WI-palus)."""
+    header (WI-palus), and so is ``impl ::std::fmt::Display for X`` (a path
+    from the crate root, WI-juzom)."""
     out: list[str] = []
     i = 0
     while i < len(tokens):
-        if not tokens[i].isidentifier() or (i and tokens[i - 1] == "::"):
+        rooted = (tokens[i] == "::" and i + 1 < len(tokens) and tokens[i + 1].isidentifier()
+                  and (not i or tokens[i - 1] in _RUST_ROOT_AFTER))
+        if not rooted and (not tokens[i].isidentifier() or (i and tokens[i - 1] == "::")
+                           or (tokens[i] in _RUST_PATH_KEYWORDS and tokens[i + 1:i + 2] == ["::"])):
             out.append(tokens[i])
             i += 1
             continue
-        end = i + 1
+        start = i + 1 if rooted else i
+        end = start + 1
         while end + 1 < len(tokens) and tokens[end] == "::" and tokens[end + 1].isidentifier():
             end += 2
-        path = canonical_type_names("::".join(tokens[i:end:2]))
-        out.extend(" :: ".join(path.split("::")).split(" "))
+        path = canonical_type_names(("::" if rooted else "") + "::".join(tokens[start:end:2]))
+        out.extend(t for t in " :: ".join(path.split("::")).split(" ") if t)
         i = end
     return out
 
@@ -1836,7 +1851,9 @@ def _rust_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
     to neither. Defaults: the prelude (:data:`_RUST_PRELUDE_PATHS`), so
     ``std::option::Option`` is hashed as ``Option``. Declared: every struct,
     enum, union, trait, type alias and module the file declares, which keeps
-    its name. A ``'`` opens no string (a lifetime).
+    its name. A ``'`` opens no string (a lifetime). A path from the crate
+    root (``::std::fmt::Display``) is the path without the root unless the
+    file declares its head or binds it to another path (WI-juzom, scheme v19).
     """
     bindings: list[tuple[str, str]] = []
     for node in iter_tree(tree.root_node):
@@ -1857,7 +1874,8 @@ def _rust_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
         for crate in (module.split("::", 1)[0], "std")
     }
     return file_type_names(
-        bindings, declared=declared, defaults=defaults, separator="::", quotes='"')
+        bindings, declared=declared, defaults=defaults, separator="::", quotes='"',
+        root="::", root_optional=True)
 
 
 def _extract_symbols_from_file(

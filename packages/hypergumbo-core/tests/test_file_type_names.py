@@ -251,3 +251,34 @@ def test_current_type_names_are_the_open_block_s() -> None:
     with resolving_type_names(_JAVA):
         assert current_type_names() is _JAVA
     assert current_type_names() is None
+
+
+_RUST_ROOTED = file_type_names(
+    [("fmt", "std::fmt"), ("io", "tokio::io"), ("serde", "serde")],
+    defaults={"std::string::String": "String"}, declared={"inner"},
+    separator="::", quotes='"', root="::", root_optional=True,
+)
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    # the root is dropped when the file does not shadow the head
+    ("::std::fmt::Display", "std::fmt::Display"),
+    ("Vec<::serde::Value>", "Vec<serde::Value>"),
+    ("::std::string::String", "String"),
+    # the head bound to another path, or declared: the root stays
+    ("::io::Error", "::io::Error"),
+    ("::inner::T", "::inner::T"),
+    ("::fmt::X", "::fmt::X"),
+    # a binding to the very path the root names is no shadow
+    ("::serde::de::Error", "serde::de::Error"),
+    # a qualified path's ``::`` is no root
+    ("<T as Iterator>::Item", "<T as Iterator>::Item"),
+    ("Foo<T>::Bar", "Foo<T>::Bar"),
+])
+def test_an_optional_root_is_dropped_unless_the_head_is_shadowed(text: str, expected: str) -> None:
+    assert _RUST_ROOTED.canonical(text) == expected
+
+
+def test_an_optional_root_is_dropped_with_nothing_bound() -> None:
+    names = file_type_names([], separator="::", quotes='"', root="::", root_optional=True)
+    assert names.canonical("Vec<::a::B>") == "Vec<a::B>"

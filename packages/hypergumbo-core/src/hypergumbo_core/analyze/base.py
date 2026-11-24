@@ -3493,7 +3493,11 @@ class FileTypeNames:
     A chain written after :attr:`root`, the language's name for its root
     namespace (C#'s ``global::``), is resolved from that root: no import binds
     it, and a default does, so ``global::System.String`` is the default
-    ``System.String``; any other one is kept as written, the root included.
+    ``System.String``; any other one is kept as written, the root included,
+    unless :attr:`root_optional` (Rust): then a rooted chain whose head the
+    file neither declares nor binds to another path is written without the
+    root (``::std::fmt::Display`` is ``std::fmt::Display``). A root right
+    after ``>``, ``)`` or ``]`` is a qualified path's ``::``, no root.
     Without :attr:`labels` (Swift) a name before ``:`` is a type like any
     other: Swift's ``[K: V]`` is a dictionary whose key is a type.
     """
@@ -3510,6 +3514,8 @@ class FileTypeNames:
     root: str = ""  # axis: bounded-enum
     #: Whether a name right before ``:`` is a label (not a type name).
     labels: bool = True
+    #: Whether the root may be left out where the file does not shadow the head.
+    root_optional: bool = False
 
     def canonical(
         self, text: str, *, skip: Container[str] = (), keep_head: bool = False,
@@ -3523,7 +3529,7 @@ class FileTypeNames:
         this rule does not change. That strip cuts only a dotted qualifier, so
         a ``::`` language's head (Rust) is written through the imports anyway.
         """
-        if not (self.bound or self.defaults) or not text:
+        if not (self.bound or self.defaults or self.root_optional) or not text:
             return text
         head = -1
         if keep_head and self.separator == ".":
@@ -3544,7 +3550,10 @@ class FileTypeNames:
         """One name chain written through the imports (see the class)."""
         sep = self.separator
         if self.root and chain.startswith(self.root):
-            return self._default(chain[len(self.root):]) or chain
+            rest = chain[len(self.root):]
+            head = rest.split(sep)[0]
+            unshadowed = self.bound.get(head, head) == head and head not in self.declared
+            return self._default(rest) or (rest if self.root_optional and unshadowed else chain)
         segments = chain.split(sep)
         if segments[0] in skip or segments[0] in self.declared:
             return chain
@@ -3580,7 +3589,7 @@ def _chain_pattern(
         rf"{_re.escape(q)}(?:\\.|[^{_re.escape(q)}\\])*{_re.escape(q)}" for q in quotes
     )
     sep = _re.escape(separator)
-    rooted = f"(?:{_re.escape(root)})?" if root else ""
+    rooted = f"(?:(?<![>)\\]]){_re.escape(root)})?" if root else ""
     chain = (
         rf"(?<![\w$.#':])(?P<chain>{rooted}{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
         rf"(?![\w$])" + (r"(?!\??:(?!:))" if labels else "")
@@ -3597,6 +3606,7 @@ def file_type_names(
     quotes: str = SIGNATURE_QUOTES,
     root: str = "",
     labels: bool = True,
+    root_optional: bool = False,
 ) -> FileTypeNames:
     """A file's :class:`FileTypeNames` from its import bindings.
 
@@ -3609,7 +3619,8 @@ def file_type_names(
     never bound. ``defaults`` maps a qualified spelling of a type the
     language imports into every file to its simple name. ``root`` is the
     language's root-namespace prefix (:attr:`FileTypeNames.root`);
-    ``labels``, whether its type texts have labels (:attr:`FileTypeNames.labels`).
+    ``labels``, whether its type texts have labels (:attr:`FileTypeNames.labels`);
+    ``root_optional``, :attr:`FileTypeNames.root_optional`.
     """
     declared_names = frozenset(declared)
     bound: Dict[str, str] = {}
@@ -3625,6 +3636,7 @@ def file_type_names(
     return FileTypeNames(
         bound=bound, defaults=dict(defaults or {}), declared=declared_names,
         separator=separator, quotes=quotes, root=root, labels=labels,
+        root_optional=root_optional,
     )
 
 
