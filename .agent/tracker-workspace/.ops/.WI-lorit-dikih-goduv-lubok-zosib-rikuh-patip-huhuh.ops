@@ -1,0 +1,22 @@
+- op: create  # f2b4
+  at: '2026-11-24T05:40:19Z'  # f2b4
+  by: agent  # f2b4
+  actor: jgstern_agent  # f2b4
+  clock: 1  # f2b4
+  nonce: f2b4  # f2b4
+  data:  # f2b4
+    kind: work_item  # f2b4
+    title: "Kind follow-ups to WI-lilab: Prisma datasource/generator of one name hash alike, Elm alias is `type`, no kind-word guard"  # f2b4
+    status: todo_soft  # f2b4
+    priority: 4  # f2b4
+    parent:  # f2b4
+    tags:  # f2b4
+    - stable_id  # f2b4
+    - symbol_kind  # f2b4
+    - elm  # f2b4
+    isbefore: []  # f2b4
+    duplicate_of: []  # f2b4
+    not_duplicate_of: []  # f2b4
+    pr_ref:  # f2b4
+    description: "WHAT\nFollow-ups to WI-lilab (PR #2354: nine analyzers now hash Symbol.kind; Gleam, Odin, V kinds corrected). Three parts, the first two id-moving, the third a guard:\n1. Prisma: a `datasource db` and a `generator db` in one file are both kind `block` with one name, so they hash alike and are split only by occurrence order (`:occ:` numbering). Since the stable id now hashes Symbol.kind instead of the role word (datasource / generator), the two forms collapsed into one hash input.\n2. Elm reports a type alias as kind `type`, while PR #2354 made Gleam's alias (same construct) `type_alias` (PureScript and Rust already use `type_alias`). Cross-language kind inconsistency; Elm aliases and Elm custom types share one kind.\n3. No static guard compares the kind word passed to a stable-id formula with Symbol.kind. scripts/check-id-construction checks node ids, not this; the runtime recorder test (test_stable_id_hashes_symbol_kind.py) covers the nine WI-lilab analyzers only. The fleet sweep that found the nine left 89 nodes minted by formulas named by kind (make_module_stable_id etc.) unattributed.\n\nREPRO\n1. ~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/mixed/schema.prisma (`datasource db {...}` and `generator db {...}`): prisma:schema.prisma:1-3:db:block hgstableid19:55e5fae00059d0a8 and 4-6:db:block hgstableid19:6fc88bbe6434857e (drafting agent, PR tip 3269081cf): distinct only after the occurrence split; the kinds agent reports they \"now hash alike (split pass numbers them)\".\n2. An Elm `type alias Model = { ... }`: kind `type` (kinds agent; not re-run).\n3. ~/hypergumbo_lab_notebook/v19_11232026/kinds/fleet_sweep.py, kinds/fleet_base.txt (1,454 nodes; 1,115 matched; 89 not attributed).\n\nMEASURED\n- Prisma: 13 real schema.prisma files (litellm x6, ghostfolio, nest, nestjs, nextjs x3, opa, robyn): block 24 / 24 moved by PR #2354 (kinds agent); how many files hold a datasource and a generator of one name was not counted.\n- Elm: no count.\n\nNOT CHECKED\n- Elm corpus trees (no Elm tree was measured).\n- The 89 unattributed nodes of the fleet sweep.\nOwner-level parts (Prisma `model` stays `class`) are in the rulings list (WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar), not here.\n\nParts 1 and 2 move stable ids (Prisma datasource/generator hash input; Elm alias kind): need a scheme bump (owner-ruled). Part 3 moves nothing.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/kinds/RESULTS.md (residuals 4, 5, 6; \"Defect as verified on the base arm\")"  # f2b4
+    fields: {}  # f2b4

@@ -26,3 +26,18 @@
   clock: 2  # 5fa7
   nonce: 5fa7  # 5fa7
   message: "OWNER RULING 2026-11-23 (in session), verbatim: \"i rule as you would pick\". The picks as put to the owner: (1) default values are not in the id: CHANGE the code (in TypeScript, changing \"x: number = 5\" to \"= 6\" must not give the function a new stable id); (2) pointer and reference marks: KEEP the code (only Go strips a leading *; Rust's &'a str is hashed as written); (3) Python visibility: KEEP the code (_name is recorded as private). The side question (does raising a PyPI grammar constraint bump SHAPE_ID_SCHEME) was mentioned to the owner as \"the current doc says no\" and was NOT put as a pick: it is not ruled. The v19 bump is approved (\"yes I approve the v19 bump\")."  # 5fa7
+- op: update  # be01
+  at: '2026-11-24T05:40:46Z'  # be01
+  by: agent  # be01
+  actor: jgstern_agent  # be01
+  clock: 3  # be01
+  nonce: be01  # be01
+  set:  # be01
+    status: done  # be01
+- op: discuss  # 9cc7
+  at: '2026-11-24T05:40:46Z'  # 9cc7
+  by: agent  # 9cc7
+  actor: jgstern_agent  # 9cc7
+  clock: 4  # 9cc7
+  nonce: 9cc7  # 9cc7
+  message: "Ruled by the owner 2026-11-23 (\"i rule as you would pick\": TypeScript default values OUT of the id; pointer and reference decorators KEEP the code; Python _name private KEEP the code) and built in PR #2354 (dev 39bef1108).\nRULE 1 RE-RUN on dev 39bef1108: export function f(x: number = 5) against = 6: stable ids DIFFERENT on dev 05ed6f5fe, SAME on 39bef1108 (a default hashes as \"= ...\" at any depth; having a default is still hashed). Builder's measure: knex 1, hocuspocus 13, nest packages 150 ids moved.\nRULES 2 AND 3: no code change; the spec states the code.\nNOT RULED: the item's side question (does raising a PyPI grammar constraint bump SHAPE_ID_SCHEME; docs/audits/0009 line 47 points at an ADR that no longer exists). Filed: WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 9cc7

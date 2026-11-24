@@ -1,0 +1,23 @@
+- op: create  # 19d3
+  at: '2026-11-24T05:39:29Z'  # 19d3
+  by: agent  # 19d3
+  actor: jgstern_agent  # 19d3
+  clock: 1  # 19d3
+  nonce: 19d3  # 19d3
+  data:  # 19d3
+    kind: work_item  # 19d3
+    title: "Kotlin, Scala, Python: same-named locals of two unnamed holders (object expressions, lambdas, try/except arms) still tie"  # 19d3
+    status: todo_hard  # 19d3
+    priority: 3  # 19d3
+    parent:  # 19d3
+    tags:  # 19d3
+    - stable_id  # 19d3
+    - kotlin  # 19d3
+    - scala  # 19d3
+    - python  # 19d3
+    isbefore: []  # 19d3
+    duplicate_of: []  # 19d3
+    not_duplicate_of: []  # 19d3
+    pr_ref:  # 19d3
+    description: "WHAT\nAfter PR #2354 (WI-finam), Kotlin, Scala and Python label a local's scope chain with the callable or member that holds it (name plus hashed signature, property, setter, init, enum entry). A holder with NO name to read still labels nothing, so same-named declarations inside two such holders in one scope tie and are split only by occurrence order (and then renumber when a sibling is added or removed):\n- Kotlin and Scala: locals of two unnamed holders: two `object : T { ... }` expressions, two lambdas / blocks, two anonymous-class bodies in two unnamed test blocks.\n- Python: two `def f` in the arms of one try/except (or if/else) at one scope: same name, same scope, no holder between them.\nThis is the per-language sibling of WI-nivap (Java, open), WI-lijuv (Swift, open) and WI-dokos (TypeScript/JavaScript, open); WI-nivap's \"Also\" line names the Kotlin `object :` case and points to WI-finam, which PR #2354 closes, so the Kotlin part lives here.\n\nREPRO\n- Kotlin: ~/hypergumbo_lab_notebook/v19_11232026/locals/fixtures/kt2/B.kt (`val o1 = object : Runnable { override fun run() {} }` and `val o2 = ...`; two `init { fun i() {} }`). Which of these still tie after 4a126faf0 was not recorded by the locals agent; run the fixture and list the pre-split ties.\n- Scala, real tree: sbt/main after 2ca4a959b, 7 tie groups / 16 symbols left (locals/measure/sc_ties_fixed.txt), e.g. CompileDebugLoggerSpec.scala log/trace/success at lines 20-23 vs 38-41, CrossJavaTest.scala candidates x4 (60, 69, 97, 106), FileStampJsonSpec.scala instance formatter (25, 36). The locals agent classifies them as anonymous-class members in two unnamed test blocks.\n- Python: no fixture on disk. Shape: `try:\\n    def f(): pass\\nexcept ImportError:\\n    def f(): pass`.\n\nMEASURED (locals agent, pre-split ties, analyzer run directly)\n- sbt/main Scala: 14 -> 7 groups with PR #2354; the 7 are this defect.\n- okhttp Kotlin: 38 -> 0 groups; no unnamed-holder tie on that tree.\n- poetry Python: 3 -> 3 groups; none of the 3 is a try/except twin (helpers.py _on_rm_error 79/86 and two methods are long @overload pairs: see WI-gikif). The try/except form has no corpus instance on the measured trees.\n\nNOT CHECKED\n- Which Kotlin forms in kt2/B.kt remain tied after the PR.\n- Python if/else twin defs and class-body twins.\n- Any rule that labels an unnamed holder (by the type of an object expression, by the call that receives a lambda, by an ordinal): this is a design question; the occurrence split exists for exactly this case. Java's WI-hamuk labels an anonymous class `new <Type>`, a precedent.\n\nA fix that adds a label for unnamed holders moves the stable ids of their members: needs a scheme bump (owner-ruled).\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/locals/RESULTS.md (measurement table), ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md line 149"  # 19d3
+    fields: {}  # 19d3

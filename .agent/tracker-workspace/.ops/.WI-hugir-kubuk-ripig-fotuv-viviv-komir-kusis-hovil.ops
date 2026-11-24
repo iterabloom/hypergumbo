@@ -34,3 +34,18 @@
   nonce: 84dd  # 84dd
   set:  # 84dd
     status: todo_hard  # 84dd
+- op: update  # 7934
+  at: '2026-11-24T05:40:41Z'  # 7934
+  by: agent  # 7934
+  actor: jgstern_agent  # 7934
+  clock: 4  # 7934
+  nonce: '7934'  # 7934
+  set:  # 7934
+    status: done  # 7934
+- op: discuss  # c8e4
+  at: '2026-11-24T05:40:42Z'  # c8e4
+  by: agent  # c8e4
+  actor: jgstern_agent  # c8e4
+  clock: 5  # c8e4
+  nonce: c8e4  # c8e4
+  message: "Fixed in PR #2354 (dev 39bef1108), under the owner ruling of 2026-11-23 \"Bless the @<column> suffix\": a node id's name slot may end @<start column> (ADR-0036 Ruling 1, amended). Symbols created through FileAnalysis.add_symbol / distinguish_same_line_ids keep the plain id for the first holder and give a later holder at another column the suffix.\nFILED INSTANCES RE-RUN on dev 39bef1108 (hypergumbo run on closure/t/hugir): Swift \"init() {}; init() where K == BasicCodingKey {}\" gives FailureEncoder.init and FailureEncoder.init@15; Nix \"tutorial = mkDevShell { tutorial = true; };\" gives tutorial and tutorial@26; Vue two <span v-if> on one line give span.v-if and span.v-if@24. On dev 05ed6f5fe each pair held one id. validation_report on knex and koel at 39bef1108: 0 ids held by two nodes, 0 name-slot mismatches.\nCORPUS (49 trees, dev 05ed6f5fe against the PR branch, bump/totals_run1.txt): ids held by more than one node 3 to 1 (vapor 1 to 0, servant 1 to 0).\nNOT FIXED, filed: the fourth instance of this item, the zstd C macro misparse (three function nodes at one span), which the item itself says is not a column question: WI-virir-papor-fapin-kunun-kigir-zumuj-pokot-tonun. Only Swift, Nix and Vue are routed through add_symbol; two same-named JavaScript declarations on one line still share an id: WI-jizus-gahoh-dazaz-lasul-bilun-sizup-havah-takin.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # c8e4

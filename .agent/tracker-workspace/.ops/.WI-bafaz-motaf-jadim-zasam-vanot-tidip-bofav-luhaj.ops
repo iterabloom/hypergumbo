@@ -33,3 +33,18 @@
   clock: 3  # 0c5e
   nonce: 0c5e  # 0c5e
   message: "OWNER RULING 2026-11-23 (in session): \"Bless the @<column> suffix.\" The suffix in the id's name slot stays; ADR-0036 Ruling 1 is to be amended to allow it, and the validator is to accept it as a legal form instead of a declared hole. No JavaScript id moves. Same ruling recorded on WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil."  # 0c5e
+- op: update  # 8d3e
+  at: '2026-11-24T05:40:42Z'  # 8d3e
+  by: agent  # 8d3e
+  actor: jgstern_agent  # 8d3e
+  clock: 4  # 8d3e
+  nonce: 8d3e  # 8d3e
+  set:  # 8d3e
+    status: done  # 8d3e
+- op: discuss  # de08
+  at: '2026-11-24T05:40:42Z'  # de08
+  by: agent  # de08
+  actor: jgstern_agent  # de08
+  clock: 5  # de08
+  nonce: de08  # de08
+  message: "Decided and built in PR #2354 (dev 39bef1108): the owner ruled 2026-11-23 \"Bless the @<column> suffix\", so Ruling 1 of ADR-0036 now allows the name slot to end @<start column>, and the JavaScript callback id is ruled grammar. js_ts.py mints it through make_symbol_id(column=); the validator accepts the suffix only when it is the node's start column; KNOWN_NAME_SLOT_HOLES is empty; the stale comment at the site is gone.\nFILED MEASUREMENT RE-RUN on dev 39bef1108 (hypergumbo run on knex, closure/maps/dev/big_knex.json): validation_report.name_slot_stats mismatched 0, column_suffixed 6,356, ids_checked 12,385. As filed: 6,356 mismatched. Over 49 trees (bump/totals_run1.txt): mismatches 37,229 to 0, 37,231 ids carry the suffix.\nStable ids of these callbacks did not move for this change (Symbol.name is unchanged).\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # de08

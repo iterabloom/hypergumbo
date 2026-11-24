@@ -1,0 +1,22 @@
+- op: create  # 5498
+  at: '2026-11-24T05:39:09Z'  # 5498
+  by: agent  # 5498
+  actor: jgstern_agent  # 5498
+  clock: 1  # 5498
+  nonce: '5498'  # 5498
+  data:  # 5498
+    kind: work_item  # 5498
+    title: "C++ overloads differing only in const-qualification or in a pointer/reference mark share a stable id"  # 5498
+    status: todo_hard  # 5498
+    priority: 3  # 5498
+    parent:  # 5498
+    tags:  # 5498
+    - cpp  # 5498
+    - stable_id  # 5498
+    - needs_decision  # 5498
+    isbefore: []  # 5498
+    duplicate_of: []  # 5498
+    not_duplicate_of: []  # 5498
+    pr_ref:  # 5498
+    description: "WHAT\n1. A C++ const member function and its non-const overload with one parameter list (`T& data()` / `const T& data() const`) share a stable id: the cv-qualifier (and ref-qualifier) of a member function is not a stable-id input. The pair is split only by occurrence order. Their same-named locals also still tie: PR #2354's c_family_callable_label (cb14e41d6) labels a callable by name plus its typed parameter list only, so it separates locals of `f(int)` and `f(double)` but not of `c() const` and `c()`.\n2. C++ overloads that differ only in a pointer or reference mark share a stable id too: `void f(int a)` / `void f(int* a)`, and `void g(int a)` / `void g(int& a)`. The `*` and `&` sit in the parameter's declarator, which the hashed type text does not include (cause inferred from the grammar; cpp.py's reader was not read). This is a tie two different declarations share. It needs a ruling before a fix: the owner ruled WI-dozos rule 2 (\"pointer/reference decorators: keep the code\") on a description that said only Go strips a leading `*`, and docs/hypergumbo-spec.md (the signature section, \"No family strips a reference or lifetime marker\") says the same; for C++ the code does drop both. Either the code hashes them or the spec says C and C++ do not.\nRecorded so it is not re-filed: explicit-specialisation members (C++ and CUDA) are WI-rosog's (a note is added there).\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/guards/finam_fixture/b.cpp:\n  struct S { void c() const { struct L { int a; }; }  void c() { struct L { int a; }; } };\nAfter cb14e41d6 (C++ locals): fixture tie groups 9 -> 3; the guards agent lists `c() const` / `c()` among the 3 left.\nPart 2: ~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/cpp_pointer_overload/a.cpp (the four functions above, f with a local struct L): analyzer output before the occurrence split has 4 tie groups (f, its L, L::x, g) on dev 39bef1108 and on dev 05ed6f5fe before PR #2354 (coordinator, 2026-11-24, closure/presplit.py). The guards agent listed `f(int)` vs `f(int*)` among the fixture ties left.\n\nMEASURED (guards agent, pre-split ties, analyzer run directly, guards/measure/)\n- zstd C++: 3 tie groups left after the guards fix; 2 are const twins (contrib/pzstd/utils/Buffer.h Buffer::range [75, 79], Buffer::data [83, 87]); the third is a forward declaration (WI-rosog).\n- libzmq C++: 14 groups left; 2 are const twins (src/blob.hpp blob_t::data [86, 89]; src/socket_base.cpp routing_socket_base_t::lookup_out_pipe [2186, 2194]); the other 12 are class forward declarations (WI-rosog).\n\nNOT CHECKED\n- ref-qualified overloads (`f() &` / `f() &&`) and volatile: no fixture.\n- Corpora other than zstd and libzmq.\n\nPart 2 was not counted on any corpus tree, and C (c.py) was not checked (C has no overloads, so no tie; the hashed text may still lack the marks).\nA fix adds hashed input to C++ ids (the const twins and every const member; for part 2 every callable with a pointer or reference parameter): needs a scheme bump (owner-ruled), with churn measured over the C++ trees.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/guards/RESULTS.md (\"Open point and residuals\", \"Follow-up 3\")"  # 5498
+    fields: {}  # 5498

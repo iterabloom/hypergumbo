@@ -26,3 +26,10 @@
   clock: 2  # b5c1
   nonce: b5c1  # b5c1
   message: "2026-11-16: WI-dujor-papop-fupus-sutuf-bajaz-sivaj-salir-nivur is now closed (owner ruling), so this item's line 'that part stays on WI-dujor, which is open' is out of date: the base-class and decorator forms are on WI-bosor-jidud-sahib-luhap-latot-duzid-hanoh-lotam. Also a correction: those two forms are NOT hash inputs (decorator names are hashed through `_extract_py_decorator_names`, base classes are not hashed), so they do not belong with this item's id-moving leftovers."  # b5c1
+- op: discuss  # a16c
+  at: '2026-11-24T05:40:48Z'  # a16c
+  by: agent  # a16c
+  actor: jgstern_agent  # a16c
+  clock: 3  # a16c
+  nonce: a16c  # a16c
+  message: "PR #2354 (stable-id v19, 2026-11-23/24), locals agent: one more thing the hashed Python signature drops. The hashed path still cuts the signature at 60 characters (_format_function_signature; WI-hopiz widened only the DISPLAY signature to 240 to avoid churning ids), and a cut signature falls to the untyped tier. Long `@overload` stubs of one function therefore tie: poetry has 3 pre-split tie groups before and after the PR, all three long-signature @overload pairs (src/poetry/utils/helpers.py _on_rm_error lines 79/86; ArtifactCache.get_cached_archive_for_link 229/239; SitePackages._path_method_wrapper 158/169). ~/hypergumbo_lab_notebook/v19_11232026/locals/measure/py_ties_fixed.txt. This is the mechanism behind this item's third bullet (an @overload sibling re-minted when its twin changes tier). Hashing the full text moves every Python id whose signature exceeds 60 characters: next scheme bump, churn to be measured."  # a16c

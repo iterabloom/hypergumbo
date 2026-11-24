@@ -1,0 +1,23 @@
+- op: create  # 28c5
+  at: '2026-11-24T05:39:41Z'  # 28c5
+  by: agent  # 28c5
+  actor: jgstern_agent  # 28c5
+  clock: 1  # 28c5
+  nonce: 28c5  # 28c5
+  data:  # 28c5
+    kind: work_item  # 28c5
+    title: "No contains edge for any type_alias, typedef or alias symbol: containment's CONTAINABLE_KINDS lacks those kinds"  # 28c5
+    status: todo_hard  # 28c5
+    priority: 3  # 28c5
+    parent:  # 28c5
+    tags:  # 28c5
+    - containment  # 28c5
+    - analysis_quality  # 28c5
+    - rust  # 28c5
+    - c  # 28c5
+    isbefore: []  # 28c5
+    duplicate_of: []  # 28c5
+    not_duplicate_of: []  # 28c5
+    pr_ref:  # 28c5
+    description: "WHAT\nThe containment linker (packages/hypergumbo-core/src/hypergumbo_core/linkers/containment.py) roots a symbol at its file or owner only if its kind is in CONTAINABLE_KINDS (method, getter, setter, message, function, variable, const, field, subscript, constructor, directive, slot, prop, event, block, style_block) or is a container kind. `type_alias`, `typedef` and `alias` are neither, so no type alias, C typedef or alias of any language gets a `contains` edge: they are orphans in the containment tree that slice and every containment walk read. PR #2354 added Gleam to the list of languages affected: a Gleam alias is now kind `type_alias` (WI-lilab ruling B), so the file's `contains` edge to it is gone (fixture: edges 50 -> 49).\n\nREPRO\n`pub type Foo = u32;` in a lib.rs: no `contains` edge to Foo; `pub struct Bar;` beside it gets one (kinds agent, rust + purescript fixture, fixed arm). Gleam: ~/hypergumbo_lab_notebook/v19_11232026/kinds/fixture/ (the alias Size loses its file contains edge; kinds/fixture_compare.txt).\n\nMEASURED (drafting agent, 2026-11-24, ~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/contain_count.py over the coordinator's final-arm maps ~/hypergumbo_lab_notebook/v19_11232026/bump/churn/*_final.json.gz, PR code at 2d6fa7b70; symbols of the kind with no incoming contains edge / symbols of the kind)\n- zstd: c typedef 426 / 426; bash alias 2 / 2\n- diesel: rust type_alias 322 / 322\n- libzmq: c typedef 29 / 29\n- mini-redis: rust type_alias 4 / 4\nIn the same maps every struct, class, enum, function and method of those languages has a contains edge (0 missing), except 1 language-None function on diesel and 146 / 342 language-None functions on nest (route markers, both arms per the components agent; not this item).\n\nNOT CHECKED\n- TypeScript `type X = ...` (reported kind `type`, not counted here), PureScript, Elm, Haskell type synonyms on corpus trees.\n- Which consumer reads the missing edges (slice, sketch structure tree, dead-code reachability): the effect on their output was not measured.\n\nAdding the kinds adds edges; no node id or stable id moves. No scheme bump.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/kinds/RESULTS.md (\"Kind decisions\", residual 1)"  # 28c5
+    fields: {}  # 28c5

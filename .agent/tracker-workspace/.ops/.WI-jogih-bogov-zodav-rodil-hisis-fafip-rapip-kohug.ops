@@ -18,3 +18,10 @@
     pr_ref:  # 4100
     description: "Scala: the _root_. prefix on a type name is not stripped before hashing, and SCALA_SHADOWED_JAVA_LANG omits StringBuilder.\n\nREPRO: def f(x: _root_.scala.collection.Seq[Int]) vs def f(x: scala.collection.Seq[Int]) hash apart. Separately, SCALA_SHADOWED_JAVA_LANG (feeds call-owner hints) lacks StringBuilder, which scala.StringBuilder shadows. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # 4100
     fields: {}  # 4100
+- op: discuss  # 3bf5
+  at: '2026-11-24T05:40:49Z'  # 3bf5
+  by: agent  # 3bf5
+  actor: jgstern_agent  # 3bf5
+  clock: 2  # 3bf5
+  nonce: 3bf5  # 3bf5
+  message: "PR #2354 (stable-id v19, 2026-11-23/24), types agent: the same mechanism in C#. `global::App.Model` and `App.Model` hash apart (types/RESULTS.md residual 12, \"like the Scala _root_ residual\"). The PR added FileTypeNames.root (C# `global::`, applied only before a built-in alias) and a root_optional flag (Rust: a leading `::` is dropped unless the head is declared/bound; diesel 6 ids moved). Either is the hook for Scala `_root_.` and for C# `global::` on a non-built-in path. Fixing moves ids: next scheme bump."  # 3bf5

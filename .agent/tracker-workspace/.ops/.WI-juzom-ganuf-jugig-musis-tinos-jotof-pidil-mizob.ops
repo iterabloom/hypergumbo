@@ -18,3 +18,18 @@
     pr_ref:  # badd
     description: "C# keyword types and Swift module-qualified types hash apart from their other spelling.\n\nREPRO: C# void f(string s) vs void f(System.String s); Swift func f(_ x: Swift.Int) vs func f(_ x: Int). Neither is decided by imports, so WI-palus left both as written; C# global:: prefix not checked either. Decide whether the language's built-in alias table should canonicalize them. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # badd
     fields: {}  # badd
+- op: update  # a4e4
+  at: '2026-11-24T05:40:44Z'  # a4e4
+  by: agent  # a4e4
+  actor: jgstern_agent  # a4e4
+  clock: 2  # a4e4
+  nonce: a4e4  # a4e4
+  set:  # a4e4
+    status: done  # a4e4
+- op: discuss  # 84b5
+  at: '2026-11-24T05:40:45Z'  # 84b5
+  by: agent  # 84b5
+  actor: jgstern_agent  # 84b5
+  clock: 3  # 84b5
+  nonce: 84b5  # 84b5
+  message: "Decided (canonicalize: the agent's decision under the item's ask, reported to the owner as theirs to overturn) and built in PR #2354 (dev 39bef1108): a language's built-in aliases hash alike unless the file declares the name itself.\nFILED REPROS RE-RUN on dev 39bef1108: C# void f(string s) against void f(System.String s): K.f stable ids DIFFERENT on dev 05ed6f5fe, SAME on 39bef1108. Swift func f(_ x: Int) against func f(_ x: Swift.Int): DIFFERENT, now SAME. The builder's wider pair fixtures (closure/t/cs_*, swift_*): C# 13 members and Swift 11 members go from DIFFERENT to SAME; C# global:: is covered (root prefix). A C# file without \"using System\" keeps bare String apart (D.G4 stays DIFFERENT, by design).\nMEASURED by the builder: sherpa-onnx scripts/dotnet 177 of 900 ids moved, lwip LwipMibCompiler 17 of 1,007; vapor 3, swift-nio 3. Extended to Go (byte/uint8, rune/int32, any/interface{}), Solidity (uint/uint256, int/int256, byte/bytes1) and Rust (leading ::).\nNOT BUILT, filed: WI-tufih-kubum-lopaz-gadul-gimof-laloz-nalal-dolid (Solidity events and parameter names), WI-zagon-fohad-zadod-gifar-jafoj-zusos-furap-balam (cross-file shadowing, sugar spellings, Julia <: bounds), a note on WI-jogih (C# global:: on a non-built-in path); Julia Base.X, Julia relative paths and Solidity address payable are put to the owner in WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 84b5

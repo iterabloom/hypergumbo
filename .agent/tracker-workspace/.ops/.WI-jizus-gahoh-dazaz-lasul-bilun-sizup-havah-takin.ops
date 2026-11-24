@@ -1,0 +1,22 @@
+- op: create  # e936
+  at: '2026-11-24T05:38:57Z'  # e936
+  by: agent  # e936
+  actor: jgstern_agent  # e936
+  clock: 1  # e936
+  nonce: e936  # e936
+  data:  # e936
+    kind: work_item  # e936
+    title: "Same-line twins still share a node id in every analyzer but Swift, Nix and Vue: FileAnalysis.add_symbol is not adopted"  # e936
+    status: todo_soft  # e936
+    priority: 4  # e936
+    parent:  # e936
+    tags:  # e936
+    - id_format  # e936
+    - identity  # e936
+    - javascript  # e936
+    isbefore: []  # e936
+    duplicate_of: []  # e936
+    not_duplicate_of: []  # e936
+    pr_ref:  # e936
+    description: "WHAT\nTwo declarations with one name and one kind on one line still share a node id in every analyzer except Swift, Nix and Vue. PR #2354 (WI-hugir / WI-bafaz, owner ruling \"Bless the @<column> suffix\") gave a same-line twin the @<column> suffix through FileAnalysis.add_symbol and analyze.base.distinguish_same_line_id(s) (packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py), and only three analyzers call them: swift.py (FileAnalysis.add_symbol, 10 sites), nix.py (FileAnalysis.add_symbol, 1 site), vue.py (distinguish_same_line_ids, 1 site). nim.py's self._scope.add_symbol is a scope registry, not FileAnalysis. Every other analyzer appends to its symbol list and writes node_for_symbol[symbol.id] by hand, so the second twin's tree-sitter node also replaces the first's in node_for_symbol (the add_symbol docstring names that loss: shape id and docstring of the first holder). spec_validator's node_id_uniqueness check reports each shared id as an error (the check that turned the scheduled self-tree run red, see WI-pukar-hovis-fuhud-pubom-bifid-hajav-hovog-kunag).\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/js_same_line/a.js:\n  function f(a) { return 1 } function f(b) { return 2 }\n  class C { m() {} m(x) {} }\nOn the PR tip 3269081cf, hypergumbo run gives:\n  javascript:a.js:1-1:f:function      twice (stable ids hgstableid19:09f1ab090fbecc31 and :eb0c50308bf2b30f)\n  javascript:a.js:2-2:C.m:method      twice (stable ids :606ce7de3d2abde5 and :5c4704779ebed9de)\nExpected: the second of each pair carries @<its span.start_col> in the name slot.\n\nMEASURED\n- Grep on the PR branch (3269081cf), packages/hypergumbo-lang-*/src: hand-written registrations in 34 files / 130 sites of `node_for_symbol[...] =` and 111 files / 437 sites of `symbols.append(` (the second count includes nix.py 2 and vue.py 5, and any local list named `symbols`; it is an upper bound on sites, not a count of defects). Commands:\n    grep -rcE \"node_for_symbol\\[[^]]+\\] *=\" packages/hypergumbo-lang-*/src\n    grep -rcP \"(?<![A-Za-z0-9_])symbols\\.append\\(\" packages/hypergumbo-lang-*/src\n- JavaScript fixture above: 2 shared node ids (drafting agent, 2026-11-24); re-run on dev 39bef1108 after the merge: the same two pairs, and validation_report lists 2 errors.\n- Corpus: the coordinator's A/B over 49 trees (~/hypergumbo_lab_notebook/v19_11232026/bump/totals_run1.txt) found ids held by two nodes 3 -> 1; the 1 left is zstd's macro misparse (WI-virir-papor-fapin-kunun-kigir-zumuj-pokot-tonun), so no same-line twin outside Swift/Nix/Vue was seen on those 49 trees.\n- WI-rosog (open) records one real case of this mechanism: C++ same-name overloads declared on one line (sherpa-onnx).\n\nNOT CHECKED\n- Which of the 111 files can emit two same-name same-kind symbols on one line (not enumerated per language).\n- Whether a Symbol-list-first producer other than Vue (edges built after the list is complete) needs distinguish_same_line_ids instead of add_symbol.\n- Edges: an edge endpoint copied from the first twin's id before a suffix is applied is not updated (distinguish_same_line_ids docstring); not measured for any analyzer.\n\nA fix changes node ids only (the suffix is a node-id name-slot suffix); stable ids do not move. No scheme bump.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md (coordinator's extra residual), ~/hypergumbo_lab_notebook/hugir_11232026/compare.txt, probe ~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/README.txt"  # e936
+    fields: {}  # e936

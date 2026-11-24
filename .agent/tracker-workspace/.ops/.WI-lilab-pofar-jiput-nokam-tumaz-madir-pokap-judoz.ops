@@ -33,3 +33,18 @@
   clock: 3  # 545a
   nonce: 545a  # 545a
   message: "OWNER RULING 2026-11-23 (in session). Put to the owner: (A) switch the nine analyzers to hash the reported kind (Symbol.kind)? (B) in Gleam, Odin and V a struct, union or type is reported as class: correct the kind? Owner, verbatim: \"yes to both, in the same bump, so those ids move once instead of twice.\" The owner also approved the bump, verbatim: \"yes I approve the v19 bump\", and asked for ONE PR carrying WI-dibin, WI-lilab, WI-vavag, WI-dozos, WI-finam, WI-sifar, WI-radim, WI-hizop, WI-hupad, WI-juzom, WI-rafis, WI-hugir and WI-bafaz, \"minus any already done\"."  # 545a
+- op: update  # fd03
+  at: '2026-11-24T05:40:46Z'  # fd03
+  by: agent  # fd03
+  actor: jgstern_agent  # fd03
+  clock: 4  # fd03
+  nonce: fd03  # fd03
+  set:  # fd03
+    status: done  # fd03
+- op: discuss  # 982d
+  at: '2026-11-24T05:40:46Z'  # 982d
+  by: agent  # 982d
+  actor: jgstern_agent  # 982d
+  clock: 5  # 982d
+  nonce: 982d  # 982d
+  message: "Ruled by the owner 2026-11-23 (\"yes to both, in the same bump\") and built in PR #2354 (dev 39bef1108): Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl and V hash Symbol.kind, and the wrong kinds are corrected.\nRE-RUN on dev 39bef1108 (hypergumbo run on the nine-language fixture, closure/t/lilab, against dev 05ed6f5fe): the stable ids of the role-word symbols moved (e.g. Prisma block db 0ad1852a87d2a1a4 to b82b2487ee801d6d, Haxe Shape.area 430ba7c2b3f6bdbc to ffcdb9f1f05b8e13, Fennel add 9a882b3f12fc73fe to 8bba7fe689ce16f1); reported kinds on 39bef1108: Gleam Shape and Person type, Size type_alias; Odin Point struct, Value union; V Point struct, Num union, norm (a function with a receiver) method. packages/hypergumbo-lang-extended1/tests/test_stable_id_hashes_symbol_kind.py runs each of the nine analyzers and asserts the id is the formula over Symbol.kind.\nMEASURED by the builder: thirteen Prisma schemas 185 of 197 ids moved (enums kept), git-gui Tcl 166 of 166 procs. No Fennel, Gleam, Hack, Haxe, Janet, Odin or V source is in the corpus: those seven are fixture only.\nLEFT: a Prisma model stays kind class. NOT FIXED, filed: WI-rirab-famur-sivod-pukod-ruhal-fahif-mupah-barun (no contains edge for a type_alias, typedef or alias: a Gleam alias lost its file edge with the kind correction), WI-mokuh-hifih-bofod-rular-sagot-bidit-filup-ginim (V selector calls, V method containment), WI-lorit-dikih-goduv-lubok-zosib-rikuh-patip-huhuh (Prisma datasource and generator of one name, Elm alias kind, no static guard); the Prisma model question is in WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 982d

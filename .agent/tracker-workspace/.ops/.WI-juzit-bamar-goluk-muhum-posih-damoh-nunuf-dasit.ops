@@ -27,3 +27,10 @@
   clock: 2  # 450a
   nonce: 450a  # 450a
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/langs2/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: A/B fixture, User calls [s frob] on Svc *s where frob is on Base. With Svc declared by @interface+@implementation (2 class symbols) the edge stays objc:external:frob (hint Svc); removing Svc.m (1 symbol) yields User.go -> Base.frob (ast_call_inherited_method 0.7). The guard at inherited_calls.py L1322 (src_lang not in _LEGACY_SITE2_LANGS={java}) is unchanged and objc.py stamps no receiver_type_id. MECHANISM: Site-2 strict same-name guard counts class symbols, and objc mints one class symbol per @interface/@implementation/category."  # 450a
+- op: discuss  # 5a53
+  at: '2026-11-24T05:40:49Z'  # 5a53
+  by: agent  # 5a53
+  actor: jgstern_agent  # 5a53
+  clock: 3  # 5a53
+  nonce: 5a53  # 5a53
+  message: "PR #2354 (stable-id v19, 2026-11-23/24), guards agent: the several class symbols one ObjC class gets (this item's premise) also share ONE stable id: `@interface Foo` and `@implementation Foo` both emit `class Foo` with one stable id (fixture ~/hypergumbo_lab_notebook/v19_11232026/guards/repro_objc/objc1/a.m). After the PR's ObjC branch fix (0d15be78c), the pre-split tie groups left are AFNetworking 71, CocoaLumberjack 216, ReactiveObjC 71 (guards/RESULTS.md \"Follow-up 2\"); the PR did not classify them, and how many are interface/implementation/category pairs was not checked. Whether one ObjC class should be one symbol, or several symbols with distinct stable ids, is the decision both this item's guard and the stable-id tie wait on."  # 5a53

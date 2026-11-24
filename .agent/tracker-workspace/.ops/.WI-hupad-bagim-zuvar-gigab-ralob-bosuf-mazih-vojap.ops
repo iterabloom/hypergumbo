@@ -18,3 +18,18 @@
     pr_ref:  # dabe
     description: "PR 5 (WI-jufuk) drops parameter names inside function types from the hashed signature in Kotlin, Swift, Go and TypeScript. Four sibling forms still hash a name that callers never write, so renaming it moves an id:\n\n1. TS object-type method and call signatures: renaming `x` moves `g` in `function g(o: { m(x: number): void })`, and `h` in `h(o: { (x: number): void })`.\n2. Go interface-literal method specs: renaming `x` moves `F` in `func F(i interface{ M(x int) })`.\n3. TS interface method members hash the raw signature, outer parameter names included: renaming `m(cb: ...)` to `m(fn: ...)` moves `I.m`. This predates PR 5. It is the TS sibling of the Swift protocol-requirement raw-signature hashing (WI-lonoh, generic-constraint residual).\n4. TS type predicates: `(x: unknown) => x is T` normalizes to `((unknown) => x is string)`, so the predicate keeps the name. Checked on the normalizer only.\n\nEach fix moves ids and needs a scheme bump.\n\nRepros: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/jufuk/residual_fixtures/ and ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/jufuk/RESULTS.md."  # dabe
     fields: {}  # dabe
+- op: update  # f9fe
+  at: '2026-11-24T05:40:43Z'  # f9fe
+  by: agent  # f9fe
+  actor: jgstern_agent  # f9fe
+  clock: 2  # f9fe
+  nonce: f9fe  # f9fe
+  set:  # f9fe
+    status: done  # f9fe
+- op: discuss  # eee5
+  at: '2026-11-24T05:40:44Z'  # eee5
+  by: agent  # eee5
+  actor: jgstern_agent  # eee5
+  clock: 3  # eee5
+  nonce: eee5  # eee5
+  message: "Fixed in PR #2354 (dev 39bef1108): the four forms no longer hash a parameter name.\nFILED REPROS RE-RUN on dev 39bef1108 (the item's own residual_fixtures a/ and b/, which differ only in the parameter names): TS g (object-type method signature), h (call signature) and I.m (interface method member), Go F (interface-literal method): stable ids DIFFERENT between a and b on dev 05ed6f5fe, SAME on 39bef1108. Form 4, type predicates, run through the whole pipeline (the item had checked the normalizer only): p(f: (x: unknown) => x is string) against (y: unknown) => y is string: DIFFERENT on dev 05ed6f5fe, SAME on 39bef1108 (the predicate names its subject by position, #0 is T).\nMEASURED by the builder: knex 290, hocuspocus 27, nest packages 215 ids moved; Go 0 on caddy and alertmanager (no interface literal with a named parameter there).\nNOT FIXED, filed: TS x?: T and x: T hash alike, as do ...xs: T[] and xs: T[]: WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # eee5

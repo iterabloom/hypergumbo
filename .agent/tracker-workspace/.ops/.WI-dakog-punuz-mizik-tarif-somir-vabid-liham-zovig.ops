@@ -1,0 +1,30 @@
+- op: create  # 4023
+  at: '2026-11-24T05:19:14Z'  # 4023
+  by: agent  # 4023
+  actor: jgstern_agent  # 4023
+  clock: 1  # 4023
+  nonce: '4023'  # 4023
+  data:  # 4023
+    kind: work_item  # 4023
+    title: "statement-bar counts tests that errored on a full temp disk as tests the selector left out: one such run makes the verdict MISSED for good"  # 4023
+    status: todo_soft  # 4023
+    priority: 3  # 4023
+    parent:  # 4023
+    tags:  # 4023
+    - smart_test  # 4023
+    - fast_smart_test_plan  # 4023
+    isbefore: []  # 4023
+    duplicate_of: []  # 4023
+    not_duplicate_of: []  # 4023
+    pr_ref:  # 4023
+    description: "WHAT. scripts/coverage-select statement-bar (selection_log.evaluate_statement_bar) counts a run as \"a failed test left out\" when a test the by-statement selector would not have selected is in the run's failed list. It cannot tell a test that failed because of the change from a test that errored because the machine ran out of temporary disk space. One such run turns the verdict to MISSED and the exit code to 1, and the row stays in run_records.jsonl, so the verdict stays MISSED on every later reading.\n\nREPRO (live records, dev 39bef1108, 2026-11-24). scripts/coverage-select statement-bar exits 1: \"RUNS WITH A FAILED TEST LEFT OUT : 1\", the run of 2026-11-24T04:33:12+00:00, kind explicit, head 3269081cf03f, naming packages/hypergumbo-core/tests/test_spec_validator_smoke.py::test_axis_conformance_confidence_source_bounded_enum and two more; \"verdict : MISSED\". Output kept: ~/hypergumbo_lab_notebook/v19_11232026/dibin/bar_on_dev.txt. Six hours earlier, before that run, the same command exited 0 with verdict MET (v19_11232026/dibin/bar.txt).\n\nWHY THAT RUN FAILED. It is the core-package CI-style step of a pre-PR run (v19_11232026/prepr1/stub_packages_hypergumbo-core_tests.log): 2 failed, 8,526 passed, 14,853 errors; the two failures shown both end in OSError [Errno 28] No space left on device under /tmp/pytest-of-.../ (/tmp is a 12 GB tmpfs). The same test files at the same commit were run again alone 15 minutes later: 23,369 passed, rc 0 (prepr1/stub_core_rerun.log). The text of the 14,853 errors was not kept (the summary prints failures only), so that each of them is the same OSError is inferred from the re-run, not read.\n\nCONSEQUENCE. The plan's rule for a miss is \"it stays off and is filed\". Nothing reads the bar automatically (grep: only the statement-bar subcommand calls evaluate_statement_bar), so the selector stays live; but the instrument that says whether it is safe now reads MISSED for a reason that is not a selection miss, and will until the row is handled.\n\nASK. Decide and build how the bar treats a run whose failures are not evidence about selection. Options seen: record in the run row that the run had errors of the environment (pytest's junit report distinguishes error from failure, and an OSError 28 is recognisable) and set such tests aside with a printed count, as the bar already does for failed tests of a changed test file; or let a later green run of the same tests at the same head clear the row. A setup error can also be real (a fixture broken by the change), so setting aside every error is not safe. Related: WI-huhip (the CLI reports a full disk as an internal error), WI-kovoj (fan-outs truncated on ENOSPC).\n\nFound 2026-11-24 while closing WI-dibin after PR #2354."  # 4023
+    fields: {}  # 4023
+- op: update  # 1d4b
+  at: '2026-11-24T05:19:37Z'  # 1d4b
+  by: agent  # 1d4b
+  actor: jgstern_agent  # 1d4b
+  clock: 2  # 1d4b
+  nonce: 1d4b  # 1d4b
+  set: {}  # 1d4b
+  add:  # 1d4b
+    not_duplicate_of: [WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum]  # 1d4b

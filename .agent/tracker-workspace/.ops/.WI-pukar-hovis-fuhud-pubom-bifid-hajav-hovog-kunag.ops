@@ -1,0 +1,22 @@
+- op: create  # 030c
+  at: '2026-11-24T05:33:29Z'  # 030c
+  by: agent  # 030c
+  actor: jgstern_agent  # 030c
+  clock: 1  # 030c
+  nonce: 030c  # 030c
+  data:  # 030c
+    kind: work_item  # 030c
+    title: "SCIP: edges into a moniker several records share (scip-python nested defs) are dropped; the records share one stable id"  # 030c
+    status: todo_hard  # 030c
+    priority: 3  # 030c
+    parent:  # 030c
+    tags:  # 030c
+    - scip  # 030c
+    - call_graph  # 030c
+    - stable_id  # 030c
+    isbefore: []  # 030c
+    duplicate_of: []  # 030c
+    not_duplicate_of: []  # 030c
+    pr_ref:  # 030c
+    description: "WHAT\nscip-python gives a `def` nested in a method a moniker of the class and the def alone (`...TestGate#fake().`), so two methods of one class that each define a local `fake` produce one Document with two SymbolInformation records under ONE symbol string, and one Definition occurrence per def. PR #2354 (2bbf5d946, trailer Fixes-scheduled-run: self-tree-validation) places the nth record at the moniker's nth Definition occurrence, so the N records are N nodes with N spans and N node ids. Two parts remain (module docstring of packages/hypergumbo-core/src/hypergumbo_core/scip/index.py, section \"Several records under one moniker\": \"that is not decided here\"):\n1. Edges: an edge endpoint that names such a moniker is ambiguous to resolve.MonikerResolver (scip/resolve.py; used by lang-scip-python translate.py): rule 2 \"a record in the occurrence's own Document\" finds several records in one Document, scip-python supplies no same_unit, so rule 4 returns None, \"the builders drop the edge\", and MonikerResolver.ambiguous counts it per moniker. Every call to a nested local def whose moniker is shared is lost from the SCIP call graph (read from code, not run).\n2. Stable ids: the N records share one stable_id until the per-file occurrence split, so they are told apart only by occurrence order.\nAlso from the same docstring: a single record with several Definitions keeps the first; a record beyond the Definitions is skipped (no node).\n\nREPRO\nhypergumbo's own tree with the SCIP python backend: test_stop_hook.py:868 `fake` x6 (one moniker, six records). Before 2bbf5d946: 29 node ids each held by several nodes, all node_id_uniqueness errors on SCIP nodes in test files (coordinator, ~/hypergumbo_lab_notebook/v19_11232026/selftree/violations_dev2.txt). On the PR tip c8816598b with SCIP: violation matrix {} and 0 ids held by more than one node (selftree/stv_tip.txt, violations_tip.txt).\n\nMEASURED\n- Nodes: 29 shared node ids -> 0 on hypergumbo's own tree (coordinator).\n- Edges dropped because of a shared moniker: not counted. MonikerResolver.ambiguity_report() writes the per-moniker count to the run log when one is passed; no such line is in selftree/run_tip.log, and whether the self-tree step passes a log was not checked. Stable-id ties among such records: not counted.\n\nNOT CHECKED\n- Other SCIP producers (scip-typescript, rust-analyzer) emitting several records under one symbol.\n- What a correct resolution of an ambiguous moniker is: the call site's enclosing method could select the record whose Definition lies inside the same method, which a fix must decide.\n\nA fix to part 1 adds edges and moves no id. A fix to part 2 (giving each record a distinguishing hashed input, e.g. the enclosing method) moves SCIP stable ids: needs a scheme bump (owner-ruled).\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md lines 173-186 and 197-200; packages/hypergumbo-core/src/hypergumbo_core/scip/index.py module docstring"  # 030c
+    fields: {}  # 030c

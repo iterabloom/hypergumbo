@@ -18,3 +18,18 @@
     pr_ref:  # 61a4
     description: "Stable-id scheme v18 hashes untyped names, scope labels and attribute text without layout. Two formulas were left as written, each needs a replay over a corpus before a rule is chosen, and each fix moves ids (next bump):\n- The table formula (kind:lang:path:name): an Elixir module written \"defmodule Foo . Bar\" hashes \"Foo . Bar\" (its functions are fixed). Swift #if scope labels sit in table names, so a universal rule needs its own replay.\n- The doc formula (make_doc_stable_id): a Vue directive hashes its expression text as written: v-if=\"tab === 'a'\" and v-if=\"tab  ===  'a'\" are two ids; koel has 13 directive names holding a newline. Open question for the owner: is a doc symbol's name meant to be layout-free at all (a Markdown heading is content)?\nAlso not checked: a \"//\" comment that ends a hashed text with no line break after it stays hashed (no case found); PHP \"#\" comments were checked in two positions only; \"|\" before \"{\" is unspaced in the canonical spelling (ties no ids).\nRepros: ~/hypergumbo_lab_notebook/idfive_11232026/layout/ (fx3/elixir, fx/vue).\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 61a4
     fields: {}  # 61a4
+- op: update  # 51a4
+  at: '2026-11-24T05:40:45Z'  # 51a4
+  by: agent  # 51a4
+  actor: jgstern_agent  # 51a4
+  clock: 2  # 51a4
+  nonce: 51a4  # 51a4
+  set:  # 51a4
+    status: done  # 51a4
+- op: discuss  # 8eb8
+  at: '2026-11-24T05:40:45Z'  # 8eb8
+  by: agent  # 8eb8
+  actor: jgstern_agent  # 8eb8
+  clock: 3  # 8eb8
+  nonce: 8eb8  # 8eb8
+  message: "Fixed in PR #2354 (dev 39bef1108) for the two named cases; the doc-name layout question the item puts to the owner is NOT decided here.\nFILED REPROS RE-RUN on dev 39bef1108 (the item's own idfive layout fixtures): Elixir \"defmodule Foo.Bar\" against \"defmodule Foo . Bar\": the module's stable id was ef600f230326857c against f8a69f2d4a2002f2 on dev 05ed6f5fe, and is ef600f230326857c for both on 39bef1108. Vue v-if=\"tab === 'a'\" against the spaced spelling: Item:v-if DIFFERENT on 05ed6f5fe, SAME on 39bef1108, as is Other:v-bind:val.\nITEM CORRECTION (builder): koel's 13 directive names holding a newline came from Vue 3.4 valueless shorthand (:album) read as one node; such attributes are now read one by one (koel: 26 merged directives gone, 64 new; 291 of 2,353 directive ids moved). PHP \"#\" comments inside a type no longer change the id.\nSTILL OPEN, filed: whether a doc symbol's NAME is meant to be layout-free (a Svelte block's own name keeps its layout), and the item's \"also not checked\" list (\"//\" comment ending a hashed text, \"|\" before \"{\"): WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 8eb8

@@ -20,3 +20,10 @@
     pr_ref:  # 60b6
     description: "WHAT, after PR #2200:\n- `func (s *Stack[T]) Push` is named `Push`, not `Stack.Push`.\n- Grouped parameters (`a, b int`) hash the first name; tuple-result elements hash their names (MOVES IDS if fixed).\n- The pointer strip on receivers is deliberate (commit 23708dff23) and was kept.\n- Symbol.signature does not show type parameters.\n\nFixing a part marked MOVES IDS changes hashed input, so it belongs to the next stable-id bump, with a measured churn figure in the spec's history row.\n\nFound during PR 2 of the stable-id plan (the v15 bump), 2026-11-16 (PR #2200). Detail: ~/hypergumbo_lab_notebook/stable_id_items_review_11152026/pr2/STATUS.md."  # 60b6
     fields: {}  # 60b6
+- op: discuss  # 35ec
+  at: '2026-11-24T05:40:50Z'  # 35ec
+  by: agent  # 35ec
+  actor: jgstern_agent  # 35ec
+  clock: 2  # 35ec
+  nonce: 35ec  # 35ec
+  message: "PR #2354 (stable-id v19, 2026-11-23/24), jsts agent (WI-hupad): Go interface methods are covered by the same rule. Named interface methods do not hash parameter names (already normalized), but their RESULT names are hashed by the Go rule this item names (tuple-result element names); WI-hupad did not touch it. Interface-literal methods with a named parameter were normalized by the PR (8b7c9284a), with 0 Go ids moved on caddy and alertmanager (no such literal there)."  # 35ec

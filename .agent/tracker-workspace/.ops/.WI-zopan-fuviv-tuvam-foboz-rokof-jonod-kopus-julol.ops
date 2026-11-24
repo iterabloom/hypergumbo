@@ -1,0 +1,24 @@
+- op: create  # 6008
+  at: '2026-11-24T05:39:35Z'  # 6008
+  by: agent  # 6008
+  actor: jgstern_agent  # 6008
+  clock: 1  # 6008
+  nonce: '6008'  # 6008
+  data:  # 6008
+    kind: work_item  # 6008
+    title: "Companion objects share their class's qualified name: Kotlin/Scala member ties, Scala trait contains object's class"  # 6008
+    status: todo_hard  # 6008
+    priority: 3  # 6008
+    parent:  # 6008
+    tags:  # 6008
+    - stable_id  # 6008
+    - kotlin  # 6008
+    - scala  # 6008
+    - containment  # 6008
+    - needs_decision  # 6008
+    isbefore: []  # 6008
+    duplicate_of: []  # 6008
+    not_duplicate_of: []  # 6008
+    pr_ref:  # 6008
+    description: "WHAT\nA Kotlin companion object, and a Scala companion `object X` of a `class X` / `trait X`, share the class's qualified name and scope label. Three consequences, one cause:\n1. Kotlin: a companion member and a same-named member of the class (and their locals) tie in the stable id and are split by occurrence order. PR #2354's Kotlin scope labels add a `companion` prefix to locals' chains, but the members themselves still tie.\n2. Scala: members of `class A` and of `object A` with one name and signature tie the same way.\n3. Scala containment: trait X gets a `contains` edge to a class declared inside a val of its companion `object X`, because the trait and the object share a qualified name.\nOne decision (give the companion object its own label in the qualified name / scope chain, or not) covers 1 and 2; 3 can also be fixed in the containment linker alone without touching ids.\nOwner question for 1 (locals agent): a companion label on Kotlin members moves 611 okhttp ids and fixes 0 ties there (okhttp has no such tie); the remaining behaviour is a tie two different declarations share, so this is a defect whose fix needs a ruling.\n\nREPRO\n- Kotlin: ~/hypergumbo_lab_notebook/v19_11232026/locals/fixtures/kt2/B.kt: `companion object { fun f() { fun h() {} } }` beside `fun f() { fun h() {} }` in class K.\n- Scala containment, real tree: cats-core, kernel eq.scala: trait EqInstances lines 27-50 -> class Deferred lines 54-66 (declared in a val of companion object EqInstances): 8 such edges in cats-core, present on dev 05ed6f5fe and on the PR branch (coordinator's A/B).\n- Scala class/object tie: no fixture on disk (locals agent's final message); shape `class A { def m(x: Int) = 1 }; object A { def m(x: Int) = 2 }`.\n\nMEASURED\n- cats-core: 8 trait -> companion-object-member contains edges, present on dev (coordinator, 2026-11-24). The A/B lists scala_cats_core \"edges gone 8, new 0\" at 2d6fa7b70; after the Scala qualified-name fix 7772e8132 the coordinator re-measured 0 edges differing from dev. Those 8 gone edges were these 8 trait edges: they vanished while a Scala type's qualified name carried a hash label (a defect of the branch, fixed before the merge in c8816598b) and returned with that fix, so dev after PR #2354 has them as dev before it did.\n- okhttp: a companion label would move 611 Kotlin ids and fix 0 ties (locals agent).\n- Scala class/object member tie: not counted on a corpus.\n\nNOT CHECKED\n- How many cats-core / sbt Scala ties come from class/object pairs.\n- Kotlin `companion object Named` (a named companion).\n\nA fix to 1 or 2 moves stable ids of companion members (and, for Kotlin, the 611 okhttp ids): needs a scheme bump AND an owner ruling. A containment-only fix to 3 moves no id.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md lines 147, 150, 192-196; ~/hypergumbo_lab_notebook/v19_11232026/bump/totals_run1.txt"  # 6008
+    fields: {}  # 6008
