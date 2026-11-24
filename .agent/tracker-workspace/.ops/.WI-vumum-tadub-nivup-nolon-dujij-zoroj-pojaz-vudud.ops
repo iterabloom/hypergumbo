@@ -1,0 +1,23 @@
+- op: create  # 7cd6
+  at: '2026-11-24T12:58:56Z'  # 7cd6
+  by: agent  # 7cd6
+  actor: jgstern_agent  # 7cd6
+  clock: 1  # 7cd6
+  nonce: 7cd6  # 7cd6
+  data:  # 7cd6
+    kind: work_item  # 7cd6
+    title: "cpp: _alternatives_of_one_function ignores declarator marks, so f(int) / f(int*) are read as #if alternatives (confidence 1.0)"  # 7cd6
+    status: todo_hard  # 7cd6
+    priority: 3  # 7cd6
+    parent:  # 7cd6
+    tags:  # 7cd6
+    - v20_residual  # 7cd6
+    - cpp  # 7cd6
+    - call_graph  # 7cd6
+    - analysis_quality  # 7cd6
+    isbefore: []  # 7cd6
+    duplicate_of: []  # 7cd6
+    not_duplicate_of: []  # 7cd6
+    pr_ref:  # 7cd6
+    description: "WHAT\ncpp.py _alternatives_of_one_function compares parameter TYPES only. Since PR #2370 a parameter's pointer, reference and array marks are in meta[\"parameters\"][i][\"declarator\"], and this check does not read them: two overloads in one file that differ only by marks (f(int) / f(int*)) are treated as #if alternatives of one function, so a call to either is resolved at confidence 1.0, not ambiguous, and one constructor edge is drawn.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/cfamily/RESULTS.md, \"Not fixed\" 1 (cfamily agent; left alone because it is call resolution, not identity).\n\nNOT CHECKED\nThe fixture's edges were not re-run by the filing agent.\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 7cd6
+    fields: {}  # 7cd6

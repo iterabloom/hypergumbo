@@ -1,0 +1,22 @@
+- op: create  # 8163
+  at: '2026-11-24T12:59:03Z'  # 8163
+  by: agent  # 8163
+  actor: jgstern_agent  # 8163
+  clock: 1  # 8163
+  nonce: '8163'  # 8163
+  data:  # 8163
+    kind: work_item  # 8163
+    title: "cpp: _merge_prototype_defaults matches by name and count, so another overload's default enters a hashed fact"  # 8163
+    status: todo_soft  # 8163
+    priority: 3  # 8163
+    parent:  # 8163
+    tags:  # 8163
+    - v20_residual  # 8163
+    - cpp  # 8163
+    - stable_id  # 8163
+    isbefore: []  # 8163
+    duplicate_of: []  # 8163
+    not_duplicate_of: []  # 8163
+    pr_ref:  # 8163
+    description: "WHAT\ncpp.py _merge_prototype_defaults matches a definition to a prototype by name and parameter count only, so a default written on ANOTHER overload's prototype is merged into this one's parameter entry, and \"has a default\" is a hashed fact.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/cfamily/fixtures/res1/a.cpp: T::g(int* a) gets default: True from the prototype g(int a = 0) (cfamily agent).\n\nNOT CHECKED\nCorpus count. A fix changes hashed input for the affected overloads: needs a scheme bump (owner-ruled).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 8163
+    fields: {}  # 8163

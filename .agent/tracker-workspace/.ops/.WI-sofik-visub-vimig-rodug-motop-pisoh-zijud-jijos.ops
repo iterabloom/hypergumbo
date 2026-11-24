@@ -1,0 +1,22 @@
+- op: create  # d899
+  at: '2026-11-24T12:58:50Z'  # d899
+  by: agent  # d899
+  actor: jgstern_agent  # d899
+  clock: 1  # d899
+  nonce: d899  # d899
+  data:  # d899
+    kind: work_item  # d899
+    title: "Django view-template linker labels .txt / .xml / .djinja templates html; template extensions registered in v20 were not checked for other uses"  # d899
+    status: todo_soft  # d899
+    priority: 4  # d899
+    parent:  # d899
+    tags:  # d899
+    - v20_residual  # d899
+    - linker  # d899
+    - analysis_quality  # d899
+    isbefore: []  # d899
+    duplicate_of: []  # d899
+    not_duplicate_of: []  # d899
+    pr_ref:  # d899
+    description: "WHAT\nThe Django view-template linker's _language_for_extension labels .txt, .xml and .djinja templates html: on the language axis, but not the file's language.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/standins/linker_repro_base.txt, the t5.txt line (standins agent).\n\nNOT CHECKED\nWhether a template stand-in's language should follow the taxonomy's answer for the file (get_language) in every view-template linker, now that seven template languages are registered (PR #2370). Also not checked by anyone: the extensions registered there collide with other uses (.ftl is also Mozilla Fluent's, .vm and .j2 have non-template uses); an Ansible roles tree gained 301 jinja file nodes.\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # d899
+    fields: {}  # d899
