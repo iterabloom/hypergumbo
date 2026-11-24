@@ -119,6 +119,15 @@ file's, else to whichever the global registry holds. A modifier invocation
 and ``revert Error(...)`` emit no edge; ``new C(...)`` emits an unresolved
 one.
 
+IMPORTED TYPE NAMES (stable-id scheme v19, WI-rafis). A callable's hashed
+signature and a state variable's or struct member's hashed type are written
+through the file's imports (``_solidity_type_names``, set per file with
+``resolving_type_names``; the mechanism WI-palus built), as TypeScript's import
+type writes a module's name: ``T`` under ``import {T} from "./Lib.sol"`` and
+``L.T`` under ``import "./Lib.sol" as L`` are both ``import("./Lib.sol").T``.
+A plain ``import "p";`` binds no name, and a type the file declares keeps its
+name.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -141,7 +150,10 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    FileTypeNames,
     TreeSitterAnalyzer,
+    canonical_type_names,
+    file_type_names,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -151,6 +163,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     make_variable_stable_id,
     node_text,
+    resolving_type_names,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -699,6 +712,59 @@ def _extract_import_aliases(
     return import_path, aliases
 
 
+def _solidity_import_bindings(tree: "tree_sitter.Tree", source: bytes) -> Iterator[tuple[str, str]]:
+    """``(bound name, path)`` for each name an import directive binds, written
+    as TypeScript's import type writes a module's name (``import("p").T``).
+
+    ``import {T} from "p"`` binds ``T`` to ``import("p").T`` and ``import {S as
+    U} from "p"`` binds ``U`` to ``import("p").S``; ``import "p" as L`` and
+    ``import * as L from "p"`` bind ``L`` to ``import("p")``, so ``L.T`` is
+    ``import("p").T`` too. ``import "p";`` brings every name of ``p`` in,
+    unlisted: it binds none the file writes. The specifier is kept as written
+    (its quotes taken off).
+    """
+    for node in tree.root_node.children:
+        if node.type != "import_directive":
+            continue
+        source_node = node.child_by_field_name("source")
+        if source_node is None:  # pragma: no cover - every import names its file
+            continue
+        module = f'import("{node_text(source_node, source)[1:-1]}")'
+        named: Optional[str] = None
+        for index, child in enumerate(node.children):
+            field_name = node.field_name_for_child(index)
+            if field_name == "import_name":
+                named = node_text(child, source)
+                yield named, f"{module}.{named}"
+            elif field_name == "alias":  # after its import_name, or alone (a namespace)
+                yield node_text(child, source), f"{module}.{named}" if named else module
+
+
+#: The nodes a Solidity file declares a type name with.
+_SOLIDITY_TYPE_DECLARATIONS = frozenset({
+    "contract_declaration", "interface_declaration", "library_declaration",
+    "struct_declaration", "enum_declaration", "user_defined_type_definition",
+})
+
+
+def _solidity_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-rafis, scheme v19;
+    the mechanism WI-palus built, :class:`FileTypeNames`).
+
+    Bound: :func:`_solidity_import_bindings`, so ``T`` under ``import {T} from
+    "./Lib.sol"`` and ``L.T`` under ``import "./Lib.sol" as L`` are one type.
+    Declared: every contract, interface, library, struct, enum and
+    user-defined value type the file declares, which keeps its name.
+    """
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _SOLIDITY_TYPE_DECLARATIONS:
+            name = node.child_by_field_name("name")
+            if name is not None:
+                declared.add(node_text(name, source))
+    return file_type_names(_solidity_import_bindings(tree, source), declared=declared)
+
+
 def _extract_visibility_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract visibility and state mutability modifiers from a Solidity function.
 
@@ -780,7 +846,7 @@ def _extract_symbols_from_tree(
             norm_sig = signature or _extract_solidity_signature(node, source)
             callable_stable_id = make_typed_stable_id(
                 kind,
-                norm_sig,
+                canonical_type_names(norm_sig),
                 visibility_from_modifiers(modifiers),
                 name=name,
                 qualified_name=full_name,
@@ -862,7 +928,7 @@ def _extract_symbols_from_tree(
         end_line = node.end_point[0] + 1
         if kind == "field":
             stable_id = make_typed_stable_id(
-                "field", vtype or "",
+                "field", canonical_type_names(vtype or ""),
                 visibility_from_modifiers(modifiers),
                 name=name, qualified_name=full_name,
                 file_stable_id=file_stable_id,
@@ -1519,9 +1585,11 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         # The REPO-RELATIVE path: it is an identity input (the file anchor,
         # a constant's make_variable_stable_id). An absolute path would make
         # every Solidity stable_id depend on where the repo is checked out.
-        self._file_scopes[rel_path] = _extract_symbols_from_tree(
-            tree, source, rel_path, run.execution_id, analysis,
-        )
+        # WI-rafis: every type a stable id hashes is written through the imports.
+        with resolving_type_names(_solidity_type_names(tree, source)):
+            self._file_scopes[rel_path] = _extract_symbols_from_tree(
+                tree, source, rel_path, run.execution_id, analysis,
+            )
         # Store full symbol list for position-based lookup in Pass 2
         self._file_symbols[rel_path] = list(analysis.symbols)
         return analysis

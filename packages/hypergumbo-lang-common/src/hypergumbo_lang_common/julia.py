@@ -59,6 +59,13 @@ two ``struct Inner`` in modules ``A`` and ``B`` shared one bare-name table key,
 so deleting the first moved the second's id and its fields'). Top-level ones
 keep their values.
 
+IMPORTED TYPE NAMES (stable-id scheme v19, WI-rafis). A parameter's and a
+field's hashed type is written through the file's ``import`` / ``using``
+statements (``_julia_type_names``, set per file with ``resolving_type_names``;
+the mechanism WI-palus built), so ``f(x::T)`` under ``import Foo: T`` and
+``f(x::Foo.T)`` are one method. A ``where`` type parameter, a name ``using
+Mod`` brings in unlisted, and ``Base.X`` are hashed as written.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -69,7 +76,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Collection, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -77,7 +84,10 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    FileTypeNames,
     ancestor_labels,
+    canonical_type_names,
+    file_type_names,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -85,6 +95,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_typed_stable_id,
     node_text,
+    resolving_type_names,
     symbol_declared_by,
     symbols_at,
     visibility_from_modifiers,
@@ -214,13 +225,103 @@ def _julia_parameters(call_node: "tree_sitter.Node", source: bytes) -> list[dict
 def _julia_stable_id(
     kind: str, file_path: str, name: str, chain: list[str],
     meta: Optional[dict[str, Any]], decorators: str = "",
+    type_params: Collection[str] = (),
 ) -> StableId:
-    """The ADR-0035 producer stable_id: module chain plus declared parameters."""
+    """The ADR-0035 producer stable_id: module chain plus declared parameters.
+
+    Each parameter's type is hashed through the file's imports
+    (:func:`_julia_type_names`), its ``where`` type parameters (``type_params``)
+    left alone; ``meta`` keeps the types as written.
+    """
+    if meta is not None:
+        meta = {**meta, PARAMETERS_KEY: [
+            {**entry, "type": canonical_type_names(entry["type"], skip=type_params)}
+            if entry.get("type") else entry
+            for entry in meta[PARAMETERS_KEY]
+        ]}
     return declared_arity_stable_id(
         kind=kind, lang="julia", path=file_path, name=name,
         qualified_name=".".join([*chain, name]), arity=declared_arity(meta),
         decorators=decorators,
     )
+
+
+def _julia_where_parameters(call_node: Optional["tree_sitter.Node"], source: bytes) -> list[str]:
+    """The type parameters a method's ``where`` clauses declare
+    (``f(x::T) where T``, ``where {T, S<:Real}``, ``where T<:Number``): the
+    names the clause binds, read from the definition around ``call_node``
+    (the ``where`` / return-type wrappers :func:`_julia_call_of` unwraps)."""
+    names: list[str] = []
+    node = call_node.parent if call_node is not None else None
+    while node is not None and node.type in ("where_expression", "typed_expression"):
+        if node.type == "where_expression":
+            for clause in node.named_children[1:]:
+                items = clause.named_children if clause.type == "curly_expression" else [clause]
+                for item in items:
+                    if item.type == "binary_expression" and item.named_children:
+                        item = item.named_children[0]  # ``T <: Real``
+                    if item.type == "identifier":
+                        names.append(node_text(item, source))
+        node = node.parent
+    return names
+
+
+#: The nodes a Julia file declares a type name with.
+_JULIA_TYPE_DECLARATIONS = frozenset({"struct_definition", "abstract_definition", "primitive_definition"})
+
+
+def _julia_import_bindings(tree: "tree_sitter.Tree", source: bytes) -> Iterator[tuple[str, str]]:
+    """``(bound name, path)`` for each name an ``import`` / ``using`` binds.
+
+    ``import Foo: T`` and ``using Foo: T`` bind ``T`` to ``Foo.T``; ``import
+    Bar: S as Q`` binds ``Q`` to ``Bar.S``; ``import A.B`` (and ``using A.B``)
+    binds the module's own name ``B`` to ``A.B``, and ``import Pkg as P`` binds
+    ``P`` to ``Pkg``. A relative path keeps its dots (``import .Sub: X`` binds
+    ``X`` to ``.Sub.X``). ``using Foo`` binds every name ``Foo`` exports,
+    unlisted, so it binds none the file writes but ``Foo`` itself.
+    """
+    for node in iter_tree(tree.root_node):
+        if node.type not in ("import_statement", "using_statement"):
+            continue
+        for child in node.named_children:
+            if child.type == "selected_import":
+                module, *items = child.named_children
+                prefix = node_text(module, source)
+                for item in items:
+                    if item.type == "import_alias":
+                        original, alias = item.named_children[0], item.named_children[-1]
+                        yield node_text(alias, source), f"{prefix}.{node_text(original, source)}"
+                    else:
+                        name = node_text(item, source)
+                        yield name, f"{prefix}.{name}"
+            elif child.type == "import_alias":
+                original, alias = child.named_children[0], child.named_children[-1]
+                yield node_text(alias, source), node_text(original, source)
+            else:
+                path = node_text(child, source)
+                yield path.rsplit(".", 1)[-1], path
+
+
+def _julia_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """What the file's imports make a type name mean (WI-rafis, scheme v19;
+    the mechanism WI-palus built, :class:`FileTypeNames`).
+
+    Bound: :func:`_julia_import_bindings`. Declared: every struct, abstract
+    type and primitive type the file declares, which keeps its name. No
+    defaults: ``Base.Int`` is not written ``Int`` (no list of the names
+    ``Base`` exports is on hand, and an unexported ``Base.X`` is not the bare
+    ``X``).
+    """
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in _JULIA_TYPE_DECLARATIONS:
+            head = find_child_by_type(node, "type_head")
+            name = head.named_children[0] if head is not None and head.named_children else None
+            while name is not None and name.type != "identifier" and name.named_children:
+                name = name.named_children[0]  # ``R <: Abs``, ``P{T}``
+            if name is not None and name.type == "identifier":
+                declared.add(node_text(name, source))
+    return file_type_names(_julia_import_bindings(tree, source), declared=declared)
 
 
 def _get_enclosing_function_julia(
@@ -538,7 +639,7 @@ def _extract_symbols_from_tree(
             # INV-fabih: the owner's module chain too (two ``struct Inner``
             # in modules ``A`` and ``B`` shared ``Inner.v``).
             stable_id=make_typed_stable_id(
-                "field", vtype or "", visibility_from_modifiers(modifiers),
+                "field", canonical_type_names(vtype or ""), visibility_from_modifiers(modifiers),
                 name=name, qualified_name=".".join((*owner_scope, full_name)),
                 file_stable_id=file_stable_id,
             ),
@@ -631,7 +732,10 @@ def _extract_symbols_from_tree(
                 # chain the stable id already hashes.
                 symbol = Symbol(
                     id=make_symbol_id("julia", file_path, start_line, end_line, func_name, "function"),
-                    stable_id=_julia_stable_id("function", file_path, func_name, chain, fn_meta),
+                    stable_id=_julia_stable_id(
+                        "function", file_path, func_name, chain, fn_meta,
+                        type_params=_julia_where_parameters(call_node, source),
+                    ),
                     meta=fn_meta,
                     name=func_name,
                     qualified_name=".".join([*chain, func_name]),
@@ -676,6 +780,7 @@ def _extract_symbols_from_tree(
                         stable_id=_julia_stable_id(
                             "function", file_path, func_name,
                             _julia_scope_chain(node, source), fn_meta,
+                            type_params=_julia_where_parameters(call_node, source),
                         ),
                         meta=fn_meta,
                         name=func_name,
@@ -1087,8 +1192,10 @@ class JuliaAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract Julia symbols from a single file."""
-        return _extract_symbols_from_tree(tree, source, rel_path, run.execution_id)
+        """Extract Julia symbols from a single file, each type a stable id
+        hashes written through the file's imports (:func:`_julia_type_names`)."""
+        with resolving_type_names(_julia_type_names(tree, source)):
+            return _extract_symbols_from_tree(tree, source, rel_path, run.execution_id)
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,
