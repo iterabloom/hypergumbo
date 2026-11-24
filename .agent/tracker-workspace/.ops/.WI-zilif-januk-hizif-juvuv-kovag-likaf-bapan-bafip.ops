@@ -1,0 +1,23 @@
+- op: create  # 2f8c
+  at: '2026-11-24T22:09:53Z'  # 2f8c
+  by: agent  # 2f8c
+  actor: jgstern_agent  # 2f8c
+  clock: 1  # 2f8c
+  nonce: 2f8c  # 2f8c
+  data:  # 2f8c
+    kind: work_item  # 2f8c
+    title: "rust: receivers bound by if-let, match arms and closure parameters are untyped, so their calls are unresolved when two types share the method name"  # 2f8c
+    status: todo_hard  # 2f8c
+    priority: 3  # 2f8c
+    parent:  # 2f8c
+    tags:  # 2f8c
+    - rust  # 2f8c
+    - call_graph  # 2f8c
+    - analysis_quality  # 2f8c
+    - call_matrix  # 2f8c
+    isbefore: []  # 2f8c
+    duplicate_of: []  # 2f8c
+    not_duplicate_of: []  # 2f8c
+    pr_ref:  # 2f8c
+    description: "WHAT\nThe INV-hupis fix refuses to bind `x.m()` when the receiver is untyped and two unrelated types of the file declare `m`. Some of those receivers have a type the source states, in a binding form rust.py does not read. Before the fix they were bound to the file's last-declared `m`, right or wrong by order; now they are unresolved. Seen while sampling the A/B (~/hypergumbo_lab_notebook/hupis_11242026/, base dev 81d89b52c):\n  reqwest src/proxy.rs:557          if let Some(proxy) = self.intercept(dst) { .. proxy.basic_auth() }      intercept() returns Option<Intercepted>; the callee is Intercepted::basic_auth\n  loro crates/loro-internal/src/handler.rs:529   a match arm binds `map`, then map.insert_container_with_txn(..)   three types of the file declare it\n  zellij zellij-utils/src/input/layout.rs:1731   floating_pane.add_start_suspended(..)                             two types of the file declare it\n  just src/invocation_parser.rs:492              tempdir.write(\"justfile\", ..)                                    the file's own TempDir\nIn a hand check of 47 dropped edges of the final run (every k-th per repository; audit_run3_lost_dropped.txt): 2 were such right edges (the just and zellij lines above; the reqwest and loro lines come from an earlier sample of 15), 36 were bound to a method the call cannot reach, 7 to one implementation of a trait, 2 not judged.\nEXPECTED: a variable bound by `if let Some(x) = f()`, `while let`, a `match` arm pattern or a closure parameter takes the type its initialiser states, as `let x = f()` now does.\nNOT DONE: how many of the dropped edges across the twelve repositories are of this kind was not counted beyond the sample."  # 2f8c
+    fields: {}  # 2f8c

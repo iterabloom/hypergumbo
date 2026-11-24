@@ -1,0 +1,23 @@
+- op: create  # e697
+  at: '2026-11-24T22:10:00Z'  # e697
+  by: agent  # e697
+  actor: jgstern_agent  # e697
+  clock: 1  # e697
+  nonce: e697  # e697
+  data:  # e697
+    kind: work_item  # e697
+    title: "Call-resolution fixture: add the one-class-per-file layout; the measured table is the same-file table"  # e697
+    status: todo_hard  # e697
+    priority: 3  # e697
+    parent:  # e697
+    tags:  # e697
+    - call_graph  # e697
+    - analysis_quality  # e697
+    - call_matrix  # e697
+    - test_infrastructure  # e697
+    isbefore: []  # e697
+    duplicate_of: []  # e697
+    not_duplicate_of: []  # e697
+    pr_ref:  # e697
+    description: "WHAT\nThe call-resolution fixture (packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py) writes every class and every caller of an arm into ONE file; only `helper` lives in another. Real Java, C#, Groovy and Objective-C trees have one class per file, and at least one analyzer answers differently for the two layouts: Rust's guess went through a per-file last-writer table that a cross-file call does not consult (INV-hupis), while its cross-file path meets ListNameResolver, which refuses a two-way tie unless exactly one candidate is in the caller's file.\nSo the table measured on 2026-11-24 (9 of 17 languages bind by declaration order) is the same-file table. Whether the nine guess across files, and whether any of the other eight do, is NOT measured.\nDO: a second layout per language (R, D, B, Child, S each in a file of their own, imported the way the language imports), the same seven callers, the same four arms plus the file-order arm; a second MATRIX in test_call_resolution_matrix.py. Also not in the fixture: three or more same-named candidates (the ambiguity_threshold=3 guard), and one variable name typed differently in two functions of a file (the Rust variable-scope item).\nThe owner's decision on a shared resolution layer (notebookjournal_11242026_0538.md) reads this table; the entry says so."  # e697
+    fields: {}  # e697
