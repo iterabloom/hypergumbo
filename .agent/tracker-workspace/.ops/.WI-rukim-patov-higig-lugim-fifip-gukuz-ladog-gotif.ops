@@ -1,0 +1,22 @@
+- op: create  # 3ab5
+  at: '2026-11-24T13:01:16Z'  # 3ab5
+  by: agent  # 3ab5
+  actor: jgstern_agent  # 3ab5
+  clock: 1  # 3ab5
+  nonce: 3ab5  # 3ab5
+  data:  # 3ab5
+    kind: work_item  # 3ab5
+    title: "inheritance.py _qualified_external_edge can write an empty language slot into an unresolved edge's destination (not checked whether reachable)"  # 3ab5
+    status: todo_soft  # 3ab5
+    priority: 4  # 3ab5
+    parent:  # 3ab5
+    tags:  # 3ab5
+    - v20_residual  # 3ab5
+    - linker  # 3ab5
+    - id_format  # 3ab5
+    isbefore: []  # 3ab5
+    duplicate_of: []  # 3ab5
+    not_duplicate_of: []  # 3ab5
+    pr_ref:  # 3ab5
+    description: "WHAT\nlinkers/inheritance.py _qualified_external_edge writes `sym.language or \"\"` into the language slot of an unresolved edge's destination. If a class symbol with no language reaches it, the destination id starts with an empty slot.\n\nREPRO\nNone. Read in the code by the standins agent during PR #2370's sweep for off-axis language slots; whether a language-less class can reach that line was not checked.\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 3ab5
+    fields: {}  # 3ab5

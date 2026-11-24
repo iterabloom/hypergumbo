@@ -1,0 +1,23 @@
+- op: create  # 907b
+  at: '2026-11-24T13:01:09Z'  # 907b
+  by: agent  # 907b
+  actor: jgstern_agent  # 907b
+  clock: 1  # 907b
+  nonce: 907b  # 907b
+  data:  # 907b
+    kind: work_item  # 907b
+    title: "js/ts: class-field arrow functions hash no parameters; object-literal function values and export default function emit no symbol"  # 907b
+    status: todo_soft  # 907b
+    priority: 4  # 907b
+    parent:  # 907b
+    tags:  # 907b
+    - v20_residual  # 907b
+    - typescript  # 907b
+    - javascript  # 907b
+    - analysis_quality  # 907b
+    isbefore: []  # 907b
+    duplicate_of: []  # 907b
+    not_duplicate_of: []  # 907b
+    pr_ref:  # 907b
+    description: "WHAT\nTypeScript / JavaScript callables that emit no symbol, or whose parameters are in no hash (seen while building PR #2370's parameter-mark fix):\n1. A class field with an arrow-function value (m = (x?: number) => x) is a field whose id hashes only its type annotation: its parameters are in no id.\n2. An object-literal value (key: function () {} / key: () => {}) and export default function (...) {} emit no symbol. A callback declared inside one still hashes the holder's signature in its scope label (5 such ids moved in the 51-tree comparison: workadventure Stores/ErrorStore.ts line 27, a callback inside addErrorMessage: (e, options?: {...}) => {...}).\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/ts/RESULTS.md, residuals 2 and 3; bump/mine2_run1.txt (\"ts UNEXPLAINED\").\n\nNOT CHECKED\nWhether emitting these is wanted (it adds symbols and, for 1, changes hashed input: a scheme bump, owner-ruled). Related open items: WI-dokos (TypeScript/JavaScript same-named locals of unnamed holders).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 907b
+    fields: {}  # 907b

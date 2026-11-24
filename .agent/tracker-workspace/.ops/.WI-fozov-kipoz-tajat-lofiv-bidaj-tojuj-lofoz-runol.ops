@@ -21,3 +21,18 @@
     pr_ref:  # 57db
     description: "WHAT\ntests/_forge_github_harness.py line 70: _gh_free_path() builds, once per process (functools.lru_cache), a directory /tmp/hg-gh-free-path-XXXX/bin holding a symlink to every executable on PATH except gh, about 3,250 entries, with tempfile.mkdtemp. Nothing removes it. Each test process that uses the harness leaks one; an xdist run leaks one per worker. /tmp is tmpfs with 3,009,047 inodes.\n\nMEASURED 2026-11-24\n839 such directories dated Nov 12 to Nov 24 held 2,163,168 inodes; /tmp was at 3,009,027 of 3,009,047 inodes (100%) with 6.8 GB of bytes free. The pre-PR self-selected run of PR #2370 then failed: 1 failed and 450 errors, every one a hypergumbo-tracker test (test_tui*, test_trackerset) at fixture setup, OSError 28 \"No space left on device\" / \"could not create numbered dir with prefix ops-journal\"; 41,356 other tests passed. After rm -rf of the 839 directories (inodes 10%) the same run passed 44,724.\n\nREPRO\nls -d /tmp/hg-gh-free-path-* | wc -l before and after any test run that imports the harness; df -i /tmp.\n\nASKED\nThe shadow directory is removed when its process ends (atexit, or built under a pytest-managed temporary directory), and a test pins that no hg-gh-free-path directory outlives the run. Sweep: any other mkdtemp / TemporaryDirectory(delete=False) in tests/ and packages/*/tests that is never removed (not enumerated).\n\nNOT CHECKED\nOther leakers in /tmp (10,291 top-level entries named tmpXXXXXX held 13,852 inodes in all; their creators were not traced). LIVE.md's landmine said to re-run a step that reds on \"No space left\" in /tmp; a re-run does not cure an inode leak.\n\nEvidence: ~/hypergumbo_lab_notebook/v20_11242026/prepr1/ (selected.log, the run that failed) and prepr2/ (the run that passed).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 57db
     fields: {}  # 57db
+- op: update  # bf80
+  at: '2026-11-24T20:39:05Z'  # bf80
+  by: agent  # bf80
+  actor: jgstern_agent  # bf80
+  clock: 2  # bf80
+  nonce: bf80  # bf80
+  set:  # bf80
+    status: done  # bf80
+- op: discuss  # 3f89
+  at: '2026-11-24T20:39:06Z'  # 3f89
+  by: agent  # 3f89
+  actor: jgstern_agent  # 3f89
+  clock: 3  # 3f89
+  nonce: 3f89  # 3f89
+  message: "Fixed: the shadow directory is now removed by an atexit handler in tests/_forge_github_harness.py (commit be90ae34a, merged). Evidence, re-run: three new tests in tests/test_forge_github_harness.py (TestShadowDirectoryIsRemoved) failed before the change and pass after; a four-worker smart-test run of four harness-using files left the count of /tmp/hg-gh-free-path-* unchanged (12 before, 12 after); the whole pre-PR run (253 + 52 + 201 tests) also left it at 12. NOT covered: a process killed by a signal or leaving through os._exit still leaves its directory. The 12 directories already there were left by runs before the fix and were not removed."  # 3f89
