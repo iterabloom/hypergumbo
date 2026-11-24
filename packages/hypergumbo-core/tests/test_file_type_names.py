@@ -18,6 +18,7 @@ import pytest
 from hypergumbo_core.analyze.base import (
     FileTypeNames,
     canonical_type_names,
+    current_type_names,
     file_type_names,
     normalize_signature_names_first,
     normalize_signature_types_first,
@@ -242,3 +243,11 @@ def test_without_labels_a_name_before_a_colon_is_a_type() -> None:
     assert swift.canonical("[Swift.Int: URL]") == "[Int: Foundation.URL]"
     labelled = file_type_names([("URL", "Foundation.URL")])
     assert labelled.canonical("{URL: URL}") == "{URL: Foundation.URL}"
+
+
+def test_current_type_names_are_the_open_block_s() -> None:
+    """Go reads the open block's names for a rewrite that is no name chain."""
+    assert current_type_names() is None
+    with resolving_type_names(_JAVA):
+        assert current_type_names() is _JAVA
+    assert current_type_names() is None

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py
+# covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py
 """A built-in type and its other spelling hash alike in a typed stable id.
 
 WI-juzom (owner decision for stable-id scheme v19: one type, one spelling in
@@ -28,6 +29,12 @@ dictionary, its key a type), so a dictionary's key is written through the
 file's names too. Controls: a file that declares ``Int`` (``Swift.Int`` is
 then not its ``Int``), another module's ``Int``, and a tuple's element labels.
 
+Go: the specification's predeclared aliases, ``byte`` (``uint8``), ``rune``
+(``int32``) and ``any`` (``interface{}``), are hashed by the alias name, the
+spelling Go code and its standard library write most (``[]byte``, ``any``).
+Controls: a file that declares its own ``byte``, ``uint8`` or ``any``, two
+types that are not aliases (``uint`` / ``uint32``), and a non-empty interface.
+
 Each case declares one symbol in two files at the same path; ``SAME`` asserts
 one id, ``APART`` two.
 """
@@ -40,11 +47,13 @@ import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream.csharp import analyze_csharp
+from hypergumbo_lang_mainstream.go import analyze_go
 from hypergumbo_lang_mainstream.swift import analyze_swift
 
 _ANALYZERS: dict[str, tuple[str, Callable[[Path], AnalysisResult]]] = {
     "csharp": ("C.cs", analyze_csharp),
     "swift": ("s.swift", analyze_swift),
+    "go": ("p.go", analyze_go),
 }
 
 
@@ -70,6 +79,10 @@ def _pair(tmp_path: Path, case: tuple[str, str, str, str]) -> tuple[str, str]:
 
 def _cs(body: str, usings: str = "using System;\n") -> str:
     return usings + "namespace P { public class C { " + body + " } }\n"
+
+
+def _go(body: str) -> str:
+    return "package p\n" + body + "\n"
 
 
 def _sw(body: str) -> str:
@@ -140,6 +153,21 @@ SAME: dict[str, tuple[str, str, str, str]] = {
     "swift-property": ("swift", _sw("var p: Int = 0"), _sw("var p: Swift.Int = 0"), "B.p"),
     "swift-extension": ("swift", "extension Int { func g() {} }\n",
                         "extension Swift.Int { func g() {} }\n", "Int.g|Swift.Int.g"),
+    # Go: the predeclared aliases, wherever a type is hashed
+    "go-byte": ("go", _go("func F(b []uint8) {}"), _go("func F(b []byte) {}"), "F"),
+    "go-rune": ("go", _go("func F(r int32) {}"), _go("func F(r rune) {}"), "F"),
+    "go-any": ("go", _go("func F(x interface{}) {}"), _go("func F(x any) {}"), "F"),
+    "go-any-spaced": ("go", _go("func F(x interface {}) {}"), _go("func F(x any) {}"), "F"),
+    "go-map": ("go", _go("func F(m map[string]interface{}) {}"), _go("func F(m map[string]any) {}"), "F"),
+    "go-result": ("go", _go("func F() (uint8, error) { return 0, nil }"),
+                  _go("func F() (byte, error) { return 0, nil }"), "F"),
+    "go-func-type": ("go", _go("func F(f func(int32) uint8) {}"), _go("func F(f func(rune) byte) {}"), "F"),
+    "go-type-parameter": ("go", _go("func F[T interface{}](x T) {}"), _go("func F[T any](x T) {}"), "F"),
+    "go-method": ("go", _go("type S struct{}\nfunc (s S) M(x interface{}) {}"),
+                  _go("type S struct{}\nfunc (s S) M(x any) {}"), "S.M"),
+    "go-interface-method": ("go", _go("type I interface { N(x []uint8) }"),
+                            _go("type I interface { N(x []byte) }"), "I.N"),
+    "go-field": ("go", _go("type S struct { B []uint8 }"), _go("type S struct { B []byte }"), "S.B"),
     # a dictionary key named by a kind import (no label to skip in Swift)
     "swift-kind-import-key": ("swift", "import struct Foundation.URL\n" + _sw("func f(_ m: [URL: Int]) {}"),
                               "import struct Foundation.URL\n"
@@ -184,6 +212,19 @@ APART: dict[str, tuple[str, str, str, str]] = {
     "swift-declared-swift": ("swift", "enum Swift {}\n" + _sw("func f(_ x: Int) {}"),
                              "enum Swift {}\n" + _sw("func f(_ x: Swift.Int) {}"), "B.f"),
     "swift-two-types": ("swift", _sw("func f(_ x: Swift.Int) {}"), _sw("func f(_ x: Int64) {}"), "B.f"),
+    # Go: a type the file declares is not the predeclared one
+    "go-declared-byte": ("go", _go("type byte int\nfunc F(b []uint8) {}"),
+                         _go("type byte int\nfunc F(b []byte) {}"), "F"),
+    "go-declared-uint8": ("go", _go("type uint8 int\nfunc F(b []uint8) {}"),
+                          _go("type uint8 int\nfunc F(b []byte) {}"), "F"),
+    "go-declared-rune": ("go", _go("type rune string\nfunc F(r int32) {}"),
+                         _go("type rune string\nfunc F(r rune) {}"), "F"),
+    "go-declared-any": ("go", _go("type any int\nfunc F(x interface{}) {}"),
+                        _go("type any int\nfunc F(x any) {}"), "F"),
+    # not aliases
+    "go-uint-uint32": ("go", _go("func F(x uint) {}"), _go("func F(x uint32) {}"), "F"),
+    "go-int32-int64": ("go", _go("func F(x int32) {}"), _go("func F(x int64) {}"), "F"),
+    "go-nonempty-interface": ("go", _go("func F(x interface{ M() }) {}"), _go("func F(x any) {}"), "F"),
     # a tuple's element labels stay in the hash
     "swift-tuple-labels": ("swift", _sw("func f(_ t: (a: Int, b: Int)) {}"),
                            _sw("func f(_ t: (c: Int, d: Int)) {}"), "B.f"),

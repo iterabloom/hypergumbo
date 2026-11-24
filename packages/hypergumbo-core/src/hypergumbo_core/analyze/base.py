@@ -3648,6 +3648,13 @@ def resolving_type_names(names: Optional[FileTypeNames]) -> Iterator[None]:
         _FILE_TYPE_NAMES.reset(token)
 
 
+def current_type_names() -> Optional[FileTypeNames]:
+    """The names of the file being read (:func:`resolving_type_names`), or
+    None outside any block: for an analyzer whose rewrite is not a name chain
+    (Go's ``interface{}``) and must know what the file declares."""
+    return _FILE_TYPE_NAMES.get()
+
+
 def canonical_type_names(
     text: str, *, skip: Container[str] = (), keep_head: bool = False,
 ) -> str:
