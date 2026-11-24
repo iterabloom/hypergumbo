@@ -1,0 +1,23 @@
+- op: create  # 322b
+  at: '2026-11-24T20:43:09Z'  # 322b
+  by: agent  # 322b
+  actor: jgstern_agent  # 322b
+  clock: 1  # 322b
+  nonce: 322b  # 322b
+  data:  # 322b
+    kind: work_item  # 322b
+    title: "javascript: an import written with its .js extension is not followed; the call binds the last-declared same-named function"  # 322b
+    status: todo_hard  # 322b
+    priority: 3  # 322b
+    parent:  # 322b
+    tags:  # 322b
+    - call_graph  # 322b
+    - analysis_quality  # 322b
+    - call_matrix  # 322b
+    - javascript  # 322b
+    isbefore: []  # 322b
+    duplicate_of: []  # 322b
+    not_duplicate_of: []  # 322b
+    pr_ref:  # 322b
+    description: "WHAT\n  import { helper } from './util.js';   ...   helper();\nbinds the call to the helper() of whichever file declares one LAST in path order (z_decoy.js), at 0.815. With the specifier written './util' the same call reaches util.js at 0.85 in both orders (probe: ~/hypergumbo_lab_notebook/call_matrix_11242026/probe/js_noext). TypeScript, with './util', is right in both orders. An explicit .js extension is what Node's ES modules require.\nEXPECTED: the call reaches util.js's helper.\nNOT CHECKED: './util.mjs', './util.ts', a directory import, a TypeScript file importing './util.js'.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/javascript__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw javascript\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # 322b
+    fields: {}  # 322b
