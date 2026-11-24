@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py
+# covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py
 """A built-in type and its other spelling hash alike in a typed stable id.
 
 WI-juzom (owner decision for stable-id scheme v19: one type, one spelling in
@@ -17,9 +18,18 @@ spelling is written as the keyword:
 
 Controls: a ``String`` of another namespace, a bare ``String`` with no
 ``using System;``, a ``String`` the file declares, and ``dynamic`` (not an
-alias of ``object`` in the specification's table) stay apart. Each case
-declares one symbol in two files at the same path; ``SAME`` asserts one id,
-``APART`` two.
+alias of ``object`` in the specification's table) stay apart.
+
+Swift: ``Swift`` is the standard library's module, so ``Swift.Int`` and a
+bare ``Int`` name one type unless the file declares its own ``Int``. Each
+``Swift.X`` the file writes is a default (``Swift.X`` -> ``X``), and a Swift
+type text has no labels to skip (``[Swift.String: Swift.Int]`` is a
+dictionary, its key a type), so a dictionary's key is written through the
+file's names too. Controls: a file that declares ``Int`` (``Swift.Int`` is
+then not its ``Int``), another module's ``Int``, and a tuple's element labels.
+
+Each case declares one symbol in two files at the same path; ``SAME`` asserts
+one id, ``APART`` two.
 """
 from __future__ import annotations
 
@@ -30,9 +40,11 @@ import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream.csharp import analyze_csharp
+from hypergumbo_lang_mainstream.swift import analyze_swift
 
 _ANALYZERS: dict[str, tuple[str, Callable[[Path], AnalysisResult]]] = {
     "csharp": ("C.cs", analyze_csharp),
+    "swift": ("s.swift", analyze_swift),
 }
 
 
@@ -47,12 +59,21 @@ def _id(root: Path, lang: str, text: str, name: str) -> str:
 
 
 def _pair(tmp_path: Path, case: tuple[str, str, str, str]) -> tuple[str, str]:
+    """The two ids; ``name`` is ``first|second`` when the displayed names
+    differ (a Swift extension's member is named as the extension spells its
+    type)."""
     lang, first, second, name = case
-    return _id(tmp_path / "x", lang, first, name), _id(tmp_path / "y", lang, second, name)
+    first_name, _, second_name = name.partition("|")
+    return (_id(tmp_path / "x", lang, first, first_name),
+            _id(tmp_path / "y", lang, second, second_name or first_name))
 
 
 def _cs(body: str, usings: str = "using System;\n") -> str:
     return usings + "namespace P { public class C { " + body + " } }\n"
+
+
+def _sw(body: str) -> str:
+    return "struct B {\n    " + body + "\n}\n"
 
 
 #: (language, first, second, symbol): one declaration, one type spelled two ways.
@@ -99,6 +120,30 @@ SAME: dict[str, tuple[str, str, str, str]] = {
     # ``global using System;`` is a using
     "cs-global-using": ("csharp", _cs("public void F(string s) {}", "global using System;\n"),
                         _cs("public void F(String s) {}", "global using System;\n"), "C.F"),
+    # Swift: the standard library's module qualifier, wherever a type is hashed
+    "swift-param": ("swift", _sw("func f(_ x: Int) {}"), _sw("func f(_ x: Swift.Int) {}"), "B.f"),
+    "swift-return": ("swift", _sw("func f(_ x: Int) -> String { \"\" }"),
+                     _sw("func f(_ x: Swift.Int) -> Swift.String { \"\" }"), "B.f"),
+    "swift-dictionary": ("swift", _sw("func f(_ m: [String: Int]) {}"),
+                         _sw("func f(_ m: [Swift.String: Swift.Int]) {}"), "B.f"),
+    "swift-generic": ("swift", _sw("func f(_ r: Result<Int, Error>) {}"),
+                      _sw("func f(_ r: Swift.Result<Swift.Int, Swift.Error>) {}"), "B.f"),
+    "swift-nested": ("swift", _sw("func f(_ i: String.Index) {}"),
+                     _sw("func f(_ i: Swift.String.Index) {}"), "B.f"),
+    "swift-function-type": ("swift", _sw("func f(_ c: (Int) -> Bool) {}"),
+                            _sw("func f(_ c: (Swift.Int) -> Swift.Bool) {}"), "B.f"),
+    "swift-optional-inout-variadic": ("swift", _sw("func f(_ o: Int?, _ a: inout Int, _ b: Int...) {}"),
+                                      _sw("func f(_ o: Swift.Int?, _ a: inout Swift.Int, "
+                                          "_ b: Swift.Int...) {}"), "B.f"),
+    "swift-bound": ("swift", _sw("func f<T: Equatable>(_ t: T) {}"),
+                    _sw("func f<T: Swift.Equatable>(_ t: T) {}"), "B.f"),
+    "swift-property": ("swift", _sw("var p: Int = 0"), _sw("var p: Swift.Int = 0"), "B.p"),
+    "swift-extension": ("swift", "extension Int { func g() {} }\n",
+                        "extension Swift.Int { func g() {} }\n", "Int.g|Swift.Int.g"),
+    # a dictionary key named by a kind import (no label to skip in Swift)
+    "swift-kind-import-key": ("swift", "import struct Foundation.URL\n" + _sw("func f(_ m: [URL: Int]) {}"),
+                              "import struct Foundation.URL\n"
+                              + _sw("func f(_ m: [Foundation.URL: Int]) {}"), "B.f"),
 }
 
 APART: dict[str, tuple[str, str, str, str]] = {
@@ -127,6 +172,21 @@ APART: dict[str, tuple[str, str, str, str]] = {
     # two built-in types stay two
     "cs-two-types": ("csharp", _cs("public void F(int a) {}"),
                      _cs("public void F(System.Int64 a) {}"), "C.F"),
+    # a file that declares Int: its Int is not Swift.Int
+    "swift-declared-shadows": ("swift", "struct Int {}\n" + _sw("func f(_ x: Int) {}"),
+                               "struct Int {}\n" + _sw("func f(_ x: Swift.Int) {}"), "B.f"),
+    # another module's Int, and an Int under another qualifier that ends in Swift
+    "swift-other-module": ("swift", _sw("func f(_ x: Int) {}"), _sw("func f(_ x: MyMod.Int) {}"), "B.f"),
+    "swift-nested-swift": ("swift", _sw("func f(_ x: Int, _ y: Swift.Int) {}"),
+                           _sw("func f(_ x: Int, _ y: MyMod.Swift.Int) {}"), "B.f"),
+    # a file that declares a type named Swift (its Int declared in another
+    # file's extension): its Swift.Int is its own
+    "swift-declared-swift": ("swift", "enum Swift {}\n" + _sw("func f(_ x: Int) {}"),
+                             "enum Swift {}\n" + _sw("func f(_ x: Swift.Int) {}"), "B.f"),
+    "swift-two-types": ("swift", _sw("func f(_ x: Swift.Int) {}"), _sw("func f(_ x: Int64) {}"), "B.f"),
+    # a tuple's element labels stay in the hash
+    "swift-tuple-labels": ("swift", _sw("func f(_ t: (a: Int, b: Int)) {}"),
+                           _sw("func f(_ t: (c: Int, d: Int)) {}"), "B.f"),
 }
 
 

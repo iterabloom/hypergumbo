@@ -231,3 +231,14 @@ def test_without_a_root_the_root_spelling_is_left_alone() -> None:
     plain = file_type_names([], defaults={"System.String": "string"})
     assert plain.canonical("global::System.String") == "global::System.String"
     assert plain.canonical("System.String") == "string"
+
+
+def test_without_labels_a_name_before_a_colon_is_a_type() -> None:
+    """Swift's ``[K: V]`` is a dictionary: its key is a type (WI-juzom). A
+    language with labels (TypeScript's ``{a: T}``) keeps skipping the label."""
+    swift = file_type_names([("URL", "Foundation.URL")], defaults={"Swift.Int": "Int"},
+                            labels=False)
+    assert swift.canonical("[URL: Swift.Int]") == "[Foundation.URL: Int]"
+    assert swift.canonical("[Swift.Int: URL]") == "[Int: Foundation.URL]"
+    labelled = file_type_names([("URL", "Foundation.URL")])
+    assert labelled.canonical("{URL: URL}") == "{URL: Foundation.URL}"
