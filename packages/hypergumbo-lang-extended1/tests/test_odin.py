@@ -161,11 +161,14 @@ class TestAnalyzeOdin:
         """Should extract struct declarations."""
         result = analyze_odin(odin_repo)
 
-        structs = [s for s in result.symbols if s.kind == "class" and (s.meta is None or "is_union" not in s.meta)]
+        # A struct is kind ``struct`` (WI-lilab: it was ``class``).
+        structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = {s.name for s in structs}
 
         assert "Point" in struct_names
         assert "Vector" in struct_names
+        assert "Result" not in struct_names
+        assert not [s for s in result.symbols if s.kind == "class"]
 
     def test_extracts_enums(self, odin_repo: Path) -> None:
         """Should extract enum declarations."""
@@ -180,10 +183,13 @@ class TestAnalyzeOdin:
         """Should extract union declarations."""
         result = analyze_odin(odin_repo)
 
-        unions = [s for s in result.symbols if s.meta and s.meta.get("is_union")]
+        # A union is kind ``union`` (WI-lilab: it was ``class``).
+        unions = [s for s in result.symbols if s.kind == "union"]
         union_names = {s.name for s in unions}
 
         assert "Result" in union_names
+        assert "Point" not in union_names
+        assert all((s.meta or {}).get("is_union") for s in unions)
 
     def test_extracts_imports(self, odin_repo: Path) -> None:
         """Should extract import edges."""
@@ -421,7 +427,7 @@ def _kind_slot_result(tmp_path: Path):
 def test_the_odin_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
     result = _kind_slot_result(tmp_path)
     got = sorted((s.kind, s.name) for s in result.symbols)
-    assert got == [('class', 'Point'), ('class', 'Value'), ('enum', 'Color'), ('function', 'helper'), ('function', 'main')], got
+    assert got == [('enum', 'Color'), ('function', 'helper'), ('function', 'main'), ('struct', 'Point'), ('union', 'Value')], got
 
 
 def test_every_odin_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:

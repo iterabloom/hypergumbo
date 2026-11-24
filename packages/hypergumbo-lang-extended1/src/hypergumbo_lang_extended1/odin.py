@@ -29,8 +29,16 @@ Odin grammar key patterns:
 Identity: every stable_id hashes the procedures enclosing the symbol
 (``_odin_scope``; INV-fabih), empty at top level.
 
-Symbol kinds: a procedure is ``kind="function"``, a struct ``kind="class"``,
-an enum ``kind="enum"``, and a union ``kind="class"`` with ``meta["is_union"]``.
+Symbol kinds: a procedure is ``kind="function"``, a struct ``kind="struct"``,
+an enum ``kind="enum"``, and a union ``kind="union"`` (its ``meta["is_union"]``
+stays). Struct and union were ``kind="class"`` until stable-id scheme v19
+(WI-lilab): ``struct`` and ``union`` are the registered kinds (ADR-0027)
+for these constructs (the Go, Rust, C and Zig analyzers report ``struct``;
+Zig and F# report ``union``), and an Odin union is a tagged sum type, which
+the registry's ``union`` names. Every stable id
+hashes the Symbol's kind; a procedure hashed the role word ``proc`` before
+v19 (struct and union already hashed ``struct`` / ``union``, so only their
+node ids moved).
 A plain call resolves its callee by name through the registry, else it gets
 an unresolved edge; a qualified ``module.func(...)`` call always gets an
 unresolved edge named ``module.func``. Calls outside a procedure are dropped.
@@ -164,7 +172,7 @@ def _extract_symbols_recursive(
             sym = Symbol(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
                 stable_id=analyzer.compute_stable_id(
-                    node, kind="proc", name=name,
+                    node, kind="function", name=name,
                     qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
@@ -194,14 +202,14 @@ def _extract_symbols_recursive(
             field_count = sum(1 for c in node.children if c.type == "field")
 
             sym = Symbol(
-                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="struct", name=name,
                     qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
                 name=name,
-                kind="class",
+                kind="struct",
                 language="odin",
                 path=rel_path,
                 span=Span(
@@ -247,14 +255,14 @@ def _extract_symbols_recursive(
         name = _get_identifier(node)
         if name:
             sym = Symbol(
-                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "union"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="union", name=name,
                     qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
                 name=name,
-                kind="class",
+                kind="union",
                 language="odin",
                 path=rel_path,
                 span=Span(
