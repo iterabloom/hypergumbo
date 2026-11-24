@@ -1,0 +1,9 @@
+Original commit body from 85feba1fbb28d4fea08660fca11df8cbc5b36f84:
+
+Changelog audit of the Unreleased sections, with the reader first. CHANGELOG.md only; the tracker changelog needs nothing (no commit since the last audit touches the tracker package).
+
+Corrected: two lines of the released 10.0.0 section had been edited by a later commit (validation_report "0.4 to 0.6", and "ids carrying @<column>" on the name_slot_stats line). 10.0.0 shipped 0.5. Both are restored: the released sections are byte-identical to the v10.0.0 tag. The 0.5 to 0.6 step is now under Unreleased.
+
+Added, missing from the range audited (188 commits since the last audit): a go-swagger route marker's name is its route; tsconfig entries among the respelled node ids; component imports skip ignored files; the ADR-0036 and ADR-0034 amendments and audit 0028 under Documentation.
+
+Reorganised, no fact removed (a token check found every code identifier, version and number of the old section in the new one): a seven-line Summary, as 10.0.0 has; version transitions lead the breaking changes; 21 entry-point bullets become nine, one per ecosystem; 21 stable-id bullets become 11; "Node ids and edges" becomes three groups. 146 bullets become 129.
