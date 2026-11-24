@@ -208,12 +208,10 @@ DISTINCT: dict[str, tuple[str, str, str, str]] = {
                 "export function f(cb: (w: W, x: number) => void) {}\n", "f"),
     "ts-object-type-property": ("ts", "export function f(o: { x: number }) {}\n",
                                 "export function f(o: { y: number }) {}\n", "f"),
-    # A default value is a value, hashed as written: an arrow function there
-    # keeps its parameter names, as any expression keeps its identifiers.
-    "ts-arrow-default-value": ("ts", "export function f(cb: (x: number) => void = (y: number) => {}) {}\n",
-                               "export function f(cb: (x: number) => void = (z: number) => {}) {}\n", "f"),
-    "ts-string-default-value": ("ts", "export function f(s: string = \"(a: b) => c\") {}\n",
-                                "export function f(s: string = \"(d: b) => c\") {}\n", "f"),
+    # A default value is not hashed at all since stable-id v19
+    # (test_jsts_default_values_not_hashed.py); its presence is.
+    "ts-has-a-default": ("ts", "export function f(cb: (x: number) => void = (y: number) => {}) {}\n",
+                         "export function f(cb: (x: number) => void) {}\n", "f"),
 }
 
 

@@ -131,20 +131,22 @@ def test_a_comment_in_a_declaration_moves_no_id(
 
 
 def test_a_comment_looking_literal_is_the_literal(tmp_path: Path) -> None:
-    """``"a /* b */ c"`` and ``"a  c"`` are two defaults, two ids."""
-    one = _ids(tmp_path, analyze_javascript, "m.ts", 'export function g(s: string = "a /* b */ c"): void {}\n')
-    two = _ids(tmp_path, analyze_javascript, "m.ts", 'export function g(s: string = "a  c"): void {}\n')
-    assert one[("function", 0)][1] != two[("function", 0)][1]
+    """``"a /* b */ c"`` and ``"a  c"`` are two literals, two ids. Since
+    stable-id v19 a default value is hashed as ``...``, so the literal is a
+    decorator's argument on an untyped parameter, which is hashed."""
+    one = _ids(tmp_path, analyze_javascript, "m.ts", 'export class K { m(@V("a /* b */ c") s): void {} }\n')
+    two = _ids(tmp_path, analyze_javascript, "m.ts", 'export class K { m(@V("a  c") s): void {} }\n')
+    assert one[("method", 0)][1] != two[("method", 0)][1]
 
 
 @pytest.mark.parametrize(("left", "right"), [
-    ("/[/*]x/, ", "/[/*]y/, "),      # a regex class holding ``/*`` is no comment
-    ("[\n  /x\\//g,\n  /y/], ", "[\n  /x\\//m,\n  /y/], "),  # nor a ``\\/`` before the closing ``/``
+    ("/[/*]x/", "/[/*]y/"),      # a regex class holding ``/*`` is no comment
+    ("[\n  /x\\//g,\n  /y/]", "[\n  /x\\//m,\n  /y/]"),  # nor a ``\\/`` before the closing ``/``
 ])
 def test_a_regex_holding_comment_characters_stays_apart(tmp_path: Path, left: str, right: str) -> None:
-    one = _ids(tmp_path, analyze_javascript, "m.ts", f"export function g(r = {left}s: number): void {{}}\n")
-    two = _ids(tmp_path, analyze_javascript, "m.ts", f"export function g(r = {right}s: number): void {{}}\n")
-    assert one[("function", 0)][1] != two[("function", 0)][1]
+    one = _ids(tmp_path, analyze_javascript, "m.ts", f"export class K {{ m(@V({left}) r, s: number): void {{}} }}\n")
+    two = _ids(tmp_path, analyze_javascript, "m.ts", f"export class K {{ m(@V({right}) r, s: number): void {{}} }}\n")
+    assert one[("method", 0)][1] != two[("method", 0)][1]
 
 
 def test_a_javascript_default_split_ignores_a_comment(tmp_path: Path) -> None:
