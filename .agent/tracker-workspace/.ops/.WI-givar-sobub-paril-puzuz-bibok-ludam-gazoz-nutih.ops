@@ -1,0 +1,25 @@
+- op: create  # 9f78
+  at: '2026-11-24T10:17:16Z'  # 9f78
+  by: agent  # 9f78
+  actor: jgstern_agent  # 9f78
+  clock: 1  # 9f78
+  nonce: 9f78  # 9f78
+  data:  # 9f78
+    kind: work_item  # 9f78
+    title: "tauri: command links start at a line-0 placeholder, not the calling function; page emit to a Rust listener is not linked"  # 9f78
+    status: todo_soft  # 9f78
+    priority: 3  # 9f78
+    parent:  # 9f78
+    tags:  # 9f78
+    - cross_language_linkers  # 9f78
+    - linker  # 9f78
+    - rust  # 9f78
+    - javascript  # 9f78
+    - outside_review_10_0_0  # 9f78
+    - reported_not_rerun  # 9f78
+    isbefore: []  # 9f78
+    duplicate_of: []  # 9f78
+    not_duplicate_of: []  # 9f78
+    pr_ref:  # 9f78
+    description: "WHAT (as reported)\nTauri (tauri's examples/api): all 6 JavaScript-to-Rust command links were found, including plugin commands (plugin:app-menu|toggle, popup), and Rust emit(\"rust-event\") was linked to the page's listener. Two gaps:\n1. Each command link starts at a placeholder at line 0 of the Svelte file, not at the function that calls invoke (echo() at Communication.svelte line 39). explain on the Rust command says \"called by echo (Communication.svelte:0)\", and a reverse slice from the Rust command stops at the placeholder. The 10.0.0 changelog says such placeholders are attached to their enclosing function.\n2. The page's emit('js-event') to Rust's listener was not linked.\n\nNOT CHECKED\nWhether the line-0 anchor is specific to .svelte call sites (PR #2354 re-slotted Svelte file nodes) or also occurs in .ts/.js.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 9f78
+    fields: {}  # 9f78

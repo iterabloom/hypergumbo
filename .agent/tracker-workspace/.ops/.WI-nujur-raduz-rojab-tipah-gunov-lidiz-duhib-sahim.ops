@@ -1,0 +1,24 @@
+- op: create  # 8d01
+  at: '2026-11-24T10:17:33Z'  # 8d01
+  by: agent  # 8d01
+  actor: jgstern_agent  # 8d01
+  clock: 1  # 8d01
+  nonce: 8d01  # 8d01
+  data:  # 8d01
+    kind: work_item  # 8d01
+    title: "electron: a channel passed through a preload wrapper's parameter yields no IPC link (electron-react-boilerplate: 0 links)"  # 8d01
+    status: todo_soft  # 8d01
+    priority: 3  # 8d01
+    parent:  # 8d01
+    tags:  # 8d01
+    - cross_language_linkers  # 8d01
+    - linker  # 8d01
+    - javascript  # 8d01
+    - outside_review_10_0_0  # 8d01
+    - reported_not_rerun  # 8d01
+    isbefore: []  # 8d01
+    duplicate_of: []  # 8d01
+    not_duplicate_of: []  # 8d01
+    pr_ref:  # 8d01
+    description: "WHAT (as reported)\nElectron (electron-react-boilerplate, the common starting template): the IPC linker read 19 files and produced 0 links, reporting candidates_unresolved. The preload script is a pass-through wrapper that takes the channel as a parameter (sendMessage(channel) calling ipcRenderer.send(channel)), so the sender sendMessage('ipc-example') at index.tsx line 12 is never tied to ipcMain.on('ipc-example'). A generic event-name matcher did group the main-process handler and the page's once('ipc-example') listener under one channel. A reverse slice from the handler finds 1 edge. ADR-0054 names the cause (a channel that is not a string literal is skipped) and added the candidates_unresolved label; this item asks for the link.\n\nNOT CHECKED\nThe unreleased work on Electron preload scripts (changelog: \"Electron IPC handlers and preload scripts\") against this template. Related, distinct: WI-pisur (an IPC call in a comment), WI-bokip (preload path into build output).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 8d01
+    fields: {}  # 8d01
