@@ -12,7 +12,8 @@ deleting the first moved the second's id onto the first's.
 
 The guard is hashed as written, layout dropped (``layout_free``): Rust's
 ``cfg`` attributes on an item and on every enclosing item (sorted when one
-item has several; ``cfg_attr`` gates no item and is not hashed); Swift's
+item has several; an inner ``#![cfg]`` of a block and a ``cfg_attr(P,
+cfg(Q))`` since v19, a ``cfg_attr`` without ``cfg`` gating no item); Swift's
 ``#if`` / ``#elseif`` / ``#else`` branch enclosing a declaration at each
 level, a branch named by its chain's ``#if`` condition and its own (``#if A
 #elseif B``, ``#if A #else``). An unguarded declaration hashes what it did.
@@ -114,6 +115,27 @@ RUST_CASES: dict[str, tuple[str, str, str]] = {
                                "#[cfg(windows)]\npub fn outer() { fn inner() {} }\n"),
     "two-attributes": ("", "#[cfg(unix)]\n#[cfg(feature = \"a\")]\npub fn two() {}\n",
                        "#[cfg(unix)]\n#[cfg(feature = \"b\")]\npub fn two() {}\n"),
+    # WI-sifar: an inner #![cfg] guards its item as an outer one does.
+    "inner-cfg-mod": ("", "mod imp {\n    #![cfg(unix)]\n    pub fn g() -> i32 { 1 }\n}\n",
+                      "mod imp {\n    #![cfg(windows)]\n    pub fn g() -> i32 { 2 }\n}\n"),
+    "inner-cfg-fn": ("", "pub fn outer() {\n    #![cfg(unix)]\n    fn inner() {}\n}\n",
+                     "pub fn outer() {\n    #![cfg(windows)]\n    fn inner() {}\n}\n"),
+    "inner-cfg-impl": (
+        "pub struct Foo;\n",
+        "impl Foo {\n    #![cfg(unix)]\n    pub fn f(&self) -> i32 { 1 }\n}\n",
+        "impl Foo {\n    #![cfg(windows)]\n    pub fn f(&self) -> i32 { 2 }\n}\n",
+    ),
+    "inner-cfg-trait": ("", "pub trait T {\n    #![cfg(unix)]\n    fn t(&self);\n}\n",
+                        "pub trait T {\n    #![cfg(windows)]\n    fn t(&self);\n}\n"),
+    "inner-cfg-extern": ("", "extern \"C\" {\n    #![cfg(unix)]\n    fn c_open() -> i32;\n}\n",
+                         "extern \"C\" {\n    #![cfg(windows)]\n    fn c_open() -> i32;\n}\n"),
+    # WI-sifar: cfg_attr(P, cfg(Q)) decides whether the item exists.
+    "cfg-attr-cfg": ("", "#[cfg_attr(unix, cfg(feature = \"a\"))]\npub fn h() {}\n",
+                     "#[cfg_attr(unix, cfg(feature = \"b\"))]\npub fn h() {}\n"),
+    "nested-cfg-attr": (
+        "", "#[cfg_attr(unix, cfg_attr(feature = \"x\", cfg(a)))]\npub struct N { x: i32 }\n",
+        "#[cfg_attr(unix, cfg_attr(feature = \"x\", cfg(b)))]\npub struct N { x: i32 }\n",
+    ),
 }
 
 
@@ -171,6 +193,10 @@ def test_rust_guard_layout_is_not_hashed(tmp_path: Path) -> None:
     b = _ids(analyze_rust, tmp_path / "b", "src/lib.rs",
              "#[cfg( feature = \"x\" )]\npub fn f() {}\n")
     assert a == b
+    c = _ids(analyze_rust, tmp_path / "c", "src/lib.rs", "#[cfg(all(a, b))]\npub fn f() {}\n")
+    d = _ids(analyze_rust, tmp_path / "d", "src/lib.rs",
+             "#[cfg(all(a, b // why\n))]\npub fn f() {}\n")
+    assert list(c.values()) == list(d.values()) != list(a.values())
 
 
 def test_rust_cfg_attr_and_other_attributes_are_not_hashed(tmp_path: Path) -> None:
@@ -409,3 +435,42 @@ def test_cpp_slot_spells_the_branches() -> None:
     assert slots("#ifdef A\nnamespace n {\nstruct K {\n#ifndef B\n  int run() { return 1; }\n"
                  "#endif\n};\n}\n#endif\n", "K::run") == ["#ifdef A/n/#ifndef B/K::run"]
     assert slots("namespace n { struct K { int run() { return 1; } }; }\n", "K::run") == ["n/K::run"]
+
+
+def test_rust_inner_and_outer_cfg_hash_alike(tmp_path: Path) -> None:
+    """``mod m { #![cfg(unix)] .. }`` is ``#[cfg(unix)] mod m { .. }``: the
+    inner form is hashed in the outer spelling (WI-sifar)."""
+    outer = _ids(analyze_rust, tmp_path / "o", "src/lib.rs",
+                 "#[cfg(unix)]\nmod m {\n    pub fn g() {}\n}\n")
+    inner = _ids(analyze_rust, tmp_path / "i", "src/lib.rs",
+                 "\nmod m {\n    #![cfg(unix)]\n    pub fn g() {}\n}\n")
+    plain = _ids(analyze_rust, tmp_path / "p", "src/lib.rs", "\nmod m {\n\n    pub fn g() {}\n}\n")
+    g_outer = next(v for k, v in outer.items() if k[1] == "g")
+    g_inner = next(v for k, v in inner.items() if k[1] == "g")
+    g_plain = next(v for k, v in plain.items() if k[1] == "g")
+    assert g_outer == g_inner != g_plain
+
+
+def test_rust_file_level_inner_cfg_is_not_hashed(tmp_path: Path) -> None:
+    """A file's own ``#![cfg]`` guards every symbol of the file alike: the
+    file anchor identifies the file, and it is not read."""
+    plain = _ids(analyze_rust, tmp_path / "p", "src/lib.rs", "\npub fn f() {}\nmod m { pub fn g() {} }\n")
+    guarded = _ids(analyze_rust, tmp_path / "g", "src/lib.rs",
+                   "#![cfg(feature = \"x\")]\npub fn f() {}\nmod m { pub fn g() {} }\n")
+    assert len(plain) >= 2  # reach
+    assert plain == guarded
+
+
+def test_rust_cfg_attr_keeps_only_its_cfg(tmp_path: Path) -> None:
+    """A ``cfg_attr`` is hashed as its predicate and the ``cfg`` attributes it
+    lists; ``derive``, ``doc(cfg(..))`` and the like decide no existence."""
+    def g(text: str, root: str) -> str | None:
+        ids = _ids(analyze_rust, tmp_path / root, "src/lib.rs", text + "pub fn g() {}\n")
+        return next(v for k, v in ids.items() if k[1] == "g")
+
+    lean = g("#[cfg_attr(unix, cfg(a))]\n", "a")
+    mixed = g("#[cfg_attr(unix, derive(Debug), cfg(a), allow(dead_code))]\n", "b")
+    doc_only = g("#[cfg_attr(docsrs, doc(cfg(feature = \"x\")))]\n", "c")
+    plain = g("\n", "d")
+    assert lean == mixed
+    assert doc_only == plain != lean
