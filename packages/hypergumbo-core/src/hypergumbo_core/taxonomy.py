@@ -524,6 +524,49 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.slim"],
         roles=FileRole.CONFIG,
     ),
+    # The other view-template linkers' labels, registered as the Rails ones
+    # above were and for the same reason: each template node carries its
+    # file's template language (ADR-0031 Class A), and these seven were off
+    # the language axis (an axis_conformance error per template). The label is
+    # the word the linker already writes, so no template's id moves: Phoenix
+    # (eex, heex, leex), Spring (ftl for FreeMarker, vm for Velocity, jsp),
+    # Django (jinja). Not folded to elixir, java, python or html: each is a
+    # template language embedding another one, as erb is.
+    "eex": LanguageSpec(
+        name="eex",
+        extensions=["*.eex"],
+        roles=FileRole.CONFIG,
+    ),
+    "heex": LanguageSpec(
+        name="heex",
+        extensions=["*.heex"],
+        roles=FileRole.CONFIG,
+    ),
+    "leex": LanguageSpec(
+        name="leex",
+        extensions=["*.leex"],
+        roles=FileRole.CONFIG,
+    ),
+    "ftl": LanguageSpec(
+        name="ftl",
+        extensions=["*.ftl", "*.ftlh"],
+        roles=FileRole.CONFIG,
+    ),
+    "vm": LanguageSpec(
+        name="vm",
+        extensions=["*.vm"],
+        roles=FileRole.CONFIG,
+    ),
+    "jsp": LanguageSpec(
+        name="jsp",
+        extensions=["*.jsp"],
+        roles=FileRole.CONFIG,
+    ),
+    "jinja": LanguageSpec(
+        name="jinja",
+        extensions=["*.jinja", "*.jinja2", "*.j2"],
+        roles=FileRole.CONFIG,
+    ),
     "css": LanguageSpec(
         name="css",
         extensions=["*.css", "*.scss", "*.sass", "*.less"],
