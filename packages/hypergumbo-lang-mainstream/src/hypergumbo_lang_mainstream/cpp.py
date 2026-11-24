@@ -131,7 +131,10 @@ Call-edge details:
   (``_cpp_scope_slot``), so two nested ``class Inner`` (or two in sibling
   namespaces, or two namespace-level ``run``) and their members do not tie.
   Top-level declarations and members of top-level classes hash an empty
-  slot.
+  slot. Since scheme v19 the preprocessor branches open at a declaration
+  are in the slot too, at the level they open in (``c_family_open_guards``,
+  WI-sifar; a whole-file include guard is not a branch), so ``K::run`` under
+  ``#ifdef FAST`` and under its ``#else`` do not tie.
 - **Overloads** (WI-hilum): every definition records its parameters in
   ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
   stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
@@ -212,7 +215,7 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
     c_family_array_declarator, c_family_declarator, c_family_declares_local,
     c_family_file_scope_variables, c_family_is_value_operand, c_family_parameter_list, c_family_parameters,
-    c_family_scope_chain,
+    c_family_scope_chain, c_family_with_guards,
 )
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
@@ -363,8 +366,25 @@ def _cpp_scope_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
     the trailing ones ``name`` already spells: ``""`` for a top-level
     declaration and a member of a top-level class, ``A/Inner::go`` for a
     member of a nested one.
+
+    The preprocessor branches open at ``node`` are in the chain too, at the
+    level they open in (``c_family_open_guards``, WI-sifar): ``#ifdef FAST
+    int run(int)`` and ``#else int run(int)`` in one class tied until scheme
+    v19. A branch label (it starts with ``#``) is never a name the member
+    spells, so the drop skips it: ``K::run`` under ``#ifdef FAST`` in ``class
+    K`` hashes ``#ifdef FAST/K::run``. An unguarded declaration hashes what it
+    did.
     """
-    return nested_member_qualified_name(_cpp_scope_chain(node, source), name, "::")
+    chain = _cpp_scope_chain(node, source, guards=True)
+    scopes = [i for i, label in enumerate(chain) if not label.startswith("#")]
+    names = [chain[i] for i in scopes]
+    if names == chain:
+        return nested_member_qualified_name(chain, name, "::")
+    spelled = name.split("::")[:-1]
+    if spelled and names[-len(spelled):] == spelled:
+        dropped = set(scopes[-len(spelled):])
+        chain = [label for i, label in enumerate(chain) if i not in dropped]
+    return nested_qualified_name(chain, name)
 
 
 #: Specifiers that are classes for member ownership: a union's constructor
@@ -405,19 +425,21 @@ def _cpp_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return _cpp_strip_template_args(_node_text(qualified, source))
 
 
-def _cpp_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+def _cpp_scope_chain(
+    node: "tree_sitter.Node", source: bytes, *, guards: bool = False,
+) -> list[str]:
     """``c_family_scope_chain`` for C++, with each enclosing class declared
     under a qualified name contributing every part of it (``A::B`` is ``A``,
     ``B``), so a member of ``class A::B`` has the chain an in-body member of
     a nested ``B`` in ``A`` has. Every other scope is read as
-    ``c_family_scope_chain`` reads it."""
-    chain: list[str] = []
+    ``c_family_scope_chain`` reads it, ``guards`` included."""
+    chain: list[tuple[int, str]] = []
     current = node.parent
     while current is not None:
         if current.type in _CPP_CLASS_SPECIFIERS:
             name = _cpp_type_name(current, source)
             if name is not None:
-                chain.extend(reversed(name.split("::")))
+                chain.extend((current.start_byte, part) for part in reversed(name.split("::")))
         elif current.type == "namespace_definition":
             ns = next(
                 (c for c in current.children if c.type in (
@@ -426,10 +448,11 @@ def _cpp_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
                 None,
             )
             if ns is not None:
-                chain.append(_node_text(ns, source))
+                chain.append((current.start_byte, _node_text(ns, source)))
         current = current.parent
-    chain.reverse()
-    return chain
+    if guards:
+        return c_family_with_guards(node, source, chain)
+    return [label for _start, label in reversed(chain)]
 
 
 def _emit_cpp_pure_virtual(
@@ -2990,7 +3013,7 @@ def _extract_edges_from_tree(
             stable_id=_analyzer.compute_stable_id(
                 declaration, kind="variable", name=name,
                 qualified_name=nested_qualified_name(
-                    c_family_scope_chain(declaration, source, functions=True), name,
+                    c_family_scope_chain(declaration, source, functions=True, guards=True), name,
                 ),
                 file_stable_id=_analyzer._file_anchor(rel_path),
             ),

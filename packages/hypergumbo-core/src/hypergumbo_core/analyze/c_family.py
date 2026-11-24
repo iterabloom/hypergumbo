@@ -61,6 +61,18 @@ tree-sitter-cpp, tree-sitter-glsl extends tree-sitter-c) and cannot import
 inline member's identity needs beside its bare name (and, on request, the
 enclosing functions a block-scope declaration's identity needs).
 
+Preprocessor branches
+---------------------
+:func:`c_family_open_guards` names the ``#if`` / ``#ifdef`` / ``#ifndef`` /
+``#elif`` / ``#else`` branches open at a declaration, as Swift's ``#if``
+branches are named (WI-sifar): ``#ifdef A``, ``#if B #elif C``, ``#if B
+#else``, each as written in canonical spacing, not evaluated.
+``c_family_scope_chain(guards=True)`` (and ``cpp.py``'s own chain) puts each
+at the level it opens in, so two alternatives of one declaration hash apart.
+The branches are read off the directive tokens in source order, not off the
+tree's nesting, which tree-sitter's error recovery bends (``#ifdef
+__cplusplus extern "C" { #endif``); a whole-file include guard is left out.
+
 Function values
 ---------------
 A function named as a VALUE (META-mino) -- a pointer initialiser
@@ -86,10 +98,12 @@ taken for the ``ZSTD_frameHeaderSize()`` defined in another file.
 """
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 
+from .. import kept_work
 from ..overload_arity import parameter_entry
-from .base import iter_tree
+from .base import iter_tree, layout_free, without_comments
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -418,6 +432,7 @@ _SCOPE_NAMES = {
 
 def c_family_scope_chain(
     node: "tree_sitter.Node", source: bytes, *, types: bool = True, functions: bool = False,
+    guards: bool = False,
 ) -> list[str]:
     """The names of the scopes enclosing ``node``, outermost first.
 
@@ -430,9 +445,12 @@ def c_family_scope_chain(
     inside a function; INV-punig). ``types=False`` leaves the namespaces and
     classes out: C scopes a tag declared inside a ``struct`` to the file
     (C11 6.2.1), so its chain is the functions alone. An anonymous namespace
-    or class, or a macro-named function, contributes nothing.
+    or class, or a macro-named function, contributes nothing. ``guards=True``
+    adds the preprocessor branches open at ``node``
+    (:func:`c_family_open_guards`), each at the level it opens in.
     """
     chain: list[str] = []
+    starts: list[int] = []
     current = node.parent
     while current is not None:
         name_types = _SCOPE_NAMES.get(current.type) if types else None
@@ -442,6 +460,7 @@ def c_family_scope_chain(
                 chain.append(
                     source[name.start_byte:name.end_byte].decode("utf-8", errors="replace")
                 )
+                starts.append(current.start_byte)
         elif functions and current.type == "function_definition":
             declared = c_family_declarator(current).name
             if declared is not None:
@@ -450,6 +469,181 @@ def c_family_scope_chain(
                         "utf-8", errors="replace",
                     )
                 )
+                starts.append(current.start_byte)
         current = current.parent
+    if guards:
+        return c_family_with_guards(node, source, list(zip(starts, chain, strict=True)))
     chain.reverse()
     return chain
+
+
+def c_family_with_guards(
+    node: "tree_sitter.Node", source: bytes, scopes: list[tuple[int, str]],
+) -> list[str]:
+    """The labels of ``scopes`` (each an enclosing scope's first byte and its
+    label, innermost first, as a walk up the parents collects them) and of the
+    preprocessor branches open at ``node`` (:func:`c_family_open_guards`),
+    outermost first: each branch sits at the level it opens in, so ``#ifdef
+    A`` around ``namespace n`` comes before ``n`` and ``#ifdef A`` inside it
+    after. Labels of one scope (``A``, ``B`` of ``class A::B``) keep their
+    order."""
+    merged = sorted([*reversed(scopes), *c_family_open_guards(node, source)], key=lambda e: e[0])
+    return [label for _start, label in merged]
+
+
+#: The directive tokens of a preprocessor conditional (tree-sitter-c, and the
+#: grammars that extend it), by what each does to the open branches.
+_GUARD_OPENS = frozenset({"#if", "#ifdef", "#ifndef"})
+_GUARD_BRANCHES = frozenset({"#elif", "#elifdef", "#elifndef", "#else"})
+#: The opening of an include guard: ``#ifndef X`` or ``#if !defined(X)``.
+_INCLUDE_GUARD = re.compile(r"#ifndef (\w+)|#if !defined ?\(?(\w+)\)?")
+#: A backslash line continuation: layout inside a directive.
+_CONTINUATION = re.compile(r"\\\r?\n")
+
+
+class _GuardEvent(NamedTuple):
+    """One directive of a file's conditionals, in source order: an ``open``
+    (``#if`` / ``#ifdef`` / ``#ifndef``), a ``branch`` (``#elif`` /
+    ``#elifdef`` / ``#else``) or a ``close`` (``#endif``); its label; and the
+    byte where its line ends (an include guard's ``#define`` follows it)."""
+
+    start: int
+    op: str
+    label: str
+    line_end: int
+
+
+def _directive_line_end(source: bytes, start: int) -> int:
+    """Where the directive line holding byte ``start`` ends: its first line
+    break that no backslash continues."""
+    while True:
+        newline = source.find(b"\n", start)
+        if newline < 0:
+            return len(source)
+        before = newline - 1 if source[newline - 1:newline] == b"\r" else newline
+        if source[before - 1:before] != b"\\":
+            return newline
+        start = newline + 1
+
+
+def _guard_events(root: "tree_sitter.Node", source: bytes) -> list[_GuardEvent]:
+    """Every conditional directive of the tree, in source order, each labelled
+    as written in canonical spacing: its keyword, then the rest of its line
+    (``#ifdef X``, ``#if defined(A)&&defined(B)``; ``layout_free``, comments and
+    a backslash line continuation being layout too); ``#else`` alone.
+
+    Read off the directive TOKENS, not the tree's nesting: when a branch's
+    ``#endif`` falls inside a block it did not open -- ``#ifdef __cplusplus
+    extern "C" { #endif``, in most C headers -- tree-sitter's recovery keeps
+    the rest of the file inside the conditional and reads that ``#endif`` as a
+    stray ``preproc_call``; a directive inside an argument or parameter list
+    is a bare token of an ``ERROR`` node. In source order each branch opens
+    and closes where the preprocessor opens and closes it.
+    """
+    events: list[_GuardEvent] = []
+    for node in iter_tree(root):
+        if node.type == "preproc_directive":  # a stray ``#endif``, ``#else``, ``#elif``
+            keyword = "".join(_text(source, node.start_byte, node.end_byte).split())
+        elif node.child_count == 0 and not node.is_missing:
+            keyword = node.type
+        else:
+            continue
+        if keyword not in _GUARD_OPENS and keyword not in _GUARD_BRANCHES and keyword != "#endif":
+            continue
+        line_end = _directive_line_end(source, node.end_byte)
+        if keyword in _GUARD_OPENS or keyword in ("#elif", "#elifdef", "#elifndef"):
+            operand = _CONTINUATION.sub(" ", _text(source, node.end_byte, line_end))
+            label = f"{keyword} {layout_free(operand)}".rstrip()
+        else:
+            label = keyword
+        op = "open" if keyword in _GUARD_OPENS else "close" if keyword == "#endif" else "branch"
+        events.append(_GuardEvent(node.start_byte, op, label, line_end))
+    events.sort()
+    return _without_include_guard(root, source, events)
+
+
+def _without_include_guard(
+    root: "tree_sitter.Node", source: bytes, events: list[_GuardEvent],
+) -> list[_GuardEvent]:
+    """``events`` without the file's include guard, when it has one.
+
+    An include guard -- ``#ifndef FOO_H`` / ``#define FOO_H`` / ... /
+    ``#endif`` around a whole file, or ``#if !defined(FOO_H)`` -- keeps a
+    header from being read twice; it chooses between no alternatives, and its
+    macro's name is a spelling of the file's path. Hashed, it would move every
+    id of a header whose guard is renamed. It is recognised when the file's
+    first directive opens it, nothing but comments precedes it, the next
+    lines ``#define`` its macro, it has no ``#elif`` / ``#else``, and its
+    ``#endif`` is the file's last directive with nothing but comments after
+    it (the rest of that directive's line included: ``#endif FOO_H``).
+    """
+    if not events or events[0].op != "open":
+        return events
+    match = _INCLUDE_GUARD.fullmatch(events[0].label)
+    if match is None or without_comments(_text(source, 0, events[0].start)).strip():
+        return events
+    macro = match.group(1) or match.group(2)
+    define = min(
+        (n for n in iter_tree(root) if n.type == "preproc_def" and n.start_byte > events[0].start),
+        key=lambda n: n.start_byte, default=None,
+    )
+    if define is None or without_comments(
+        _text(source, events[0].line_end, define.start_byte)
+    ).strip():
+        return events
+    name = define.child_by_field_name("name")
+    if name is None or _text(source, name.start_byte, name.end_byte) != macro:
+        return events
+    depth = 0
+    for index, event in enumerate(events):
+        depth += {"open": 1, "close": -1}.get(event.op, 0)
+        if event.op == "branch" and depth == 1:
+            return events
+        if depth == 0:
+            tail = without_comments(_text(source, event.line_end, len(source)))
+            if index != len(events) - 1 or tail.strip():
+                return events
+            return events[1:index]
+    return events
+
+
+def _text(source: bytes, start: int, end: int) -> str:
+    return source[start:end].decode("utf-8", errors="replace")
+
+
+#: The last file's guard events, by the identity of its source and its root.
+_GUARD_CACHE: list[tuple[bytes, int, list[_GuardEvent]]] = []
+
+
+def c_family_open_guards(node: "tree_sitter.Node", source: bytes) -> list[tuple[int, str]]:
+    """The preprocessor branches open at ``node``, outermost first, each as
+    its opening directive's first byte and its label (WI-sifar).
+
+    A branch is named as a Swift ``#if`` branch is (``swift._swift_branches``):
+    by its conditional's opening directive and, after the first, its own:
+    ``#ifdef A``, ``#if B #elif C``, ``#ifndef D #else``, each as written (not
+    evaluated: ``#ifdef X`` is not ``#if defined(X)``, and the operands of
+    ``||`` / ``&&`` keep their order). A file's include guard is left out
+    (:func:`_without_include_guard`); ``#if 0`` is a branch like any other.
+    """
+    root = node
+    while root.parent is not None:
+        root = root.parent
+    kept_work.used(c_family_open_guards, id(source))
+    if not _GUARD_CACHE or _GUARD_CACHE[0][0] is not source or _GUARD_CACHE[0][1] != root.id:
+        with kept_work.filling(c_family_open_guards, id(source)):
+            _GUARD_CACHE[:] = [(source, root.id, _guard_events(root, source))]
+    stack: list[tuple[int, str, str]] = []  # (opening byte, the "#if X" head, the branch)
+    for event in _GUARD_CACHE[0][2]:
+        if event.start >= node.start_byte:
+            break
+        if event.op == "open":
+            stack.append((event.start, event.label, event.label))
+        elif not stack:
+            continue
+        elif event.op == "branch":
+            start, head, _branch = stack[-1]
+            stack[-1] = (start, head, f"{head} {event.label}")
+        else:
+            stack.pop()
+    return [(start, branch) for start, _head, branch in stack]

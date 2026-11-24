@@ -78,6 +78,13 @@ Call-edge details:
   nested function, hash the functions around it (``_block_scope``), so
   ``struct inner`` in ``a()`` and in ``b()`` are two identities; a
   file-scope declaration hashes no chain.
+- **Preprocessor branches in identity** (WI-sifar, scheme v19): the
+  ``#if`` / ``#ifdef`` / ``#ifndef`` / ``#elif`` / ``#else`` branches open at
+  a declaration join that chain at the level they open in
+  (``c_family_open_guards``), so ``open_file`` under ``#ifdef _WIN32`` and
+  under its ``#else`` are two identities. A branch is hashed as written, not
+  evaluated; ``#if 0`` is a branch like any other; a whole-file include
+  guard is not one, so renaming its macro moves no id.
 - **A definition with no honest name** (WI-tikop): one named by a macro
   tree-sitter cannot expand -- ``TEST_BEGIN(test_x) {..}``, ``PFX(f)(args)``,
   ``LUALIB_API int (f)(args)`` -- gets no symbol (a name read off the macro
@@ -567,9 +574,14 @@ def _block_scope(node: "tree_sitter.Node", source: bytes, name: str) -> str:
     v9); a tag declared inside another ``struct`` is file-scope in C (C11
     6.2.1), so struct nesting is no part of the chain. A file-scope
     declaration hashes ``""``.
+
+    The preprocessor branches open at ``node`` are in the chain too, at the
+    level they open in (``c_family_open_guards``, WI-sifar): ``#ifdef _WIN32
+    int open_file()`` and ``#else int open_file()`` tied until scheme v19.
+    The file's include guard is not a branch.
     """
     return nested_qualified_name(
-        c_family_scope_chain(node, source, types=False, functions=True), name,
+        c_family_scope_chain(node, source, types=False, functions=True, guards=True), name,
     )
 
 
