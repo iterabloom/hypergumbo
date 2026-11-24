@@ -8,6 +8,7 @@ import tree_sitter_language_pack as tlp
 
 from hypergumbo_core.analyze.c_family import (
     c_family_array_declarator,
+    c_family_file_scope_variables,
     c_family_is_value_operand,
 )
 
@@ -127,3 +128,13 @@ def test_a_local_enumerator_is_local(lang: str) -> None:
     nodes = [n for n in _named(lang, code, "empty") if c_family_is_value_operand(n)]
     assert nodes
     assert c_family_declares_local(nodes[0], "empty", code.encode()) is True
+
+
+@pytest.mark.parametrize("lang", ["c", "cpp"])
+def test_file_scope_variables_leave_out_members_locals_and_functions(lang: str) -> None:
+    code = (
+        b"int counter;\nstruct S { int member; };\nint f(void) { int local = 0; return local; }\n"
+        b"int f(void);\n"
+    )
+    root = tlp.get_parser(lang).parse(code).root_node
+    assert c_family_file_scope_variables(root, code) == frozenset({"counter"})

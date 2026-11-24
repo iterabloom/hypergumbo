@@ -16,6 +16,9 @@ item has several; ``cfg_attr`` gates no item and is not hashed); Swift's
 ``#if`` / ``#elseif`` / ``#else`` branch enclosing a declaration at each
 level, a branch named by its chain's ``#if`` condition and its own (``#if A
 #elseif B``, ``#if A #else``). An unguarded declaration hashes what it did.
+C and C++ ``#if`` / ``#ifdef`` / ``#ifndef`` / ``#elif`` / ``#else``
+branches since scheme v19 (WI-sifar), named as Swift's are; a whole-file
+include guard is no branch, so renaming its macro moves no id.
 
 Each case runs the analyzer directly, paths made repo-relative and the
 backstop's table formula applied as the pipeline does: no two symbols of the
@@ -31,6 +34,8 @@ import pytest
 
 from hypergumbo_core.analyze.base import populate_kind_stable_ids
 from hypergumbo_core.ir import Symbol
+from hypergumbo_lang_mainstream.c import analyze_c
+from hypergumbo_lang_mainstream.cpp import analyze_cpp
 from hypergumbo_lang_mainstream.rust import _rust_hash_scope, analyze_rust
 from hypergumbo_lang_mainstream.swift import _swift_scope, analyze_swift
 
@@ -269,3 +274,138 @@ def test_a_rust_cfg_split_over_lines_keeps_the_id(tmp_path: Path) -> None:
     assert one["g"] is not None  # reach
     assert one == split
     assert one["g"] != other["g"]
+
+
+#: (head, earlier, rest) for C; blanking ``earlier`` leaves a valid file.
+C_CASES: dict[str, tuple[str, str, str]] = {
+    "ifdef-else": ("#ifdef _WIN32\n", "static int open_file(const char *p) { return 1; }\n",
+                   "#else\nstatic int open_file(const char *p) { return 2; }\n#endif\n"),
+    "if-elif-struct": ("#if defined(A)\n", "struct S { int x; };\n",
+                       "#elif defined(B)\nstruct S { int x; };\n#endif\n"),
+    "elif-chain-and-else": (
+        "#if A\nint f(void) { return 1; }\n#elif B\n", "int f(void) { return 2; }\n",
+        "#else\nint f(void) { return 3; }\n#endif\n",
+    ),
+    "ifndef-enum-typedef-variable": (
+        "#ifndef FAST\n", "enum E { A };\ntypedef int T;\nint counter = 1;\n",
+        "#else\nenum E { A };\ntypedef int T;\nint counter = 2;\n#endif\n",
+    ),
+    "nested-guards-and-unguarded-twin": (
+        "#ifdef A\n#ifdef B\n", "int h(void) { return 1; }\n",
+        "#endif\n#endif\nint h(void) { return 2; }\n",
+    ),
+    "two-blocks": ("#ifdef A\n", "int k(void) { return 1; }\n",
+                   "#endif\n#ifdef B\nint k(void) { return 2; }\n#endif\n"),
+    "if-0": ("#if 0\n", "int dead(void) { return 1; }\n",
+             "#endif\nint dead(void) { return 2; }\n"),
+    "block-scope-struct": (
+        "void g(void) {\n#ifdef A\n", "  struct inner { int a; };\n",
+        "#else\n  struct inner { int b; };\n#endif\n}\n",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(C_CASES))
+def test_c_preprocessor_alternatives_get_distinct_ids(tmp_path: Path, case: str) -> None:
+    _check(analyze_c, tmp_path, "src/a.c", *C_CASES[case])
+
+
+CPP_CASES: dict[str, tuple[str, str, str]] = {
+    "member": ("class K {\npublic:\n#ifdef FAST\n", "  int run(int x) { return x; }\n",
+               "#else\n  int run(int x) { return -x; }\n#endif\n};\n"),
+    "out-of-line-member": (
+        "struct K { int run(int x); };\n#ifdef FAST\n", "int K::run(int x) { return x; }\n",
+        "#else\nint K::run(int x) { return -x; }\n#endif\n",
+    ),
+    "namespace-function": ("namespace n {\n#ifdef A\n", "int f(int x) { return x; }\n",
+                           "#else\nint f(int x) { return -x; }\n#endif\n}\n"),
+    "class-and-members": (
+        "#ifdef A\n", "class C { public: int m() { return 1; } int v; };\n",
+        "#else\nclass C { public: int m() { return 2; } int v; };\n#endif\n",
+    ),
+    "dispatch-table": (
+        "int f(void) { return 1; }\n#ifdef A\n", "int (*tbl[])(void) = { f };\n",
+        "#else\nint (*tbl[])(void) = { f, f };\n#endif\n",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(CPP_CASES))
+def test_cpp_preprocessor_alternatives_get_distinct_ids(tmp_path: Path, case: str) -> None:
+    _check(analyze_cpp, tmp_path, "src/a.cpp", *CPP_CASES[case])
+
+
+@pytest.mark.parametrize(("analyze", "rel"), [(analyze_c, "inc/a.h"), (analyze_cpp, "inc/a.hpp")])
+def test_include_guard_is_not_hashed(
+    tmp_path: Path, analyze: Callable[[Path], object], rel: str,
+) -> None:
+    """Renaming an include guard's macro, or dropping the guard, moves no id;
+    the same ``#ifndef`` that does not wrap the whole file is a branch."""
+    body = "struct S { int x; };\nstatic int f(void) { return 1; }\n"
+    guarded = _ids(analyze, tmp_path / "g", rel, f"#ifndef FOO_H\n#define FOO_H\n{body}#endif\n")
+    renamed = _ids(analyze, tmp_path / "r", rel, f"#ifndef BAR_H\n#define BAR_H\n{body}#endif\n")
+    bare = _ids(analyze, tmp_path / "b", rel, f"\n\n{body}\n")
+    assert len(guarded) >= 2  # reach
+    assert guarded == renamed == bare
+    partial = _ids(
+        analyze, tmp_path / "p", rel, f"#ifndef FOO_H\n#define FOO_H\n{body}#endif\nint g;\n",
+    )
+    moved = {k for k in guarded if k[1] in ("S", "f")}
+    assert moved and all(partial[k] != guarded[k] for k in moved)
+
+
+@pytest.mark.parametrize(("analyze", "rel"), [(analyze_c, "src/a.c"), (analyze_cpp, "src/a.cpp")])
+def test_c_family_unguarded_and_guard_layout(
+    tmp_path: Path, analyze: Callable[[Path], object], rel: str,
+) -> None:
+    """A guard's layout and comments are not hashed; a declaration outside
+    every branch hashes what it would with no directive in the file."""
+    a = _ids(analyze, tmp_path / "a", rel,
+             "#if defined(A) && defined(B)\nint f(int x) { return x; }\n#endif\nint g(int x) { return x; }\n")
+    b = _ids(analyze, tmp_path / "b", rel,
+             "#  if defined( A ) /* c */ && \\\n defined(B)\nint f(int x) { return x; }\n#endif\n"
+             "int g(int x) { return x; }\n")
+    plain = _ids(analyze, tmp_path / "p", rel,
+                 "\nint f(int x) { return x; }\n\nint g(int x) { return x; }\n")
+    f_a = next(k for k in a if k[1] == "f")
+    g_a = next(k for k in a if k[1] == "g")
+    f_b = next(k for k in b if k[1] == "f")
+    assert a[f_a] == b[f_b]
+    assert a[f_a] != plain[f_a]
+    assert a[g_a] == plain[g_a]
+
+
+def test_cpp_slot_spells_the_branches() -> None:
+    """A branch sits in the slot at its level; the names a member spells are
+    dropped past it, and a member of ``class Outer::Inner`` has the slot a
+    member of ``Inner`` nested in ``Outer`` has."""
+    import tree_sitter
+    import tree_sitter_cpp
+
+    from hypergumbo_lang_mainstream.cpp import _cpp_scope_slot
+
+    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_cpp.language()))
+
+    def slots(code: str, name: str) -> list[str]:
+        src = code.encode()
+        out: list[str] = []
+        stack = [parser.parse(src).root_node]
+        while stack:
+            n = stack.pop()
+            if n.type == "function_definition":
+                out.append(_cpp_scope_slot(n, src, name))
+            stack.extend(n.children)
+        return out
+
+    qualified = slots(
+        "class Outer { class Inner; };\n"
+        "class Outer::Inner {\n#ifdef X\n  int go() { return 1; }\n#endif\n};\n", "Inner::go",
+    )
+    nested = slots(
+        "class Outer {\n  class Inner {\n#ifdef X\n  int go() { return 1; }\n#endif\n  };\n};\n",
+        "Inner::go",
+    )
+    assert qualified == nested == ["Outer/#ifdef X/Inner::go"]
+    assert slots("#ifdef A\nnamespace n {\nstruct K {\n#ifndef B\n  int run() { return 1; }\n"
+                 "#endif\n};\n}\n#endif\n", "K::run") == ["#ifdef A/n/#ifndef B/K::run"]
+    assert slots("namespace n { struct K { int run() { return 1; } }; }\n", "K::run") == ["n/K::run"]
