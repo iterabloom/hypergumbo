@@ -87,7 +87,7 @@ def test_slot_spells_callable_labels_and_branches() -> None:
         "namespace n {\n#ifdef X\nvoid f(int a, const char *p) { struct L {}; }\n#else\n"
         "void f(int a, const char *p) { struct L {}; }\n#endif\nvoid g() { struct L {}; }\n}\n",
         ("struct_specifier",), "L",
-    ) == ["n/#ifdef X/f(int,const char)/L", "n/#ifdef X #else/f(int,const char)/L", "n/g/L"]
+    ) == ["n/#ifdef X/f(int,const char*)/L", "n/#ifdef X #else/f(int,const char*)/L", "n/g/L"]
     assert _slots("struct K { void m(int) { struct L { void q() {} }; } };\n",
                   ("function_definition",), "L::q")[-1] == "K/m(int)/L::q"
     top_and_member = _slots("struct L {};\nstruct K { struct L {}; };\n", ("struct_specifier",), "L")
@@ -102,5 +102,5 @@ def test_a_macro_misparsed_class_is_no_function() -> None:
     not in the body. A real function's local does."""
     src = ("class C FINAL : public B\n{\n  public:\n  struct P { int a; };\n};\n"
            "void f(class Q *q) { struct R {}; }\n")
-    assert _slots(src, ("struct_specifier",), "P") == ["", "f(class Q)/P"]
+    assert _slots(src, ("struct_specifier",), "P") == ["", "f(class Q*)/P"]
     assert _slots(src, ("class_specifier",), "Q") == ["", ""]

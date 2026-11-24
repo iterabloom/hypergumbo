@@ -53,9 +53,15 @@ parameter types, since ``f(int)`` / ``f(float)`` tie on the count alone).
 and never finds it here, so it hashed ``param_count 0`` for every C-family
 overload. :func:`c_family_parameter_list` finds it through
 :func:`c_family_declarator`, and :func:`c_family_parameters` turns it into
-``parameter_entry`` records. They began in ``cpp.py``; CUDA, GLSL and HLSL
-share the grammar shape (tree-sitter-cuda and tree-sitter-hlsl extend
-tree-sitter-cpp, tree-sitter-glsl extends tree-sitter-c) and cannot import
+``parameter_entry`` records. An entry's ``type`` is the text before the
+declarator, a type NAME other readers compare; the marks the declarator
+adds (``*``, ``&``, ``&&``, ``[3]``, a function-pointer shape, a ``const``
+inside it) are written beside it, the name cut out
+(:func:`c_family_parameter_declarator`), and the stable id hashes both:
+until scheme v20 ``f(int)`` / ``f(int*)`` tied (WI-pohom-turot). They
+began in ``cpp.py``; CUDA, GLSL and HLSL share the grammar shape
+(tree-sitter-cuda and tree-sitter-hlsl extend tree-sitter-cpp,
+tree-sitter-glsl extends tree-sitter-c) and cannot import
 ``hypergumbo-lang-mainstream``, so they live here, with
 :func:`c_family_scope_chain`, the enclosing namespaces and classes an
 inline member's identity needs beside its bare name (and, on request, the
@@ -360,8 +366,8 @@ def c_family_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.N
     return next((c for c in declarator.children if c.type == "parameter_list"), None)
 
 
-def c_family_parameter_name(param: "tree_sitter.Node", source: bytes) -> str:
-    """The declared name of one parameter (``*&x`` -> ``x``), "" if unnamed."""
+def _parameter_name_node(param: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The identifier one parameter declares (``*&x`` -> ``x``), None if unnamed."""
     current = param.child_by_field_name("declarator")
     while current is not None and current.type not in ("identifier", "field_identifier"):
         inner = current.child_by_field_name("declarator")
@@ -372,9 +378,53 @@ def c_family_parameter_name(param: "tree_sitter.Node", source: bytes) -> str:
                 None,
             )
         current = inner
+    return current
+
+
+def c_family_parameter_name(param: "tree_sitter.Node", source: bytes) -> str:
+    """The declared name of one parameter (``*&x`` -> ``x``), "" if unnamed."""
+    current = _parameter_name_node(param)
     if current is None:
         return ""
     return source[current.start_byte:current.end_byte].decode("utf-8", errors="replace")
+
+
+#: The parameter nodes of a C-family ``parameter_list``.
+_PARAMETER_TYPES = frozenset({
+    "parameter_declaration", "optional_parameter_declaration",
+    "variadic_parameter_declaration",
+})
+
+
+def c_family_parameter_declarator(param: "tree_sitter.Node", source: bytes) -> str:
+    """One parameter's declarator marks as written, its name removed
+    (WI-pohom-turot): ``int* const p`` -> ``*const``, ``int a[3]`` -> ``[3]``,
+    ``int (*cb)(int x)`` -> ``(*)(int)``, ``Args&&... a`` -> ``&&...``; ""
+    for a plain name or none.
+
+    The pointer, reference, array and function shapes, and a qualifier
+    written inside them, are what tell ``f(int)`` from ``f(int*)``; the type
+    before the declarator does not hold them. The name is not an identity
+    input, so it is cut out -- and so are the names of a function pointer's
+    own parameters -- which makes a prototype's unnamed ``int (*)(int)`` the
+    definition's ``int (*cb)(int x)``. Nothing is evaluated: ``a[]`` is not
+    ``*a``. The rest is written in :func:`layout_free`'s canonical spacing,
+    comments dropped.
+    """
+    declarator = param.child_by_field_name("declarator")
+    if declarator is None:
+        return ""
+    names = [_parameter_name_node(param)]
+    names.extend(
+        _parameter_name_node(n) for n in iter_tree(declarator) if n.type in _PARAMETER_TYPES
+    )
+    pieces: list[str] = []
+    start = declarator.start_byte
+    for name in sorted((n for n in names if n is not None), key=lambda n: n.start_byte):
+        pieces.append(_text(source, start, name.start_byte))
+        start = name.end_byte
+    pieces.append(_text(source, start, declarator.end_byte))
+    return layout_free(" ".join(pieces))
 
 
 def c_family_parameters(
@@ -387,8 +437,13 @@ def c_family_parameters(
     pack ``Args&&... args`` (``variadic_parameter_declaration``) take any number
     of arguments (``variadic``). The type is the text before the declarator,
     qualifiers included (``const char``, GLSL ``in vec2``, HLSL ``uniform
-    float``); the ``*`` / ``&`` / ``[2]`` belong to the declarator and are not in
-    it. A default written only on a separate C++ declaration is merged in by
+    float``): what the readers that take it as a type NAME (taint contracts,
+    framework ``parameter_type`` patterns, ``cpp.py``'s ``#if``-alternative
+    check) compare. The ``*`` / ``&`` / ``[2]`` belong to the declarator and
+    are not in it; they are written beside it as ``declarator``
+    (:func:`c_family_parameter_declarator`, WI-pohom-turot), which the stable
+    id hashes with the type (``overload_arity.declared_arity_of_entries``). A
+    default written only on a separate C++ declaration is merged in by
     ``cpp.py`` at registration, never here.
     """
     entries: list[dict[str, Any]] = []
@@ -396,10 +451,7 @@ def c_family_parameters(
         if child.type == "...":
             entries.append(parameter_entry("...", variadic=True))
             continue
-        if child.type not in (
-            "parameter_declaration", "optional_parameter_declaration",
-            "variadic_parameter_declaration",
-        ):
+        if child.type not in _PARAMETER_TYPES:
             continue
         declarator = child.child_by_field_name("declarator")
         end = declarator.start_byte if declarator is not None else (
@@ -408,13 +460,13 @@ def c_family_parameters(
         type_text = " ".join(
             source[child.start_byte:end].decode("utf-8", errors="replace").split()
         ) or None
-        name = c_family_parameter_name(child, source)
-        if child.type == "parameter_declaration" and not name and type_text == "void":
-            continue  # ``f(void)``: the C spelling of an empty list
+        if child.type == "parameter_declaration" and declarator is None and type_text == "void":
+            continue  # ``f(void)``: the C spelling of an empty list (``f(void*)`` is not)
         entries.append(parameter_entry(
-            name, type_text,
+            c_family_parameter_name(child, source), type_text,
             default=child.type == "optional_parameter_declaration",
             variadic=child.type == "variadic_parameter_declaration",
+            declarator=c_family_parameter_declarator(child, source),
         ))
     return entries
 

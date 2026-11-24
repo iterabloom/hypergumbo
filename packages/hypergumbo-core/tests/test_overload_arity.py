@@ -187,6 +187,21 @@ def test_a_declared_type_spells_every_parameter() -> None:
     assert DeclaredArity(1, "").type_signature == ""
 
 
+def test_a_declarator_mark_is_spelled_after_the_type_and_written_only_when_present() -> None:
+    """The C family's ``declarator`` (WI-pohom-turot): ``int`` and ``int*``
+    hash apart; an entry with none is the triple it always was, and a mark
+    alone (no type read) still takes the typed tier."""
+    assert parameter_entry("a", "int", declarator="") == {
+        "name": "a", "type": "int", "default": False,
+    }
+    marked = declared_arity_of_entries([parameter_entry("a", "int", declarator="*")])
+    plain = declared_arity_of_entries([parameter_entry("a", "int")])
+    assert marked is not None and plain is not None
+    assert (marked.type_signature, plain.type_signature) == ("(int*)", "(int)")
+    bare = declared_arity_of_entries([parameter_entry("a", declarator="&")])
+    assert bare is not None and bare.type_signature == "(_ &)"
+
+
 def test_untyped_id_equals_the_compute_stable_id_formula() -> None:
     """Same parameters, same value as the tree-sitter untyped tier: no scheme bump."""
     arity = declared_arity({PARAMETERS_KEY: _p(2)})
