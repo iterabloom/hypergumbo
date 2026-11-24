@@ -183,7 +183,9 @@ IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
 stable id hashes is written through the file's kind imports (``import struct Foundation.URL``)
 (``_swift_type_names``, read once per file and set with ``resolving_type_names``), so an
 imported and a qualified spelling of one type hash alike; a name nothing
-binds, or the file declares, is hashed as written.
+binds, or the file declares, is hashed as written. Since scheme v19
+(WI-juzom) ``Swift.X`` is written ``X`` unless the file declares ``X``, and a
+dictionary's key type is rewritten like any other.
 """
 from __future__ import annotations
 
@@ -347,16 +349,27 @@ def _extract_import_hints(
 _SWIFT_TYPE_IMPORT_KEYWORDS = frozenset({"struct", "class", "enum", "protocol", "typealias"})
 
 
+#: A name qualified by the standard library's module, ``Swift.Int``. A match
+#: inside a longer chain (``M.Swift.Int``) only adds a spelling no chain of
+#: the file starts with, which rewrites nothing.
+_SWIFT_STDLIB_QUALIFIED_RE = re.compile(r"\bSwift\.([^\W\d]\w*)")
+
+
 def _swift_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
-    """What the file's imports make a type name mean (WI-palus, scheme v17).
+    """What the file's imports make a type name mean (WI-palus, scheme v17),
+    and the standard library's names (WI-juzom, scheme v19).
 
     Bound: a kind import of one type, ``import struct Foundation.URL``, binds
     ``URL`` to ``Foundation.URL``. A module import (``import Foundation``) binds
     no name the file writes: every public name of the module comes in, unlisted,
     so ``Date`` and ``Foundation.Date`` stay apart (a type is hashed as
-    written, WI-ririg), and so do ``Int`` and ``Swift.Int``. Declared: every
-    class, struct, enum, actor, protocol and typealias the file declares,
-    which keeps its name.
+    written, WI-ririg). Defaults: ``Swift`` is the standard library's module,
+    whose every name a file sees unqualified, so each ``Swift.X`` the file
+    writes is written ``X`` (``Swift.Int`` and ``Int`` hash alike) -- unless
+    the file declares an ``X`` (then its ``Int`` is not ``Swift.Int``) or a
+    type named ``Swift``. Declared: every class, struct, enum, actor, protocol
+    and typealias the file declares, which keeps its name. No labels: a name
+    before ``:`` in a Swift type is a dictionary's key type.
     """
     bindings: list[tuple[str, str]] = []
     declared = set()
@@ -370,7 +383,11 @@ def _swift_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
             name = node.child_by_field_name("name")
             if name is not None and name.type == "type_identifier":
                 declared.add(node_text(name, source))
-    return file_type_names(bindings, declared=declared)
+    defaults: dict[str, str] = {}
+    if b"Swift." in source:  # a declared ``Swift`` keeps its chains (``resolve``)
+        text = source.decode("utf-8", errors="replace")
+        defaults = {m.group(0): m.group(1) for m in _SWIFT_STDLIB_QUALIFIED_RE.finditer(text)}
+    return file_type_names(bindings, declared=declared, defaults=defaults, labels=False)
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
@@ -1410,8 +1427,9 @@ def _swift_normalize_type(raw_type: str, type_params: list[str] | None) -> str:
     """One type of a Swift signature, normalized for the typed stable_id.
 
     Every type is hashed AS WRITTEN, its qualifier included: ``Feature.State``
-    and ``Other.State`` hash apart, and so do ``Swift.Int`` and ``Int``
-    (WI-ririg owner ruling: the hash is spelling-dependent). Until the
+    and ``Other.State`` hash apart (WI-ririg owner ruling: the hash is
+    spelling-dependent), except the standard library's module qualifier in an
+    analyzed file (``Swift.Int`` is ``Int``, WI-juzom). Until the
     WI-ririg commit the head of a qualified type was cut to its last segment
     (``strip_fqn_prefix``), so two overloads on two same-named nested types
     tied; v15 also cut a metatype ``Int.Type`` to ``Type``. A name the file

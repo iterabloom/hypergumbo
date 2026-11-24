@@ -3494,6 +3494,8 @@ class FileTypeNames:
     namespace (C#'s ``global::``), is resolved from that root: no import binds
     it, and a default does, so ``global::System.String`` is the default
     ``System.String``; any other one is kept as written, the root included.
+    Without :attr:`labels` (Swift) a name before ``:`` is a type like any
+    other: Swift's ``[K: V]`` is a dictionary whose key is a type.
     """
 
     #: A name the file binds by an import -> the path it names.
@@ -3506,6 +3508,8 @@ class FileTypeNames:
     quotes: str = SIGNATURE_QUOTES  # axis: bounded-enum
     #: The prefix naming the root namespace (C# ``global::``), or none.
     root: str = ""  # axis: bounded-enum
+    #: Whether a name right before ``:`` is a label (not a type name).
+    labels: bool = True
 
     def canonical(
         self, text: str, *, skip: Container[str] = (), keep_head: bool = False,
@@ -3526,7 +3530,7 @@ class FileTypeNames:
             match = _TYPE_NAME_HEAD_RE.match(text)
             if match is not None:
                 head = match.start("name")
-        pattern = _chain_pattern(self.separator, self.quotes, self.root)
+        pattern = _chain_pattern(self.separator, self.quotes, self.root, self.labels)
 
         def rewrite(m: "_re.Match[str]") -> str:
             chain = m.group("chain")
@@ -3561,9 +3565,12 @@ class FileTypeNames:
 
 
 @functools.lru_cache(maxsize=None)
-def _chain_pattern(separator: str, quotes: str, root: str = "") -> "_re.Pattern[str]":
+def _chain_pattern(
+    separator: str, quotes: str, root: str = "", labels: bool = True,
+) -> "_re.Pattern[str]":
     """A string literal (group ``string``) or a name chain (group ``chain``),
-    which may open with ``root``.
+    which may open with ``root``, and is not a label (before ``:``) when
+    ``labels``.
 
     Cached with ``lru_cache`` rather than a module dict: a handful of
     separator/quote pairs exist, and the kept-work recorder accounts for
@@ -3576,7 +3583,7 @@ def _chain_pattern(separator: str, quotes: str, root: str = "") -> "_re.Pattern[
     rooted = f"(?:{_re.escape(root)})?" if root else ""
     chain = (
         rf"(?<![\w$.#':])(?P<chain>{rooted}{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
-        rf"(?![\w$])(?!\??:(?!:))"
+        rf"(?![\w$])" + (r"(?!\??:(?!:))" if labels else "")
     )
     return _re.compile(rf"(?P<string>{strings})|{chain}" if strings else chain)
 
@@ -3589,6 +3596,7 @@ def file_type_names(
     separator: str = ".",
     quotes: str = SIGNATURE_QUOTES,
     root: str = "",
+    labels: bool = True,
 ) -> FileTypeNames:
     """A file's :class:`FileTypeNames` from its import bindings.
 
@@ -3600,7 +3608,8 @@ def file_type_names(
     text alone, and it stays as written. A name the file ``declared`` is
     never bound. ``defaults`` maps a qualified spelling of a type the
     language imports into every file to its simple name. ``root`` is the
-    language's root-namespace prefix (:attr:`FileTypeNames.root`).
+    language's root-namespace prefix (:attr:`FileTypeNames.root`);
+    ``labels``, whether its type texts have labels (:attr:`FileTypeNames.labels`).
     """
     declared_names = frozenset(declared)
     bound: Dict[str, str] = {}
@@ -3615,7 +3624,7 @@ def file_type_names(
         del bound[name]
     return FileTypeNames(
         bound=bound, defaults=dict(defaults or {}), declared=declared_names,
-        separator=separator, quotes=quotes, root=root,
+        separator=separator, quotes=quotes, root=root, labels=labels,
     )
 
 
