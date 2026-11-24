@@ -1,0 +1,22 @@
+- op: create  # 8beb
+  at: '2026-11-24T13:00:00Z'  # 8beb
+  by: agent  # 8beb
+  actor: jgstern_agent  # 8beb
+  clock: 1  # 8beb
+  nonce: 8beb  # 8beb
+  data:  # 8beb
+    kind: work_item  # 8beb
+    title: "D: no parameter type is hashed, so f(int) / f(double), g(ref int) / g(int) and d() / d() const share a stable id"  # 8beb
+    status: todo_soft  # 8beb
+    priority: 3  # 8beb
+    parent:  # 8beb
+    tags:  # 8beb
+    - v20_residual  # 8beb
+    - stable_id  # 8beb
+    - needs_decision  # 8beb
+    isbefore: []  # 8beb
+    duplicate_of: []  # 8beb
+    not_duplicate_of: []  # 8beb
+    pr_ref:  # 8beb
+    description: "WHAT\nD (d_lang.py) hashes no parameter types, only the parameter count: f(int) / f(double) / f(int*), g(ref int) / g(int), h(int[]) / h(int[3]) and d() / d() const all tie in the stable id and are split only by occurrence order.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/cfamily/fixtures/sweep/d (cfamily agent, the sibling sweep of WI-pohom).\n\nMEASURED\nFixture only. The 51-tree comparison has one D tree (dub source, 4,759 declared symbols); its pre-split ties were not counted.\n\nA fix adds hashed input to every D callable with a parameter: needs a scheme bump and an owner ruling. Same sweep, no tie possible, recorded so it is not re-filed: C (c.py) hashes no parameter text at all (f(int a), f(int *a), f(double a) get one id; C has no overloads); Objective-C has no mark tie, but an @interface method and its @implementation share an id.\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 8beb
+    fields: {}  # 8beb

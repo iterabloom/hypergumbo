@@ -1,0 +1,23 @@
+- op: create  # 6f2c
+  at: '2026-11-24T13:00:13Z'  # 6f2c
+  by: agent  # 6f2c
+  actor: jgstern_agent  # 6f2c
+  clock: 1  # 6f2c
+  nonce: 6f2c  # 6f2c
+  data:  # 6f2c
+    kind: work_item  # 6f2c
+    title: "cuda: a macro call in a function body is emitted as a function whose signature and hashed declarator hold the body text (pytorch Indexing.cu SMALL_INDEX)"  # 6f2c
+    status: todo_hard  # 6f2c
+    priority: 3  # 6f2c
+    parent:  # 6f2c
+    tags:  # 6f2c
+    - v20_residual  # 6f2c
+    - cuda  # 6f2c
+    - analysis_quality  # 6f2c
+    - stable_id  # 6f2c
+    isbefore: []  # 6f2c
+    duplicate_of: []  # 6f2c
+    not_duplicate_of: []  # 6f2c
+    pr_ref:  # 6f2c
+    description: "WHAT\nCUDA: a macro call inside a function body is emitted as a function whose \"signature\" holds the rest of the body. pytorch aten/src/ATen/native/cuda/Indexing.cu lines 1227, 1402 and 1639: three function symbols named SMALL_INDEX, each with a signature of about a hundred source lines. Since PR #2370 the misparsed \"parameter\" also carries a declarator of 740 to 1,465 characters of body text, which is hashed: the symbol's stable id now moves when that body text changes.\n\nREPRO\npython -m hypergumbo_core run on pytorch/aten/src/ATen/native/cuda, nodes named SMALL_INDEX (seen 2026-11-24 on dev fc8c8cb19 and after PR #2370; cfamily/RESULTS.md).\n\nASKED\nEmit no symbol for it (WI-tikop's rule: a definition whose name comes from an unexpandable macro mints no symbol; this shape escapes it). Related: WI-virir form 3 (the zstd macro misparse sharing a node id).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 6f2c
+    fields: {}  # 6f2c

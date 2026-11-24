@@ -1,0 +1,22 @@
+- op: create  # 0157
+  at: '2026-11-24T12:59:54Z'  # 0157
+  by: agent  # 0157
+  actor: jgstern_agent  # 0157
+  clock: 1  # 0157
+  nonce: '0157'  # 0157
+  data:  # 0157
+    kind: work_item  # 0157
+    title: "cpp: a pure virtual returning a pointer or reference emits no symbol"  # 0157
+    status: todo_hard  # 0157
+    priority: 3  # 0157
+    parent:  # 0157
+    tags:  # 0157
+    - v20_residual  # 0157
+    - cpp  # 0157
+    - analysis_quality  # 0157
+    isbefore: []  # 0157
+    duplicate_of: []  # 0157
+    not_duplicate_of: []  # 0157
+    pr_ref:  # 0157
+    description: "WHAT\nA C++ pure virtual whose return type is a pointer or a reference emits no symbol: virtual I* make(int) = 0; yields nothing, while virtual int find(int) = 0; yields a method.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/cfamily/fixtures/fix2/b.cpp (cfamily agent).\n\nNOT CHECKED\nCorpus count; the cause (the pure-virtual reader looks for a function_declarator as a direct child, and a pointer or reference return wraps it: inferred from cpp.py lines 339-345, not confirmed).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 0157
+    fields: {}  # 0157
