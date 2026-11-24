@@ -28,3 +28,10 @@
   clock: 2  # 42b0
   nonce: 42b0  # 42b0
   message: "Checked 2026-11-20 on dev 703dce32b (after PR #2291): PR #2291 does not address this item (its pipe_console commit 6a9092e8f is WI-vavag-kuduh-sagad-hovih-pafof-gukud-dipok-dadug, which shares only the prefix). Live: hypergumbo survey on a fixture with Only.svelte (<script> only) and Only.vue (<script setup lang=ts> only) -> file nodes javascript:Only.svelte:1-1:file:file and typescript:Only.vue:1-1:file:file: a script-only component's file node is still in the javascript:/typescript: slot. Status unchanged. Evidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/closure_pr3/vavag_tapoh.txt"  # 42b0
+- op: discuss  # 6d95
+  at: '2026-11-24T00:07:10Z'  # 6d95
+  by: agent  # 6d95
+  actor: jgstern_agent  # 6d95
+  clock: 3  # 6d95
+  nonce: 6d95  # 6d95
+  message: "OWNER RULING 2026-11-23 (in session), verbatim: \"re-anchor.\" As put to the owner: a script-only Vue, Svelte or Astro component's file node moves to its own language slot (its stable id changes), and every member declared in the file follows the corrected file id (up to 1,925 member ids in koel and 3,844 in the workadventure front), instead of members keeping a file id no node carries. The v19 bump is approved (\"yes I approve the v19 bump\")."  # 6d95
