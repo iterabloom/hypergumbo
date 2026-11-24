@@ -335,8 +335,11 @@ from hypergumbo_core.analyze.base import (
     constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
+    FileTypeNames,
     TreeSitterAnalyzer,
+    current_type_names,
     drop_go_function_type_parameter_names,
+    file_type_names,
     emit_module_attribute_refs,
     populate_docstrings_from_tree,
     find_child_by_field,
@@ -350,6 +353,7 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     make_unresolved_edge,
     node_text,
+    resolving_type_names,
     visibility_from_modifiers,
     SymbolsAt,
     stamp_io_mode_from_call,
@@ -605,7 +609,9 @@ def _go_type_parameters_text(
     written: no positional renaming (spec section 6 names it, but no analyzer
     passes ``type_params``) and no package-prefix stripping; only a function
     type's parameter names are left out of a constraint, as everywhere
-    (``drop_go_function_type_parameter_names``, stable-id v17). It is not shown
+    (``drop_go_function_type_parameter_names``, stable-id v17), and a
+    predeclared alias is written by its alias name (``[T interface{}]`` is
+    ``[T any]``; :func:`_go_hashed_types`, v19). It is not shown
     in ``Symbol.signature``, which stays ``(params) result``.
 
     A method's receiver type parameters (``func (s *Stack[T]) Push(v T)``)
@@ -616,7 +622,8 @@ def _go_type_parameters_text(
     if tp is None:
         return ""
     # A function type in a constraint names no parameter either (v17).
-    return drop_go_function_type_parameter_names(" ".join(node_text(tp, source).split()))
+    return _go_hashed_types(
+        drop_go_function_type_parameter_names(" ".join(node_text(tp, source).split())))
 
 
 def _go_parameters(
@@ -657,9 +664,54 @@ def normalize_go_signature(
     signature: str | None,
     type_params: list[str] | None = None,
 ) -> str | None:
-    """Normalize a Go signature for typed stable_id (spec §6 typed tier)."""
+    """Normalize a Go signature for typed stable_id (spec §6 typed tier),
+    each predeclared alias by its alias name (:func:`_go_hashed_types`)."""
     from hypergumbo_core.analyze.base import normalize_signature_go
-    return normalize_signature_go(signature, type_params)
+    normalized = normalize_signature_go(signature, type_params)
+    return None if normalized is None else _go_hashed_types(normalized)
+
+
+#: The specification's predeclared aliases (``byte`` is ``uint8``, ``rune``
+#: is ``int32``), each aliased type -> its alias, the name a type is hashed by.
+_GO_PREDECLARED_ALIASES: dict[str, str] = {"uint8": "byte", "int32": "rune"}
+
+#: The empty interface, ``interface{}`` / ``interface {}``: the predeclared
+#: ``any`` aliases it.
+_GO_EMPTY_INTERFACE_RE = re.compile(r"\binterface\s*\{\s*\}")
+
+
+def _go_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+    """Which spelling of a predeclared alias a Go file's types are hashed by
+    (WI-juzom, scheme v19): ``uint8`` is written ``byte`` and ``int32``
+    ``rune`` (:data:`_GO_PREDECLARED_ALIASES`), unless the file declares a type
+    of either name, which then is not the predeclared one. Declared: every
+    type the file declares (``type_spec``, ``type_alias``)."""
+    declared = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in ("type_spec", "type_alias"):
+            name = node.child_by_field_name("name")
+            if name is not None:
+                declared.add(node_text(name, source))
+    bindings = [
+        (aliased, alias) for aliased, alias in _GO_PREDECLARED_ALIASES.items()
+        if aliased not in declared and alias not in declared
+    ]
+    return file_type_names(bindings, declared=declared)
+
+
+def _go_hashed_types(text: str) -> str:
+    """``text`` with each predeclared alias written by its alias name, in a
+    file being read (:func:`_go_type_names`): ``[]uint8`` -> ``[]byte``,
+    ``int32`` -> ``rune``, ``interface{}`` -> ``any`` (unless the file declares
+    an ``any``). The alias name is the spelling Go code and its standard
+    library write most, so the rarer spelling is the one that moves. Outside a
+    file, as written."""
+    names = current_type_names()
+    if names is None:
+        return text
+    if "any" not in names.declared:
+        text = _GO_EMPTY_INTERFACE_RE.sub("any", text)
+    return names.canonical(text)
 
 
 def _extract_import_aliases(
@@ -1713,7 +1765,19 @@ def _extract_symbols_from_file(
         return _GoFileAnalysis()
     # WI-bulaz: a parse that needed error recovery is recorded, not silent.
     record_partial_parse(run, str(file_path), tree)
+    # WI-juzom: every type a stable id hashes is written by its alias name.
+    with resolving_type_names(_go_type_names(tree, source)):
+        return _extract_parsed_go_symbols(file_path, source, tree, run, file_stable_id)
 
+
+def _extract_parsed_go_symbols(
+    file_path: Path,
+    source: bytes,
+    tree: "tree_sitter.Tree",
+    run: AnalysisRun,
+    file_stable_id: str,
+) -> _GoFileAnalysis:
+    """The symbols of one parsed Go file (:func:`_extract_symbols_from_file`)."""
     analysis = _GoFileAnalysis()
 
     # WI-potun: extract //go:build constraint from top-of-file comments.
@@ -2092,7 +2156,8 @@ def _extract_symbols_from_file(
                                         signature=ftype,
                                         stable_id=make_typed_stable_id(
                                             "field",
-                                            drop_go_function_type_parameter_names(ftype or ""),
+                                            _go_hashed_types(
+                                                drop_go_function_type_parameter_names(ftype or "")),
                                             name=fname,
                                             qualified_name=f_qualified,
                                             file_stable_id=file_stable_id,
