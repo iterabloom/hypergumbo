@@ -187,6 +187,8 @@ def test_lean_and_agda_name_table_kinds_by_their_scope(tmp_path: Path) -> None:
      [("struct", "A", {"is_public": True, "field_count": 2})]),
     ("module m\n\nenum E {\n\ta\n\tb\n}\n", [("enum", "E", {"is_public": False, "variant_count": 2})]),
     ("module m\n\ninterface I {\n}\n", [("interface", "I", {"is_public": False})]),
+    ("module m\n\nunion U {\n\ti int\n\tf f32\n}\n", [("union", "U", {"is_public": False, "field_count": 2})]),
+    ("module m\n\npub union U {}\n", [("union", "U", {"is_public": True, "field_count": 0})]),
 ])
 def test_v_one_letter_type_names_are_recovered(tmp_path: Path, text, expected) -> None:
     """tree-sitter-v lexes a lone capital as a generic placeholder, so the

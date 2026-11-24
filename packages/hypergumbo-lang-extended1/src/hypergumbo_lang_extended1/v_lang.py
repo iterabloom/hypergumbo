@@ -22,9 +22,10 @@ per-file split numbered them. A method now hashes its receiver type as scope
 (``B/run``) and its declared parameters (``meta["parameters"]``, written for
 every function, receiver excluded) through
 ``overload_arity.node_declared_arity_stable_id``: the stable_id scheme bump.
-A struct, enum or interface named by ONE capital letter (``struct A {}``)
+A struct, union, enum or interface named by ONE capital letter (``struct A {}``)
 is recovered from the ``ERROR`` the grammar makes of it
-(``_recover_single_letter_type``); it emitted nothing before.
+(``_recover_single_letter_type``); it emitted nothing before (a union, until
+stable-id scheme v19).
 A method's ``signature`` shows its receiver TYPE and declared parameters
 (``fn (B) (x) int``); it listed the receiver variable among the parameters
 (``fn(b, x) int``), so renaming that variable changed it.
@@ -216,7 +217,7 @@ def _extract_return_type(node: "tree_sitter.Node") -> Optional[str]:
 #: Declaration keywords whose single-letter name the grammar misreads. Each
 #: keyword is the emitted kind, which the node id's kind slot (ADR-0036 Ruling 2)
 #: and the stable id both carry, as in the regular branches below.
-_V_TYPE_KEYWORDS: frozenset[str] = frozenset({"struct", "enum", "interface"})
+_V_TYPE_KEYWORDS: frozenset[str] = frozenset({"struct", "union", "enum", "interface"})
 
 
 def _recover_single_letter_type(
@@ -484,7 +485,7 @@ class VAnalyzer(TreeSitterAnalyzer):
             keyword, name, body, is_pub = recovered
             kind = keyword
             rec_meta: dict[str, object] = {"is_public": is_pub}
-            if keyword == "struct":
+            if keyword in ("struct", "union"):
                 rec_meta["field_count"] = _body_member_lines(body)
             elif keyword == "enum":
                 rec_meta["variant_count"] = _body_member_lines(body)
