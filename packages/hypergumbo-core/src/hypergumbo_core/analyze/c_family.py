@@ -497,6 +497,9 @@ _GUARD_OPENS = frozenset({"#if", "#ifdef", "#ifndef"})
 _GUARD_BRANCHES = frozenset({"#elif", "#elifdef", "#elifndef", "#else"})
 #: The opening of an include guard: ``#ifndef X`` or ``#if !defined(X)``.
 _INCLUDE_GUARD = re.compile(r"#ifndef (\w+)|#if !defined ?\(?(\w+)\)?")
+#: A ``#pragma once`` line, which may precede an include guard (both idioms
+#: in one header): it chooses nothing either.
+_PRAGMA_ONCE = re.compile(r"^[ \t]*#[ \t]*pragma[ \t]+once[ \t]*$", re.MULTILINE)
 #: A backslash line continuation: layout inside a directive.
 _CONTINUATION = re.compile(r"\\\r?\n")
 
@@ -572,7 +575,8 @@ def _without_include_guard(
     header from being read twice; it chooses between no alternatives, and its
     macro's name is a spelling of the file's path. Hashed, it would move every
     id of a header whose guard is renamed. It is recognised when the file's
-    first directive opens it, nothing but comments precedes it, the next
+    first directive opens it, nothing but comments and ``#pragma once``
+    precedes it (a header often has both idioms), the next
     lines ``#define`` its macro, it has no ``#elif`` / ``#else``, and its
     ``#endif`` is the file's last directive with nothing but comments after
     it (the rest of that directive's line included: ``#endif FOO_H``).
@@ -580,7 +584,7 @@ def _without_include_guard(
     if not events or events[0].op != "open":
         return events
     match = _INCLUDE_GUARD.fullmatch(events[0].label)
-    if match is None or without_comments(_text(source, 0, events[0].start)).strip():
+    if match is None or _PRAGMA_ONCE.sub("", without_comments(_text(source, 0, events[0].start))).strip():
         return events
     macro = match.group(1) or match.group(2)
     define = min(
