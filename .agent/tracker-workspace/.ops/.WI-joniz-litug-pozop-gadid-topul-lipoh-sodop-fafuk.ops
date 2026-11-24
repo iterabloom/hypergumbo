@@ -1,0 +1,23 @@
+- op: create  # 1590
+  at: '2026-11-24T20:44:19Z'  # 1590
+  by: agent  # 1590
+  actor: jgstern_agent  # 1590
+  clock: 1  # 1590
+  nonce: '1590'  # 1590
+  data:  # 1590
+    kind: work_item  # 1590
+    title: "cpp: an unqualified call binds a static function of another .cpp file when that file sorts first"  # 1590
+    status: todo_hard  # 1590
+    priority: 3  # 1590
+    parent:  # 1590
+    tags:  # 1590
+    - call_graph  # 1590
+    - analysis_quality  # 1590
+    - call_matrix  # 1590
+    - cpp  # 1590
+    isbefore: []  # 1590
+    duplicate_of: []  # 1590
+    not_duplicate_of: []  # 1590
+    pr_ref:  # 1590
+    description: "WHAT\nmain.cpp includes \"util.h\" (declares `int helper();`, defined in util.cpp) and calls helper(). A third file declares `static int helper()`, which has internal linkage and cannot be the callee. When that file sorts FIRST (a_decoy.cpp) the call is bound to its static helper at 0.85; when it sorts last (z_decoy.cpp) the call reaches util.cpp's.\nEXPECTED: util.cpp's helper in both orders.\nThis is the one language where the earlier candidate wins.\nNOT CHECKED: C; a helper in an anonymous namespace; a helper in a named namespace.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/cpp__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw cpp\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # 1590
+    fields: {}  # 1590

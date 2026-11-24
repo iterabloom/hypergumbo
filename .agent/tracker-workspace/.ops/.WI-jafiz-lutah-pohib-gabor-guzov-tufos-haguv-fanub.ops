@@ -1,0 +1,23 @@
+- op: create  # 85e8
+  at: '2026-11-24T20:44:00Z'  # 85e8
+  by: agent  # 85e8
+  actor: jgstern_agent  # 85e8
+  clock: 1  # 85e8
+  nonce: '85e8'  # 85e8
+  data:  # 85e8
+    kind: work_item  # 85e8
+    title: "php: a function imported with `use function` binds the last file's same-named function, not the imported one"  # 85e8
+    status: todo_hard  # 85e8
+    priority: 3  # 85e8
+    parent:  # 85e8
+    tags:  # 85e8
+    - call_graph  # 85e8
+    - analysis_quality  # 85e8
+    - call_matrix  # 85e8
+    - php  # 85e8
+    isbefore: []  # 85e8
+    duplicate_of: []  # 85e8
+    not_duplicate_of: []  # 85e8
+    pr_ref:  # 85e8
+    description: "WHAT\n  namespace App;  use function Util\\helper;  ...  helper();\nbinds the call to the helper() of whichever file sorts LAST (namespace ZDecoy, never imported), at 0.85; with the decoy file sorting first it reaches Util\\helper.\nEXPECTED: Util\\helper in both orders.\nALSO SEEN, not the subject of this item: `$c = new Conn(); $c->execute();` emits an unresolved edge and, beside it, a resolved one at 0.5 marked resolution_quality=recovery; with a declared return type (`function get_db(): Conn`) `$db = get_db(); $db->execute();` is unresolved.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/php__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw php\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # 85e8
+    fields: {}  # 85e8

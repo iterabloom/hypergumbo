@@ -1,0 +1,23 @@
+- op: create  # d5b2
+  at: '2026-11-24T20:44:06Z'  # d5b2
+  by: agent  # d5b2
+  actor: jgstern_agent  # d5b2
+  clock: 1  # d5b2
+  nonce: d5b2  # d5b2
+  data:  # d5b2
+    kind: work_item  # d5b2
+    title: "ruby: a top-level method call binds the last file's same-named method, whether or not that file is required"  # d5b2
+    status: todo_hard  # d5b2
+    priority: 3  # d5b2
+    parent:  # d5b2
+    tags:  # d5b2
+    - call_graph  # d5b2
+    - analysis_quality  # d5b2
+    - call_matrix  # d5b2
+    - ruby  # d5b2
+    isbefore: []  # d5b2
+    duplicate_of: []  # d5b2
+    not_duplicate_of: []  # d5b2
+    pr_ref:  # d5b2
+    description: "WHAT\n  require_relative 'util'   ...   helper()\nbinds the call to the top-level helper of whichever file sorts LAST (z_decoy.rb, which nothing requires), at 0.85; with the decoy file sorting first it reaches util.rb's.\nEXPECTED: util.rb's helper in both orders, or unresolved with both candidates kept.\nALSO SEEN: `ch = Child.new; ch.ping`, `x = ExtLib.make; x.execute` and `def via_amb_param(x); x.execute; end` emit no edge at all, with or without parentheses (probe/ruby_parens); the first is WI-rugal, the second WI-fanad; the parameter form was not searched for in the tracker beyond titles.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/ruby__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw ruby\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # d5b2
+    fields: {}  # d5b2
