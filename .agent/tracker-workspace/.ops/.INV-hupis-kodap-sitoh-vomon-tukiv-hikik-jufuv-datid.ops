@@ -52,3 +52,18 @@
   clock: 5  # 5236
   nonce: '5236'  # 5236
   message: "MATRIX RE-RUN 2026-11-24 (dev 44a858dbb; ~/hypergumbo_lab_notebook/call_matrix_11242026/RESULTS.md): five Rust cells depend on declaration order at 0.85: variable from a return, chain, a trait's default method called on an implementor (an unrelated struct also declares it), a local bound from an external call (let x = extlib::make()), and `use util::helper; helper()` (a second module declares helper). The constructor form is right in both orders. CODE READ (rust.py): (1) the short method name is written to a per-file table, symbol_by_name[func_name] (line 2006), last writer wins, and the call path consults that table before the list resolver; (2) _infer_type_from_rust_rhs reads a declared return type for Type::f() and recv.m() only, so `let db = get_db()` leaves db untyped; (3) for extlib::make() it takes the path 'extlib' as the type; (4) var_types is file-scoped, first writer wins, which is why a same-named variable in another function typed the receiver in the 11-24 fixture. NOT read: why the use-path lookup (_rust_use_path_function, WI-lirik) misses `use util::helper`. The general invariant is INV-jutog."  # 5236
+- op: update  # f436
+  at: '2026-11-24T22:10:06Z'  # f436
+  by: agent  # f436
+  actor: jgstern_agent  # f436
+  clock: 6  # f436
+  nonce: f436  # f436
+  set:  # f436
+    status: satisfied  # f436
+- op: discuss  # 7f9e
+  at: '2026-11-24T22:10:06Z'  # 7f9e
+  by: agent  # 7f9e
+  actor: jgstern_agent  # 7f9e
+  clock: 7  # 7f9e
+  nonce: 7f9e  # 7f9e
+  message: "Fixed in PR #2381 (ae7df54b4, fdf7050fb on dev). CAUSE, read in rust.py: pass 1 wrote each method under its short name into a per-file table, last writer wins, and pass 2's short-name fallback read it before the list resolver; 'let db = get_db()' and 'get_db().execute()' were untyped because a plain function's declared return type was not read; 'use util::helper' through a child module resolved to no file. FIX: the return type of the one function a plain call reaches types the receiver; two unrelated owners of a method name in a file are a tie the list resolver refuses; a trait and its implementations count as one method (bound to the trait's declaration only when every method of that name in the tree belongs to that trait, and only for recv.m()); a use path through a child module is followed. EVIDENCE, re-run on merged dev 7f814445a: the item's own fixtures (outside_review_11242026/fx/rs with impl Other last, fx/rs_swapped, fx/rs_single) reach Conn::execute in every form (hupis_11242026/closure/rerun_dev.txt); the rust row of the call-resolution matrix is right/right/right/unresolved/unresolved/n-a/right, no guess left; tests test_rust_no_pick_among_methods.py (both declaration orders each) and the whole mainstream package (10,221 passed before the PR, 16,108 in the pre-PR self-selected run). A/B on 12 Rust repositories, 81,103 resolved Rust call edges on the base: 2,006 dropped, 282 re-pointed, 394 new; of the 2,006, 901 are path calls X::m() whose X is not the owner of the method that had been bound; hand check of 47 dropped: 36 wrong, 7 one implementation of a trait, 2 right and lost, 2 not judged (hupis_11242026/STATUS.md). NOT COVERED BY THIS CLOSURE, each filed: the description's second mechanism, a same-named variable typed in ANOTHER function of the file, is unchanged and is now INV-zabud-rosoj (needs the owner: ADR-0006 states the file scope); String::new() bound to a file's only new; a typed receiver looked up by bare type name; receivers bound by if-let and match arms; a trait's default method on an implementor (unresolved, was right only by order)."  # 7f9e

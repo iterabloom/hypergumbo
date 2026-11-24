@@ -1,0 +1,23 @@
+- op: create  # 7b25
+  at: '2026-11-24T22:09:47Z'  # 7b25
+  by: agent  # 7b25
+  actor: jgstern_agent  # 7b25
+  clock: 1  # 7b25
+  nonce: 7b25  # 7b25
+  data:  # 7b25
+    kind: work_item  # 7b25
+    title: "rust: a trait's default method called on an implementor is unresolved (no receiver_type_hint for the inherited-call linker)"  # 7b25
+    status: todo_hard  # 7b25
+    priority: 3  # 7b25
+    parent:  # 7b25
+    tags:  # 7b25
+    - rust  # 7b25
+    - call_graph  # 7b25
+    - analysis_quality  # 7b25
+    - call_matrix  # 7b25
+    isbefore: []  # 7b25
+    duplicate_of: []  # 7b25
+    not_duplicate_of: []  # 7b25
+    pr_ref:  # 7b25
+    description: "WHAT\n  pub trait Base { fn ping(&self) -> i32 { 1 } }\n  pub struct Child;  impl Child { pub fn new() -> Self { Child } }  impl Base for Child {}\n  pub fn via_inherited() { let ch = Child::new(); ch.ping(); }\n`ch` is typed Child, Child declares no ping, and Child implements Base, whose default method is the callee. The call is unresolved (rust:external:0-0:ping:unresolved). Before the INV-hupis fix it was bound to whichever `ping` the file declared last, which was right only by order.\nThe inherited-call linker has a Rust walker (linkers/inherited_calls.py: \"rust\": _walk_insertion_order, for trait impls) and Site 2 reads meta.receiver_type_hint; the Rust analyzer writes no receiver_type_hint (grep: none in rust.py), so the linker has nothing to walk from.\nEXPECTED: an edge to Base::ping.\nMEASURED BY: the rust row of packages/hypergumbo-lang-mainstream/tests/test_call_resolution_matrix.py, cell `inherited` = unresolved.\nNOT DONE: no count of such calls on a real repository; not checked whether rust-analyzer resolves it when enabled."  # 7b25
+    fields: {}  # 7b25
