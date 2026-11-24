@@ -1,0 +1,23 @@
+- op: create  # e186
+  at: '2026-11-24T10:18:58Z'  # e186
+  by: agent  # e186
+  actor: jgstern_agent  # e186
+  clock: 1  # e186
+  nonce: e186  # e186
+  data:  # e186
+    kind: work_item  # e186
+    title: "Sketch first-run noise: project listed as its own dev dependency, example create_app under Library API, requirements.txt unread, a per-run optional-component warning, a common method starred as key"  # e186
+    status: todo_soft  # e186
+    priority: 4  # e186
+    parent:  # e186
+    tags:  # e186
+    - sketch  # e186
+    - developer_experience  # e186
+    - outside_review_10_0_0  # e186
+    - reported_not_rerun  # e186
+    isbefore: []  # e186
+    duplicate_of: []  # e186
+    not_duplicate_of: []  # e186
+    pr_ref:  # e186
+    description: "WHAT (as reported)\nFirst-run noise in the sketch of a Python repository (Flask):\n- Flask is listed as a \"(dev)\" dependency of itself.\n- The example applications' create_app functions appear under Library API.\n- Dependencies declared in requirements.txt are not recognized as dependencies.\n- Every run warns that an optional component is not installed.\nRust (ripgrep): Flag::doc_category is starred as a key symbol because about 100 flag types implement it (common, not important).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # e186
+    fields: {}  # e186

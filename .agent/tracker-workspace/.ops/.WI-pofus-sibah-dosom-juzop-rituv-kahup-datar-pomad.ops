@@ -1,0 +1,25 @@
+- op: create  # 2bf3
+  at: '2026-11-24T10:18:52Z'  # 2bf3
+  by: agent  # 2bf3
+  actor: jgstern_agent  # 2bf3
+  clock: 1  # 2bf3
+  nonce: 2bf3  # 2bf3
+  data:  # 2bf3
+    kind: work_item  # 2bf3
+    title: "dead-code-maybe lists indirectly called code: external-trait impl methods, shell functions in a Rust report, click callbacks, module __getattr__, overrides of a third-party base"  # 2bf3
+    status: todo_soft  # 2bf3
+    priority: 3  # 2bf3
+    parent:  # 2bf3
+    tags:  # 2bf3
+    - dead_code  # 2bf3
+    - analysis_quality  # 2bf3
+    - rust  # 2bf3
+    - python  # 2bf3
+    - outside_review_10_0_0  # 2bf3
+    - reported_not_rerun  # 2bf3
+    isbefore: []  # 2bf3
+    duplicate_of: []  # 2bf3
+    not_duplicate_of: []  # 2bf3
+    pr_ref:  # 2bf3
+    description: "WHAT (as reported)\ndead-code-maybe lists code that is called indirectly:\n- Rust (ripgrep): 404 functions flagged (18%), led by every impl Serialize method (called by serde); functions from shell scripts appear in a Rust dead-code report.\n- Python (Flask): click option callbacks, a module-level __getattr__, and a method overriding one of a third-party base class (werkzeug).\n\nNOT CHECKED\nWhich of these the unreleased entry-point work already withholds. Each bullet is its own mechanism (trait-impl methods of an external trait; a callback passed as a keyword argument; module __getattr__; an override of an out-of-repo base): split when reproduced.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 2bf3
+    fields: {}  # 2bf3
