@@ -16,7 +16,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **More entry points are found**: code a program hands to a framework (middleware, CLI actions, IPC and WebSocket handlers, jobs) in JavaScript, Go, Python, Ruby, Elixir, Swift, Scala and Kotlin.
 - **Entry kinds mean one thing each** (ADR-0063): manifest executables, program starts and hosted applications are told apart, and every reader agrees which is which.
-- **Stable ids survive reformatting and respelling, and different declarations no longer share one.** Scheme v15 → v19 changes many digests.
+- **Stable ids survive reformatting and respelling, and different declarations no longer share one.** Scheme v15 → v20 changes many digests.
 - **Every node id names its own node, and no two nodes share one**; edges end on a real node or a stand-in.
 - **`verify-claims` answers `inconclusive` when a secret may leave through an alias**, and its exit 1 always means a violated claim.
 - **A crash and a broken pipe have their own exit codes** (70, 141).
@@ -25,7 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Breaking and contract changes
 
 - **Behavior map `SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
-- **`stable_id_scheme` v15 → v19** (`hgstableid19:`): many digests change, most in Swift, Rust, Scala, Kotlin, C, C++ and JS/TS (spec: "`stable_id_scheme` version history").
+- **`stable_id_scheme` v15 → v20** (`hgstableid20:`): many digests change, most in C++, Swift, Rust, Scala, Kotlin, C and JS/TS (spec: "`stable_id_scheme` version history").
 - **`verify-claims --json` 3.1 → 3.2** adds `withheld_flows`.
 - **`validation_report` 0.5 → 0.6** adds `name_slot_stats.column_suffixed`, the count of node ids carrying `@<column>`.
 - **Exit codes**: a crash exits 70, a broken pipe 141 (both were 1); a missing `--input` or empty claims file exits 2, so `verify-claims` exit 1 always means a violated claim.
@@ -39,6 +39,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A go-swagger route marker's `name` is its route** (`GET /alerts`), not its handler, which is in `meta.handler_name`.
 - **Some node kinds are corrected**: Gleam custom types are `type` and aliases `type_alias`; Odin and V structs and unions are `struct`, `union`; a V function with a receiver is `method`.
 - **Stand-in `fingerprint` values carry the `hgstandinfp1:` label**; digests are unchanged.
+- **A build target's node id starts with its language**, not `manifest`.
+- **An npm package stand-in's `path` is `<external>`**, not empty.
+- **C-family parameter entries carry `declarator`**: the pointer, reference and array marks.
 
 ### Added
 
@@ -93,7 +96,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Two spellings of one type hash alike**: an imported and a qualified name (Julia and Solidity too; TypeScript whatever the colon spacing), Rust `self` and `mut self`, and built-in spellings: C# `string` / `System.String`, Swift `Int` / `Swift.Int`, Go `byte` / `uint8`, Solidity `uint` / `uint256`, Rust `::std::X` / `std::X`.
 - **Renaming what callers never write keeps the id**: a callback type's inner parameter, a Dart positional parameter, a JS/TS destructuring pattern, TypeScript interface-member, object-type and type-predicate parameters, Go interface-literal parameters.
 - **A JS/TS default value no longer changes the id**, nor does the argument order of a Rust `cfg` `any` / `all`.
-- **Declarations that differ no longer share a hash**: bounded generic overloads, Swift argument labels, static and instance members (Swift, JS/TS), constrained Swift extensions, Rust `impl` blocks, Java anonymous classes, Dart named parameters.
+- **Declarations that differ no longer share a hash**: bounded generic overloads, Swift argument labels, static and instance members (Swift, JS/TS), constrained Swift extensions, Rust `impl` blocks, Java anonymous classes, Dart named parameters, C++ / CUDA / GLSL overloads apart only by pointer, reference or array marks, C++ `const` and ref-qualified members, TypeScript optional and rest parameters.
 - **Conditional-compilation alternatives no longer share a hash**: Rust `#[cfg]`, inner `#![cfg]` and `cfg_attr`; Swift `#if`; preprocessor branches in C, C++, CUDA, HLSL, GLSL and Objective-C (include guards are not hashed).
 - **Same-named locals of different functions no longer share a hash**: Kotlin, Python, Scala, Dart, PHP, JS/TS, C++, HLSL.
 - **Nine analyzers hash the kind they report**: Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl, V.
@@ -148,6 +151,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Symbols and files read
 
+- **EEx, HEEx, LEEx, FreeMarker, Velocity, JSP and Jinja templates are files of their own language.**
 - **Vue 3.4 shorthand directives (`:album`) are read one by one.**
 - **V unions named by one capital letter are emitted.**
 - **SCIP: same-named local functions of one class get separate nodes.**
