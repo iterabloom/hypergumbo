@@ -18,3 +18,10 @@
     pr_ref:  # 38d8
     description: "- Vue: directives ON a nested <template> element (<template v-if>, <template #slot>) are never emitted (its content is, once, since the duplicate walk was removed).\n- JavaScript: the file node of a Vue/Svelte component minted by the JavaScript analyzer spans the <script> block only (containment now copes; other readers of the span do not).\n- JavaScript: a hashed signature drops a destructured parameter: method({ a, b }, [c, d] = []) hashes ([c, d]=...).\n- Robot: @{LIST} and &{DICT} in *** Variables *** emit no symbol (see also WI-lagar).\n- CUDA: the name extractor reads the return type into the name for some templated declarations (pytorch Math.cuh chebyshev_coefficients_*), and conversion operators emit no symbol.\n- just: an attribute written over several lines is dropped (attributes are read line by line).\n- Ruby: \"class A :: B\" is parsed as another construct.\n- openapi: the operation node's line span is 0-0 for a document YAML cannot compose (a tab-indented JSON file).\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 38d8
     fields: {}  # 38d8
+- op: discuss  # 5a58
+  at: '2026-11-23T22:42:15Z'  # 5a58
+  by: agent  # 5a58
+  actor: jgstern_agent  # 5a58
+  clock: 2  # 5a58
+  nonce: 5a58  # 5a58
+  message: "2026-11-23: the JavaScript signature bullet (a destructured parameter is dropped) is now carried in full by WI-hizop-nujag-binis-fifag-jipug-nanij-fagov-lonil, together with a second defect in the same function (a destructured default is cut at its first '='). Fix it there."  # 5a58

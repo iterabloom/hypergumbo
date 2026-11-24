@@ -19,3 +19,18 @@
     pr_ref:  # 1beb
     description: "Each needs a ruling, not code first.\n1. ADR-0036 contradicts itself on an empty name slot: the Ruling 1 table says the name slot \"may be empty\", while its Enforcement table and spec_validator treat an empty name slot as an id_format error.\n2. make_symbol_id and make_file_id accept an empty path or name for an EMITTED symbol (the boundary factory is now guarded: empty path becomes <external>, empty name raises). 0 such ids on a 33-repository survey. A guard there needs a ruling: no name sentinel exists, and a raise aborts a user's analysis.\n3. The wasm-bindgen linker's module node has language slot \"wasm\": it has no host file, so ADR-0034's rule (a Class B stand-in's slot is its discovery language) gives no value.\n4. The view_template linkers label templates heex (their tables also hold eex, leex, jinja, ftl, vm, jsp), and manifest_targets mints \"manifest\" slots: none is on the language axis; the stand-in's stable id hashes the language, so any change moves ids.\n5. An annotation \"@hg:route\" in a file no analyzer classifies keeps language slot \"unknown\": route widening hashes discovery_language, so fixing it moves its id.\n6. message_dispatch labels stand-ins found in a .svelte file \"javascript\", as the JavaScript analyzer labels the functions and the file node of a .svelte script. Changing only the stand-in to \"svelte\" would break that parity.\n7. WI-hulup (the npm package stand-in's Symbol.path is '' where Ruling 3's no-anchor sentinel is <external>) is untouched: adopting <external> moves every npm stand-in's stable id.\nEvidence: ~/hypergumbo_lab_notebook/idfive_11232026/ (STATUS.md, <package>/RESULTS.md, bump/report_run2.txt). Found 2026-11-23 while building WI-funip, WI-supar, WI-sagur, WI-jozih and WI-sidus."  # 1beb
     fields: {}  # 1beb
+- op: discuss  # 66c0
+  at: '2026-11-23T23:19:31Z'  # 66c0
+  by: agent  # 66c0
+  actor: jgstern_agent  # 66c0
+  clock: 2  # 66c0
+  nonce: 66c0  # 66c0
+  message: "OWNER RULING 2026-11-23 (in session): \"for WI-hodin, all as you recommend.\" The recommendations as put to the owner, by point:\n1. An empty name slot is an ERROR; fix the ADR-0036 Ruling 1 table text that says it \"may be empty\".\n2. An emitted symbol with an empty name or path: no raise; the validator reports it.\n3. The wasm-bindgen module node's language slot \"wasm\" is ACCEPTED.\n4. The view_template labels (heex for every template language) and the \"manifest\" slots are to be FIXED, only if a v19 bump happens (it moves ids). The v19 bump itself is not yet ruled.\n5. \"@hg:route\" in a file no analyzer classifies keeps \"unknown\": LEAVE.\n6. message_dispatch stand-ins in a .svelte file stay \"javascript\": KEEP.\n7. The npm stand-in's empty path becomes <external> (WI-hulup), only if a v19 bump happens (it moves every npm stand-in's stable id).\nStatus moves to todo_soft: points 1-3 are to build now (no id moves); 4 and 7 wait on the v19 ruling; 5 and 6 are closed by the ruling."  # 66c0
+- op: update  # 4dd4
+  at: '2026-11-23T23:19:33Z'  # 4dd4
+  by: agent  # 4dd4
+  actor: jgstern_agent  # 4dd4
+  clock: 3  # 4dd4
+  nonce: 4dd4  # 4dd4
+  set:  # 4dd4
+    status: todo_soft  # 4dd4

@@ -26,3 +26,10 @@
   clock: 2  # 7028
   nonce: '7028'  # 7028
   message: "PR #2200, 2026-11-16: the robot and twig members named in this title are DONE (robot `test_case` -> `test`, twig `function_call` -> `call_site`; node id and stable id now hash Symbol.kind; harbor tests: 173 of 1,474 robot symbols moved, every `test`; twig measured on a fixture only). The nine analyzers (fennel, gleam, hack, haxe, janet, odin, prisma, tcl, v_lang) still hash a role word into the stable id and were NOT changed: that is this item, still open, and it moves ids (next bump). The title still names robot and twig; retitling is the owner's call."  # 7028
+- op: discuss  # 545a
+  at: '2026-11-24T00:06:02Z'  # 545a
+  by: agent  # 545a
+  actor: jgstern_agent  # 545a
+  clock: 3  # 545a
+  nonce: 545a  # 545a
+  message: "OWNER RULING 2026-11-23 (in session). Put to the owner: (A) switch the nine analyzers to hash the reported kind (Symbol.kind)? (B) in Gleam, Odin and V a struct, union or type is reported as class: correct the kind? Owner, verbatim: \"yes to both, in the same bump, so those ids move once instead of twice.\" The owner also approved the bump, verbatim: \"yes I approve the v19 bump\", and asked for ONE PR carrying WI-dibin, WI-lilab, WI-vavag, WI-dozos, WI-finam, WI-sifar, WI-radim, WI-hizop, WI-hupad, WI-juzom, WI-rafis, WI-hugir and WI-bafaz, \"minus any already done\"."  # 545a

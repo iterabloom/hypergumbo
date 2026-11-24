@@ -18,3 +18,10 @@
     pr_ref:  # b936
     description: "After PR 5 (WI-kosug; owner ruling 2026-11-20 \"keep as built\"), Rust `#[cfg]` guards and Swift `#if`/`#elseif`/`#else` branches enter the stable id at every level of the scope chain. Three gaps remain:\n\n1. C and C++ `#ifdef`/`#if` alternatives still tie. Repro in kosug/other_languages: `open_file` x2, `struct S` x2, `K::run` x2. No ruling covers C/C++.\n2. Rust inner `#![cfg(...)]` and `cfg_attr(..., cfg(...))` are not read.\n3. Predicates are hashed as written, neither reordered nor evaluated, so `any(a, b)` and `any(b, a)` hash apart.\n\nEach fix moves ids and needs a scheme bump.\n\nEvidence: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/kosug/RESULTS.md."  # b936
     fields: {}  # b936
+- op: discuss  # 2758
+  at: '2026-11-24T00:06:09Z'  # 2758
+  by: agent  # 2758
+  actor: jgstern_agent  # 2758
+  clock: 2  # 2758
+  nonce: '2758'  # 2758
+  message: "OWNER RULING 2026-11-23 (in session), verbatim: \"yes to A and to reading the two Rust forms. For B, sort the arguments and nothing more; do not try to evaluate the conditions.\" As put to the owner: A = C and C++ #ifdef/#if alternatives enter the stable id, as Rust #[cfg] and Swift #if do; the two Rust forms = inner #![cfg(...)] and cfg_attr(..., cfg(...)) are read; B = a predicate's arguments are sorted so any(a, b) and any(b, a) hash alike, and conditions are never evaluated. The v19 bump is approved (\"yes I approve the v19 bump\")."  # 2758
