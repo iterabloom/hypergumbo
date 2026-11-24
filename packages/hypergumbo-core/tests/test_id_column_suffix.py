@@ -77,6 +77,15 @@ def test_id_with_column_keeps_a_colon_bearing_path() -> None:
     assert id_with_column("rust:std::cmp:3-3:max:function", 7) == "rust:std::cmp:3-3:max@7:function"
 
 
+def test_id_with_column_writes_what_the_factory_writes() -> None:
+    """The two ways to a suffixed id give one string, sanitized name included."""
+    for name in ("T.init", "at:error:", "operator<<", "user@42"):
+        plain = make_symbol_id("swift", "a.swift", 2, 9, name, "method")
+        assert id_with_column(plain, 15) == make_symbol_id(
+            "swift", "a.swift", 2, 9, name, "method", column=15
+        )
+
+
 # --- telling same-line twins apart ---------------------------------------
 
 
