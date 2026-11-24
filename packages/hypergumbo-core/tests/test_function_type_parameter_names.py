@@ -19,6 +19,7 @@ from hypergumbo_core.analyze.base import (
     drop_arrow_function_type_parameter_names,
     drop_function_type_parameter_names,
     drop_go_function_type_parameter_names,
+    innermost_open_bracket,
     normalize_signature_go,
 )
 
@@ -100,6 +101,13 @@ GO = {
     # A struct tag holding parentheses is a string.
     'struct{ F int "json:\\"func(x int)\\"" }': 'struct{ F int "json:\\"func(x int)\\"" }',
     "(cb func(x int) error) (n int, err error)": "(cb func(int) error) (n int, err error)",
+    # An interface literal's method spec is a function type (stable-id v19),
+    # its result list too; a struct's braces and a group after no name are not.
+    "interface{ M(x int) }": "interface{ M(int) }",
+    "interface { M(x int) (n int, err error); N(a, b string) }": "interface { M(int) (int, error); N(string, string) }",
+    "(i interface{ M(x int) }, s struct{ f [len(x)]int })": "(i interface{ M(int) }, s struct{ f [len(x)]int })",
+    "interface{ io.Reader; M(x int) }": "interface{ io.Reader; M(int) }",
+    "struct{ M(x int) }": "struct{ M(x int) }",
 }
 
 
@@ -125,3 +133,28 @@ def test_the_arrow_adapter_takes_a_name_pattern_or_a_rule() -> None:
         text, re.compile(r"\s*=>"), lambda part: part.upper()) == "Map<K, (X: INT) => V>"
     assert drop_arrow_function_type_parameter_names(
         "(cb: (x: Int) -> U) -> R", _ARROW, _NAME, declaration=True) == "(cb: (Int) -> U) -> R"
+
+
+@pytest.mark.parametrize(("text", "at", "expected"), [
+    ("{ m(x", 3, 0),        # before the "(": the brace
+    ("{ m(x", 4, 3),        # after it: the "("
+    ("(a) {", 5, 4),
+    ("a[b](", 5, 4),
+    ("\"{\" (", 5, 4),     # a brace in a string is text
+    ("\"(\" x", 4, -1),    # so is a parenthesis
+    ("x", 1, -1),
+    ("a)", 2, -1),           # a stray closer closes nothing
+    ("{a}x", 3, -1),         # a closed brace is not open
+])
+def test_innermost_open_bracket(text: str, at: int, expected: int) -> None:
+    assert innermost_open_bracket(text, at) == expected
+
+
+def test_the_arrow_adapter_takes_more_lists() -> None:
+    """``also`` names groups the arrow does not follow (TypeScript's object
+    type members)."""
+    text = "{ m(x: Int): R }"
+    arrow = re.compile(r"\s*=>")
+    assert drop_arrow_function_type_parameter_names(text, arrow, _NAME) == text
+    assert drop_arrow_function_type_parameter_names(
+        text, arrow, _NAME, also=lambda t, open_at, _close: t[open_at - 1] == "m") == "{ m(Int): R }"
