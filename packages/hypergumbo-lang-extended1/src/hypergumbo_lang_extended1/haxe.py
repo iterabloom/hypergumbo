@@ -24,6 +24,10 @@ Key constructs extracted:
 - function name(args): Type - function definitions
 - name(args) - function calls
 - obj.method(args) - method calls
+
+Identity (WI-lilab, stable-id scheme v19): every stable id hashes the kind
+its Symbol reports. A function hashed the role word ``fn``; it hashes
+``function`` now. Classes and interfaces already hashed their own kind.
 """
 
 from __future__ import annotations
@@ -295,7 +299,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "function"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=qualified_name, file_stable_id=file_stable_id),
+                    stable_id=self.compute_stable_id(node, kind="function", name=qualified_name, file_stable_id=file_stable_id),
                     name=qualified_name,
                     kind="function",
                     language="haxe",

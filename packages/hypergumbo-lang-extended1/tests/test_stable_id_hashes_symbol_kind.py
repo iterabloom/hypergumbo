@@ -2,6 +2,7 @@
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/fennel.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/gleam.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/hack.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/haxe.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -93,6 +94,18 @@ trait Loggable {
 function main(): void {}
 """
 
+_HAXE = """\
+package demo;
+
+interface Shape {
+  function area():Float;
+}
+
+class Demo {
+  public function run(x:Int):Int { return x + 1; }
+}
+"""
+
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -104,6 +117,8 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
               frozenset({"function", "type", "type_alias"})),
     "hack": ("hack", "analyze_hack", "demo.hack", _HACK,
              frozenset({"function", "method", "class", "interface", "trait", "namespace"})),
+    "haxe": ("haxe", "analyze_haxe", "Demo.hx", _HAXE,
+             frozenset({"function", "class", "interface"})),
 }
 
 
