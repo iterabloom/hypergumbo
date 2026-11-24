@@ -142,8 +142,12 @@ class TestAnalyzeGleam:
         """Should extract type definitions."""
         result = analyze_gleam(gleam_repo)
 
-        types = [s for s in result.symbols if s.kind == "class"]
+        # A custom type is kind ``type`` (WI-lilab: it was ``class``); no
+        # custom type is reported as an alias.
+        types = [s for s in result.symbols if s.kind == "type"]
         type_names = {s.name for s in types}
+        assert not [s for s in result.symbols if s.kind == "class"]
+        assert all(not (s.meta or {}).get("is_alias") for s in types)
 
         assert "User" in type_names
         assert "Status" in type_names
@@ -282,8 +286,10 @@ type Internal = Bool
 
         result = analyze_gleam(tmp_path)
 
-        aliases = [s for s in result.symbols if s.kind == "type"]
+        # An alias is kind ``type_alias`` (WI-lilab: it was ``type``).
+        aliases = [s for s in result.symbols if s.kind == "type_alias"]
         alias_names = {s.name for s in aliases}
+        assert all((s.meta or {}).get("is_alias") for s in aliases)
 
         assert "UserId" in alias_names
         assert "Name" in alias_names
@@ -427,13 +433,14 @@ def _kind_slot_result(tmp_path: Path):
 def test_the_gleam_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
     result = _kind_slot_result(tmp_path)
     got = sorted((s.kind, s.name) for s in result.symbols)
-    assert got == [('class', 'Shape'), ('function', 'area'), ('function', 'main'), ('type', 'Name')], got
+    assert got == [('function', 'area'), ('function', 'main'), ('type', 'Shape'), ('type_alias', 'Name')], got
 
 
 def test_every_gleam_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
     """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
     The ids said ``fn`` on a function, ``type`` on the ``class`` a custom
-    type is emitted as, and ``type_alias`` on the ``type`` an alias is."""
+    type was emitted as, and ``type_alias`` on the ``type`` an alias was
+    (the Symbols' kinds are ``type`` and ``type_alias`` since WI-lilab)."""
     result = _kind_slot_result(tmp_path)
     wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
     assert wrong == []

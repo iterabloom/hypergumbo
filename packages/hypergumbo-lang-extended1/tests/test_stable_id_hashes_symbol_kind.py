@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/fennel.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/gleam.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -56,6 +57,22 @@ _FENNEL = """\
 (local limit 10)
 """
 
+_GLEAM = """\
+pub type Shape {
+  Circle(radius: Float)
+  Square(side: Float)
+}
+
+pub type Size = Int
+
+pub fn area(s: Shape) -> Float {
+  case s {
+    Circle(r) -> r *. r
+    Square(x) -> x *. x
+  }
+}
+"""
+
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -63,6 +80,8 @@ _FENNEL = """\
 CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
     "fennel": ("fennel", "analyze_fennel", "demo.fnl", _FENNEL,
                frozenset({"function", "variable"})),
+    "gleam": ("gleam", "analyze_gleam", "demo.gleam", _GLEAM,
+              frozenset({"function", "type", "type_alias"})),
 }
 
 
