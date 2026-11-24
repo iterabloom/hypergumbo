@@ -7,6 +7,7 @@
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/odin.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/prisma.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/tcl.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/v_lang.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -160,6 +161,36 @@ namespace eval util {
 }
 """
 
+_V = """\
+module main
+
+pub struct Point {
+	x int
+}
+
+union Num {
+	i int
+	f f32
+}
+
+enum Color {
+	red
+}
+
+interface Shape {
+	area() f64
+}
+
+struct A {}
+
+fn (p Point) norm(k int) int {
+	return p.x + k
+}
+
+fn add(a int, b int) int {
+	return a + b
+}
+"""
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -181,6 +212,8 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
                frozenset({"class", "block", "enum"})),
     "tcl": ("tcl", "analyze_tcl", "demo.tcl", _TCL,
             frozenset({"function", "namespace"})),
+    "v": ("v_lang", "analyze_v", "demo.v", _V,
+          frozenset({"function", "struct", "union", "enum", "interface"})),
 }
 
 
