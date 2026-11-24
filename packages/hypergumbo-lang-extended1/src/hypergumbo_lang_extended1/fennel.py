@@ -23,6 +23,10 @@ Key constructs extracted:
 - (local name value) - variable definitions
 - (name args) - function calls (lists)
 
+Identity: the stable id hashes the kind the Symbol reports (``function``,
+``variable``), the word the node id's kind slot carries; until stable-id
+scheme v19 it hashed the role words ``fn`` and ``var`` (WI-lilab).
+
 Call edges
 ----------
 - Lists whose head is in ``_SPECIAL_FORMS`` (``let``, ``if``, ``each``,
@@ -198,7 +202,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                 sym = Symbol(
                     id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "function"),
                     stable_id=self.compute_stable_id(
-                        node, kind="fn", name=name,
+                        node, kind="function", name=name,
                         file_stable_id=file_stable_id,
                     ),
                     name=name,
@@ -232,7 +236,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                 sym = Symbol(
                     id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "variable"),
                     stable_id=self.compute_stable_id(
-                        node, kind="var", name=name,
+                        node, kind="variable", name=name,
                         file_stable_id=file_stable_id,
                     ),
                     name=name,
