@@ -4058,18 +4058,37 @@ def _go_without_parameter_names(parts: list[str]) -> list[str]:
     return out
 
 
+#: The ``interface`` keyword right before a brace: an interface literal.
+_GO_INTERFACE_KEYWORD_BEFORE_RE = _re.compile(r"\binterface\s*$")
+
+
+def _go_is_function_type_list(text: str, open_at: int, _close: int) -> bool:
+    """Whether the group opening at ``text[open_at]`` is a function type's
+    parameter list: the ``func`` keyword stands before it, or it stands
+    directly inside an interface literal's braces (``interface{ M(x int) }``,
+    a method spec: stable-id v19; the only other group there is a method's
+    result list, which is rewritten alike)."""
+    if _GO_FUNC_KEYWORD_BEFORE_RE.search(text, 0, open_at) is not None:
+        return True
+    brace = innermost_open_bracket(text, open_at)
+    return (brace >= 0 and text[brace] == "{"
+            and _GO_INTERFACE_KEYWORD_BEFORE_RE.search(text, 0, brace) is not None)
+
+
 def drop_go_function_type_parameter_names(text: str) -> str:
     """``text`` (a Go type or signature) with the parameter and result names
     of each function type in it left out: ``func(x int) error`` reads
     ``func(int) error``, ``func(a, b int) (n int, err error)`` reads
     ``func(int, int) (int, error)``, at any depth (stable-id v17;
     :func:`drop_function_type_parameter_names`). A function type's list is
-    a group the ``func`` keyword stands before, and its result list the group
-    right after it; a declaration's own lists are not (its result names stay
-    as :func:`normalize_signature_go` writes them)."""
+    a group the ``func`` keyword stands before, or an interface literal's
+    method spec (``interface{ M(x int) (n int) }`` reads ``interface{
+    M(int) (int) }``; since v19), and its result list the group right after
+    it; a declaration's own lists are not (its result names stay as
+    :func:`normalize_signature_go` writes them)."""
     return drop_function_type_parameter_names(
         text,
-        lambda t, open_at, _close: _GO_FUNC_KEYWORD_BEFORE_RE.search(t, 0, open_at) is not None,
+        _go_is_function_type_list,
         _go_without_parameter_names,
         results_follow=True,
         split=_go_split_top_level,
@@ -4240,6 +4259,28 @@ def find_matching_paren(s: str, start: int, *, quotes: str = SIGNATURE_QUOTES) -
     return -1
 
 
+def innermost_open_bracket(text: str, at: int, *, quotes: str = SIGNATURE_QUOTES) -> int:
+    """The index of the innermost ``(``, ``[`` or ``{`` of ``text`` still open
+    at index ``at``, or -1 when none is. A string literal (opened by a
+    character of ``quotes``) is text; ``<`` is no bracket here (a comparison
+    or Go's channel arrow would read as one). The function-type rules ask it
+    whether a group stands directly in an object type's or an interface
+    literal's braces."""
+    stack: list[int] = []
+    i = 0
+    while i < at:
+        ch = text[i]
+        if ch in quotes:
+            i = _string_end(text, i, quotes) + 1
+            continue
+        if ch in "([{":
+            stack.append(i)
+        elif ch in ")]}" and stack:
+            stack.pop()
+        i += 1
+    return stack[-1] if stack else -1
+
+
 def drop_function_type_parameter_names(
     text: str,
     is_parameter_list: Callable[[str, int, int], bool],
@@ -4337,12 +4378,15 @@ def drop_arrow_function_type_parameter_names(
     *,
     declaration: bool = False,
     split: Callable[[str], list[str]] = split_params_top_level,
+    also: Optional[Callable[[str, int, int], bool]] = None,
 ) -> str:
     """:func:`drop_function_type_parameter_names` for a language whose
     function type is a parameter list its ``arrow`` follows (Kotlin and Swift
     ``->``, TypeScript ``=>``), each parameter's name dropped on its own:
     ``without_name`` gives a parameter back without it, or is the pattern of
-    the name prefix to cut from the parameter's start (``x: ``)."""
+    the name prefix to cut from the parameter's start (``x: ``). ``also``
+    names more groups that are such a list (TypeScript: an object type's
+    method, call and construct signatures, written without the arrow)."""
     def cut_prefix(part: str) -> str:
         match = prefix.match(part) if prefix is not None else None
         return part[match.end():] if match else part
@@ -4351,7 +4395,8 @@ def drop_arrow_function_type_parameter_names(
     rule = cut_prefix if isinstance(without_name, _re.Pattern) else without_name
     return drop_function_type_parameter_names(
         text,
-        lambda t, _open, close: arrow.match(t, close + 1) is not None,
+        lambda t, open_at, close: arrow.match(t, close + 1) is not None or (
+            also is not None and also(t, open_at, close)),
         lambda parts: [rule(p) for p in parts],
         declaration=declaration,
         split=split,

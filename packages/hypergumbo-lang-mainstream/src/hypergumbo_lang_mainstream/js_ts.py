@@ -1642,6 +1642,30 @@ _DEFAULT_VALUE_FIELDS = {
 }
 #: What a default value is hashed as (:func:`_jsts_hashed_text`).
 _DEFAULT_VALUE_HASHED = "..."
+#: The parameter kinds a type predicate's subject is counted among.
+_TS_PARAMETER_TYPES = ("required_parameter", "optional_parameter")
+
+
+def _ts_predicate_subject_position(predicate: "tree_sitter.Node", name: str) -> Optional[int]:
+    """The position, among the parameters of the function (or function type,
+    method or call signature) ``predicate`` types the result of, of the
+    parameter named ``name``: the subject of ``x is T`` / ``asserts x``.
+    None when no parameter has the name (``this`` is none)."""
+    owner = predicate.parent
+    while owner is not None and owner.child_by_field_name("parameters") is None:
+        owner = owner.parent
+    if owner is None:
+        return None  # pragma: no cover - a predicate types a callable's result
+    parameters = owner.child_by_field_name("parameters")
+    position = 0
+    for parameter in parameters.named_children if parameters is not None else []:
+        if parameter.type not in _TS_PARAMETER_TYPES:
+            continue
+        pattern = parameter.child_by_field_name("pattern")
+        if pattern is not None and pattern.type == "identifier" and pattern.text == name.encode():
+            return position
+        position += 1
+    return None
 
 
 def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
@@ -1673,15 +1697,27 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       and hashes alike. A ``/`` in the pattern is written ``\\x2f`` too, so no
       ``/*`` or ``//`` in a regex reads as a comment.
     - A comment is not code: each ``comment`` node is written as one space.
+    - A type predicate's subject (``x is T``, ``asserts x``) is written as
+      the position of the parameter it names, ``#0 is T``
+      (:func:`_ts_predicate_subject_position`; since v19): renaming the
+      parameter moves nothing, and which parameter is narrowed stays.
+      ``this is T`` is kept.
 
-    None occurs in a text that had no default value, no leading ``&`` or
-    ``|``, no comment and no whitespace or ``/`` in a regex, so every other
+    None occurs in a text that had no default value, no type predicate, no
+    leading ``&`` or ``|``, no comment and no whitespace or ``/`` in a regex, so every other
     hashed text is the displayed one, byte for byte.
     """
     edits: list[tuple[int, int, str]] = []
     pending = [node]
     while pending:
         current = pending.pop()
+        if current.type in ("type_predicate", "asserts"):
+            subject = (current.child_by_field_name("name") if current.type == "type_predicate"
+                       else next((c for c in current.children if c.type == "identifier"), None))
+            position = (_ts_predicate_subject_position(current, _node_text(subject, source))
+                        if subject is not None and subject.type == "identifier" else None)
+            if subject is not None and position is not None:
+                edits.append((subject.start_byte, subject.end_byte, f"#{position}"))
         default_field = _DEFAULT_VALUE_FIELDS.get(current.type)
         default = current.child_by_field_name(default_field) if default_field else None
         if default is not None:
@@ -1927,14 +1963,36 @@ def _ts_split_parameters(inner: str) -> list[str]:
     return parts
 
 
-def _jsts_without_function_type_names(text: str, *, declaration: bool = False) -> str:
+def _ts_is_object_type_member_list(text: str, open_at: int, _close: int) -> bool:
+    """Whether the group opening at ``text[open_at]`` stands directly in an
+    object type's braces: a method, call or construct signature's parameter
+    list (``{ m(x: T): R }``, ``{ (x: T): R }``, ``{ new (x: T): R }``), a
+    function type written without ``=>`` (stable-id v19). A parenthesized
+    type there (``{ a: (A | B) }``) holds no ``name:`` part, so the
+    function-type rule writes it as it was."""
+    from hypergumbo_core.analyze.base import innermost_open_bracket
+
+    brace = innermost_open_bracket(text, open_at)
+    return brace >= 0 and text[brace] == "{"
+
+
+def _jsts_without_function_type_names(
+    text: str, *, declaration: bool = False, member: bool = False,
+) -> str:
     """``text`` (a TypeScript type, or a signature when ``declaration``) with
     each function or constructor type's parameter names left out:
     ``(x: number) => void`` reads ``(number) => void``, at any depth
     (stable-id v17; :func:`_ts_function_parameter_type`,
-    :func:`~hypergumbo_core.analyze.base.drop_function_type_parameter_names`).
-    A declaration's default value reaches here as ``...``
-    (:func:`_jsts_hashed_text`), so no value is read as a type."""
+    :func:`~hypergumbo_core.analyze.base.drop_function_type_parameter_names`),
+    and so does an object type's method, call or construct signature
+    (:func:`_ts_is_object_type_member_list`; since v19). A declaration's
+    default value reaches here as ``...`` (:func:`_jsts_hashed_text`), so no
+    value is read as a type.
+
+    ``member``: the declaration is an interface's method member, whose own
+    parameters are written as a function type's are (``x?: T`` -> ``?T``):
+    it is the method signature of an object type, and callers of ``I.m``
+    write none of its names (since v19; through v18 they were hashed)."""
     from hypergumbo_core.analyze.base import (
         drop_arrow_function_type_parameter_names,
         find_matching_paren,
@@ -1942,7 +2000,8 @@ def _jsts_without_function_type_names(text: str, *, declaration: bool = False) -
 
     def drop(t: str) -> str:
         return drop_arrow_function_type_parameter_names(
-            t, _TS_FUNCTION_ARROW_RE, _ts_function_parameter_type, split=_ts_split_parameters)
+            t, _TS_FUNCTION_ARROW_RE, _ts_function_parameter_type, split=_ts_split_parameters,
+            also=_ts_is_object_type_member_list)
 
     close = find_matching_paren(text, 0) if declaration else -1
     if close < 0:
@@ -1952,7 +2011,7 @@ def _jsts_without_function_type_names(text: str, *, declaration: bool = False) -
     pos = 0
     for parameter in _ts_split_parameters(inner):
         start = inner.find(parameter, pos)
-        out += [inner[pos:start], drop(parameter)]
+        out += [inner[pos:start], drop(_ts_function_parameter_type(parameter) if member else parameter)]
         pos = start + len(parameter)
     out.append(inner[pos:])
     return f"({''.join(out)})" + drop(text[close + 1:])
@@ -4901,7 +4960,7 @@ def _make_container_member_symbols(
             stable_id=make_typed_stable_id(
                 kind,
                 canonical_type_names(_jsts_without_function_type_names(
-                    hashed_signature or "", declaration=kind == "method")),
+                    hashed_signature or "", declaration=kind == "method", member=kind == "method")),
                 name=member_name,
                 qualified_name=_make_jsts_qualified_name(owner_scope, member_name, lang),
                 file_stable_id=file_stable_id,
