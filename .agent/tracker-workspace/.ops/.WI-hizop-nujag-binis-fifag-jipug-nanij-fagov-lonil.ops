@@ -19,3 +19,18 @@
     pr_ref:  # 522b
     description: "WHAT. _extract_jsts_signature (packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py, the assignment_pattern branch near line 1739) builds the signature a JavaScript or TypeScript function shows and hashes. Two defects, both measured on dev 49bc5c6e4 (scheme v18), one file a.js per variant:\n1. A destructured parameter with a default is cut at its first \"=\": the branch splits the whole pattern text with split(\"=\", 1) instead of reading the pattern's left side.\n   - export function f({retries = 3} = {})                 signature ({retries = ...)   stable id hgstableid18:44f73e7226972199\n   - export function f({retries = 3, timeout = 5} = {})    signature ({retries = ...)   the SAME stable id\n   - export function f({retries} = {})                     signature ({retries} = ...)  hgstableid18:eb572034bb65a6e2\n2. A bare object_pattern or array_pattern parameter has no branch and is dropped:\n   - export function m({ a, b }, [c, d] = [])      signature ([c, d] = ...)   hgstableid18:d3c8d40e7e87e52a\n   - export function m({ a, b, e }, [c, d] = [])   signature ([c, d] = ...)   the SAME stable id\nCONSEQUENCE. The signature a reader sees is truncated or missing a parameter, and adding or removing a destructured parameter does not move the stable id.\nASK. Read the pattern's left field for a default, and write a destructured parameter into the signature. The fix changes what the stable id hashes, so it belongs to the next scheme bump (every bump is owner-ruled). Related: WI-dozos (TypeScript default values in the stable id). The second defect was first listed as one bullet of WI-saliz; this item carries both.\nFound 2026-11-23 by the layout work on WI-sidus (PR #2347); the first defect was missed when the follow-ups were filed and found by an audit of the build reports (~/hypergumbo_lab_notebook/idfive_11232026/closure/followup_audit.md)."  # 522b
     fields: {}  # 522b
+- op: update  # 461a
+  at: '2026-11-24T05:40:44Z'  # 461a
+  by: agent  # 461a
+  actor: jgstern_agent  # 461a
+  clock: 2  # 461a
+  nonce: 461a  # 461a
+  set:  # 461a
+    status: done  # 461a
+- op: discuss  # 8e2f
+  at: '2026-11-24T05:40:44Z'  # 8e2f
+  by: agent  # 8e2f
+  actor: jgstern_agent  # 8e2f
+  clock: 3  # 8e2f
+  nonce: 8e2f  # 8e2f
+  message: "Fixed in PR #2354 (dev 39bef1108): the signature reads the pattern's left side for a default and writes a destructured parameter whole.\nFILED REPROS RE-RUN on dev 39bef1108 (the item's five one-file variants, closure/t/hizop_1..5):\n1. f({retries = 3} = {}): signature ({retries = 3} = ...), id 4b68f4cca26e3386; f({retries = 3, timeout = 5} = {}): ({retries = 3, timeout = 5} = ...), 08560f5f5f8b5189; f({retries} = {}): ({retries} = ...), eb572034bb65a6e2. Three ids; on dev 05ed6f5fe the first two shared 44f73e7226972199 with signature ({retries = ...).\n2. m({ a, b }, [c, d] = []): ({ a, b }, [c, d] = ...), 6d02fff58c1ef7dc; m({ a, b, e }, [c, d] = []): ({ a, b, e }, [c, d] = ...), fbe62e4dd3b23199. On dev 05ed6f5fe both showed ([c, d] = ...) and shared d3c8d40e7e87e52a.\n(Ids are printed without the scheme label.) MEASURED by the builder: knex 72, hocuspocus 19, nest packages 15 ids moved; the displayed signature changed on 293 nodes over 49 trees.\nNOT CHECKED, filed: a Rust struct-pattern parameter cut at its first colon (read from code, not run): WI-dufoj-bupan-bajab-tumum-nudot-bapus-badak-runap.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 8e2f

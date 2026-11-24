@@ -1,0 +1,23 @@
+- op: create  # 5921
+  at: '2026-11-24T05:33:36Z'  # 5921
+  by: agent  # 5921
+  actor: jgstern_agent  # 5921
+  clock: 1  # 5921
+  nonce: '5921'  # 5921
+  data:  # 5921
+    kind: work_item  # 5921
+    title: "C: array/function-pointer typedefs and macro-declared functions get the wrong name; a zstd misparse shares a node id"  # 5921
+    status: todo_hard  # 5921
+    priority: 3  # 5921
+    parent:  # 5921
+    tags:  # 5921
+    - c  # 5921
+    - identity  # 5921
+    - stable_id  # 5921
+    - analysis_quality  # 5921
+    isbefore: []  # 5921
+    duplicate_of: []  # 5921
+    not_duplicate_of: []  # 5921
+    pr_ref:  # 5921
+    description: "WHAT\nThe C analyzer names some declarations after a type or a macro instead of the declared identifier, and one macro misparse emits three function nodes under one node id.\n1. An array typedef `typedef U32 Table[16];` and a function-pointer typedef `typedef U32 (*fp_t)(U32);` are named after the base type (`U32`), not `Table` / `fp_t`. A function-pointer typedef whose base type is a primitive (`typedef int (*handler_fn)(int);`) emits no symbol at all.\n2. A function declared through a parameter-list macro (zlibWrapper `ZEXTERN int ZEXPORT deflate _Z_OF((z_streamp strm, int flush));`) is named after the macro (`_Z_OF`).\n3. zstd lib/compress/zstd_opt.c lines 878-895 (three GEN_ZSTD_BT_GET_ALL_MATCHES(...) invocations, a #define, then a static function): three `function` nodes named ZSTD_BT_GET_ALL_MATCHES_FN, each span 878:0-895:6, one node id c:lib/compress/zstd_opt.c:878-895:ZSTD_BT_GET_ALL_MATCHES_FN:function. ZSTD_BT_GET_ALL_MATCHES_FN is a macro called inside an initializer, not a declared function. distinguish_same_line_id (the same-line-twin item filed with this one) leaves same-column twins alone by design, so @<column> does not and must not separate them: the fix is to emit one node or none. WI-hugir's text names this case as \"a parser defect and needs no ruling\"; WI-hugir is closed by PR #2354 without fixing it, so it lives here.\nConsequence: same-named typedefs and functions tie in the stable id and are split only by occurrence order; node_id_uniqueness reports form 3 as an error on every zstd run.\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/mixed/t.c and mixed2/t.c, on the PR tip 3269081cf:\n  typedef U32 Table[16];          -> c:t.c:2-2:U32:typedef\n  typedef U32 Other[8];           -> c:t.c:4-4:U32:typedef\n  typedef U32 (*fp_t)(U32);       -> c:t.c:2-2:U32:typedef   (mixed2)\n  typedef int (*handler_fn)(int); -> no symbol\nForm 3: hypergumbo run on ~/curriculum_repos/zstd; the three nodes are in ~/hypergumbo_lab_notebook/v19_11232026/bump/churn/c_make_zstd_final.json.gz (stable ids hgstableid18:8391b59f42c1cba3, :2fc201c17628fa17, :622e398a4fc0cade).\n\nMEASURED\n- zstd: ids held by more than one node 1 -> 1 across PR #2354 (coordinator, bump/totals_run1.txt and ~/hypergumbo_lab_notebook/hugir_11232026/compare.txt). C pre-split tie groups left after the guards fix: 21 groups / 43 symbols (guards agent, guards/measure/zstd_ties_fixed.txt; the file lists 3 samples: typedef nodeElt [47, 506], ZSTD_BT_GET_ALL_MATCHES_FN [878 x3], typedef BYTE [172, 1246]). The guards agent states none of the 21 is a guard alternative and names forms 1 and 2 as their causes; the split of the 21 by form was not recorded.\n- zstd final map: 30 C typedef symbols named U32, 16 each named BYTE/S16/S32/U16/U64 (drafting agent, count over c_make_zstd_final.json.gz; how many are real per-file redefinitions and how many are misnamed array/function-pointer typedefs was not separated). 4 C functions named _Z_OF.\n- libzmq external/wepoll/wepoll.c: 4 typedef tie groups (tree_t, tree_node_t, poll_group_t, queue_node_t; guards/measure/zmq_ties.txt); their form was not read.\n\nNOT CHECKED\n- Whether C++ (cpp.py) shares forms 1 and 2.\n- The coordinator's totals show zstd \"removed 3 / added 3\" C declared symbols with 0 node ids gone or new; whether those are the three nodes of form 3 (unpairable by id) was not checked.\nRelated: WI-tikop (done) set the rule that a definition whose name comes from an unexpandable macro mints no symbol; form 3 escapes that rule. WI-divus (open) is the C++ export-macro class misparse.\n\nFixing forms 1 and 2 renames symbols and changes their stable ids (name is hashed): needs a scheme bump (owner-ruled). Form 3 removes nodes.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/guards/RESULTS.md (\"Open point and residuals\"), ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md lines 80 and 187-191"  # 5921
+    fields: {}  # 5921

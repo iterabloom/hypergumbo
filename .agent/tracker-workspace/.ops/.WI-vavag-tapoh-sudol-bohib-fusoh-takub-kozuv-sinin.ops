@@ -35,3 +35,18 @@
   clock: 3  # 6d95
   nonce: 6d95  # 6d95
   message: "OWNER RULING 2026-11-23 (in session), verbatim: \"re-anchor.\" As put to the owner: a script-only Vue, Svelte or Astro component's file node moves to its own language slot (its stable id changes), and every member declared in the file follows the corrected file id (up to 1,925 member ids in koel and 3,844 in the workadventure front), instead of members keeping a file id no node carries. The v19 bump is approved (\"yes I approve the v19 bump\")."  # 6d95
+- op: update  # d3b5
+  at: '2026-11-24T05:40:47Z'  # d3b5
+  by: agent  # d3b5
+  actor: jgstern_agent  # d3b5
+  clock: 4  # d3b5
+  nonce: d3b5  # d3b5
+  set:  # d3b5
+    status: done  # d3b5
+- op: discuss  # e037
+  at: '2026-11-24T05:40:47Z'  # e037
+  by: agent  # e037
+  actor: jgstern_agent  # e037
+  clock: 5  # e037
+  nonce: e037  # e037
+  message: "Ruled by the owner 2026-11-23 (\"re-anchor.\") and built in PR #2354 (dev 39bef1108): a Vue or Svelte component's file node is in its own language slot whether or not a template edge names it, and the script's functions, methods and fields fold that node's stable id.\nFILED REPRO RE-RUN on dev 39bef1108 (the fixture of the 2026-11-20 note: Only.svelte with a script only, Only.vue with script setup lang=ts only): file nodes svelte:Only.svelte:1-1:file:file and vue:Only.vue:1-1:file:file; on dev 05ed6f5fe javascript:Only.svelte and typescript:Only.vue. The members greet and hi moved. koel on 39bef1108: 297 component file nodes, 297 in the vue: slot.\nMEASURED by the builder: koel 62 file nodes and 1,283 member ids moved, workadventure play/src/front 187 and 1,660. The item's two \"to check first\" points: the containment linker roots the members under the component's file node (the fixture's map on 39bef1108 has contains edges svelte:Only.svelte file to greet and to name, vue:Only.vue file to hi and to n); the ADR-0057 14.1 placeholder demotion survives (file_records.py carries the provenance).\nNOT MOVED: script variables, interfaces, types and enums never folded a file id and keep theirs: WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar. NOT FIXED, filed: taxonomy has no .astro, Blade paths keep php:, a dead variable in the Vue linker: WI-luroj-moviz-matob-makur-fidup-gafud-savoj-jikas (Blade, the dead variable); a note on WI-futin (.astro).\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # e037

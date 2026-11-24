@@ -18,3 +18,18 @@
     pr_ref:  # 3603
     description: "Same-named local functions in different enclosing callables tie in Kotlin and Python, the defect PR 5 fixed for Swift (WI-podor). Repros on dev code:\n\n- **Kotlin:**\n  - `fun open()` local to two constructors ties;\n  - `fun helper()` local to the overloads `f(a: Int)` / `f(b: String)` ties;\n  - `fun g()` local to two property getters ties.\n- **Python:**\n  - `def g()` local to a `@property` getter and its `@p.setter` ties;\n  - `def helper()` in two redefinitions of `def f` ties.\n\nRust (two methods, a trait default and its impl, two trait impls of one type) does not tie. Go emits no named local functions.\n\nThe Swift fix labels each scope with the enclosing callable's name plus its layout-free hashed signature, and with static/accessor words. It needs a scheme bump.\n\nRepros: ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/podor/other_languages/."  # 3603
     fields: {}  # 3603
+- op: update  # 232c
+  at: '2026-11-24T05:40:42Z'  # 232c
+  by: agent  # 232c
+  actor: jgstern_agent  # 232c
+  clock: 2  # 232c
+  nonce: 232c  # 232c
+  set:  # 232c
+    status: done  # 232c
+- op: discuss  # 2b1c
+  at: '2026-11-24T05:40:43Z'  # 2b1c
+  by: agent  # 2b1c
+  actor: jgstern_agent  # 2b1c
+  clock: 3  # 2b1c
+  nonce: 2b1c  # 2b1c
+  message: "Fixed in PR #2354 (dev 39bef1108). Kotlin and Python label each scope with the enclosing callable's name plus its hashed signature (Kotlin: also property, setter, init, enum entry). Extended under the general-fix rule to Scala, Dart, PHP, JS/TS, C++ and HLSL.\nFILED REPROS RE-RUN on dev 39bef1108 (the item's own files A.kt and a.py, analyzer output before the occurrence split, closure/presplit.py): Kotlin 3 tie groups to 0 (K.open in two constructors, K.helper in two overloads of f, K.g in two getters); Python 2 to 0 (g in a property getter and its setter, helper in two redefinitions of f). On dev 05ed6f5fe: 3 and 2.\nMEASURED by the builders: okhttp 709 of 11,117 ids moved, tie groups 38 to 0; poetry 122 of 4,125 moved, tie groups 3 to 3 (the three are not locals: @overload stubs over 60 characters).\nNOT FIXED, filed: WI-vijov-roham-momig-jovid-garat-hahov-bajih-tisat (locals of two unnamed holders, Python try/except twins), WI-zopan-fuviv-tuvam-foboz-rokof-jonod-kopus-julol (Kotlin and Scala companions); notes added on WI-gikif (long @overload stubs), WI-lusof (C# local functions are not emitted) and WI-dokos (JS/TS). JS/TS locals inside two anonymous callbacks still tie: noted on WI-dokos.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 2b1c

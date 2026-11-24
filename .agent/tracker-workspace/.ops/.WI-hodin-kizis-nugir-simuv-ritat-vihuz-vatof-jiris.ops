@@ -34,3 +34,10 @@
   nonce: 4dd4  # 4dd4
   set:  # 4dd4
     status: todo_soft  # 4dd4
+- op: discuss  # 3b08
+  at: '2026-11-24T05:40:47Z'  # 3b08
+  by: agent  # 3b08
+  actor: jgstern_agent  # 3b08
+  clock: 4  # 3b08
+  nonce: 3b08  # 3b08
+  message: "STATE after PR #2354 (dev 39bef1108, stable-id v19), by point:\n1. BUILT: an empty name slot is an error; ADR-0036's Ruling 1 table says the name slot MUST be non-empty.\n2. BUILT as ruled: the factories do not raise on an empty name or path; the validator reports it (ADR-0036 says so).\n3. BUILT: ADR-0034 is amended, the wasm language slot is accepted.\n4. NOT BUILT. 7. NOT BUILT. The ruling was \"only if a v19 bump happens\". The v19 bump happened in PR #2354 and these two were not in it: the owner's request for that PR listed thirteen items and this item was not among them, and the agent kept to the list without asking whether these two should join it. Each still moves ids (the view_template and manifest stand-ins' stable ids; every npm stand-in's stable id), so each now waits for the NEXT scheme bump, and every bump is owner-ruled. Measured in PR #2354's 49-tree comparison: stand-in stable ids moved 0, so nothing about them changed.\n5. CLOSED by the ruling (leave \"unknown\"). 6. CLOSED by the ruling (keep \"javascript\"); its premise changed in PR #2354 (a .svelte file node is now in the svelte: slot, the script's functions stay javascript/typescript): raised in WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar, point 12.\nTHE ITEM STAYS OPEN for points 4 and 7."  # 3b08

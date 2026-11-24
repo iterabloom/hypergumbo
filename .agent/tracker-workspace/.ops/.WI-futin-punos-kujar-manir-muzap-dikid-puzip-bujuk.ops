@@ -34,3 +34,10 @@
   clock: 3  # 7cda
   nonce: 7cda  # 7cda
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: grep finds 32 language_state=\"no_taxonomy_spec\" declarations, the same 32 names as filed (apex ... v, yaml_ansible). gleam/odin/ansible are not in taxonomy.LANGUAGES. A one-file .gleam fixture through hypergumbo survey gives profile.languages=[] while the gleam analyzer still emits main/hello functions. No entry has been dispositioned yet. MECHANISM: registered analyzer languages lack a taxonomy LanguageSpec, so profile/detection never see them."  # 7cda
+- op: discuss  # 90e5
+  at: '2026-11-24T05:40:48Z'  # 90e5
+  by: agent  # 90e5
+  actor: jgstern_agent  # 90e5
+  clock: 4  # 90e5
+  nonce: '90e5'  # 90e5
+  message: "PR #2354 (stable-id v19, 2026-11-23/24): `astro` (one of this item's 32) now matters to file-node slots. WI-vavag keyed the component file anchor on taxonomy.get_language(path) (js_ts._parse_sfc_blocks), and get_language(Path('a.astro')) returns None on the PR tip 3269081cf (drafting agent). No effect measured today: js_ts does not read .astro and the astro analyzer mints its own astro: anchors (components agent), so only one producer exists. A second producer of .astro file nodes would fall back to \"first emitted\" in the survivor rule."  # 90e5

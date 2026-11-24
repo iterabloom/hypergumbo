@@ -25,3 +25,18 @@
   clock: 2  # 2758
   nonce: '2758'  # 2758
   message: "OWNER RULING 2026-11-23 (in session), verbatim: \"yes to A and to reading the two Rust forms. For B, sort the arguments and nothing more; do not try to evaluate the conditions.\" As put to the owner: A = C and C++ #ifdef/#if alternatives enter the stable id, as Rust #[cfg] and Swift #if do; the two Rust forms = inner #![cfg(...)] and cfg_attr(..., cfg(...)) are read; B = a predicate's arguments are sorted so any(a, b) and any(b, a) hash alike, and conditions are never evaluated. The v19 bump is approved (\"yes I approve the v19 bump\")."  # 2758
+- op: update  # c648
+  at: '2026-11-24T05:40:43Z'  # c648
+  by: agent  # c648
+  actor: jgstern_agent  # c648
+  clock: 3  # c648
+  nonce: c648  # c648
+  set:  # c648
+    status: done  # c648
+- op: discuss  # 7e75
+  at: '2026-11-24T05:40:43Z'  # 7e75
+  by: agent  # 7e75
+  actor: jgstern_agent  # 7e75
+  clock: 4  # 7e75
+  nonce: '7e75'  # 7e75
+  message: "Fixed in PR #2354 (dev 39bef1108), under the owner ruling of 2026-11-23 (\"yes to A and to reading the two Rust forms. For B, sort the arguments and nothing more; do not try to evaluate the conditions\").\nFILED REPROS RE-RUN on dev 39bef1108 (analyzer output before the occurrence split, closure/presplit.py; the item's own kosug/other_languages files): gap 1, C open_file x2 and struct S x2, C++ K::run x2: 3 tie groups to 0. Gap 2, a Rust fixture with two inner #![cfg] modules and two cfg_attr(.., cfg(..)) functions: 2 tie groups to 0. Gap 3, #[cfg(any(unix, windows))] against any(windows, unix), and all(feature a, feature b) against the swap: stable ids DIFFERENT on dev 05ed6f5fe, SAME on 39bef1108. Nothing is evaluated.\nMEASURED by the builder: zstd C 860 of 3,386 and C++ 240 of 983 ids moved, libzmq C++ 917 of 4,625; diesel 21 (cfg_attr) and 173 (sorting), reqwest src 22 and 6. Include guards are recognised and left out. Extended to CUDA, HLSL, GLSL and Objective-C.\nNOT BUILT, filed: a Rust file's own top-level #![cfg], C# #if / #else, the order of || and && operands in C and Swift: WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar. C and C++ declarations that still tie or are not emitted: WI-virir-papor-fapin-kunun-kigir-zumuj-pokot-tonun (C typedef and macro names), WI-pohom-turot-movot-sudov-kivop-rufum-sadib-kugut (C++ const and pointer/reference overloads), WI-rivin-dibat-konir-faraf-kohuv-tagid-bogak-gunuk (members in a branch not emitted); a note on WI-rosog (forward declarations, specialisation members). Objective-C: WI-rivin-dibat-konir-faraf-kohuv-tagid-bogak-gunuk (guarded methods and C functions not emitted); a note on WI-juzit (@interface and @implementation share one stable id).\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 7e75

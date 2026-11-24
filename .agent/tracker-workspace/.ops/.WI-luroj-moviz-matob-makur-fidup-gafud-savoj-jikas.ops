@@ -1,0 +1,23 @@
+- op: create  # 5f32
+  at: '2026-11-24T05:40:07Z'  # 5f32
+  by: agent  # 5f32
+  actor: jgstern_agent  # 5f32
+  clock: 1  # 5f32
+  nonce: 5f32  # 5f32
+  data:  # 5f32
+    kind: work_item  # 5f32
+    title: "Blade templates keep the php: file-node slot because get_language reads the last suffix; vue_file_paths is dead code"  # 5f32
+    status: todo_soft  # 5f32
+    priority: 4  # 5f32
+    parent:  # 5f32
+    tags:  # 5f32
+    - stable_id  # 5f32
+    - taxonomy  # 5f32
+    - blade  # 5f32
+    - vue  # 5f32
+    isbefore: []  # 5f32
+    duplicate_of: []  # 5f32
+    not_duplicate_of: []  # 5f32
+    pr_ref:  # 5f32
+    description: "WHAT\n1. Blade templates keep the `php:` file-node slot. taxonomy.get_language reads the last suffix only, so `x.blade.php` maps to php and the `blade` LanguageSpec (extensions [\"*.blade.php\"], taxonomy.py line 417) is unreachable from get_language. PR #2354 (WI-vavag) moved Vue, Svelte and Astro component file nodes to their own slot and keyed js_ts's file anchor on get_language(file_path); Blade was named in WI-vavag's text (\"Blade paths keep php: because taxonomy.get_language reads the last suffix only\") and was not fixed. WI-vavag is closed by PR #2354, so the Blade part lives here.\n2. Unrelated one-line cleanup found in the same review, carried here so it does not need its own item: linkers/vue_component.py lines 224-227 build `vue_file_paths` and nothing reads it (dead code).\n\nREPRO\n1. Any `x.blade.php`: its file node sits in the `php:` slot (components agent's statement, and WI-vavag's text). The mechanism, run by the drafting agent on the PR tip 3269081cf: `get_language(Path('a.blade.php'))` -> php (and `a.astro` -> None, `a.vue` -> vue, `a.svelte` -> svelte). A full run producing the Blade file node was not done.\n2. grep -n vue_file_paths packages/hypergumbo-core/src/hypergumbo_core/linkers/vue_component.py -> lines 224 and 227 only (drafting agent, PR tip 3269081cf).\n\nMEASURED\n1. Not counted. koel (php_ts_koel in the coordinator's A/B) is the corpus tree with Blade files; the A/B lists blade among the languages with 0 moved ids.\n2. Read from code.\n\nNOT CHECKED\n- Which producers emit Blade members and which file stable id they hash.\n- Other multi-suffix extensions get_language misses (e.g. `.d.ts`, `.html.erb`, `.spec.ts`): not enumerated.\n\nMoving Blade file nodes to `blade:` changes their node ids and the file stable id their members hash: needs a scheme bump (owner-ruled), as WI-vavag's did. Part 2 moves nothing.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md line 48 (components agent's final message), ~/hypergumbo_lab_notebook/v19_11232026/components/RESULTS.md"  # 5f32
+    fields: {}  # 5f32

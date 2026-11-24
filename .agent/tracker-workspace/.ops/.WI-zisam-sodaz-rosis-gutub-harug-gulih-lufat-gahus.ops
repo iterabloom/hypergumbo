@@ -1,0 +1,22 @@
+- op: create  # e632
+  at: '2026-11-24T05:39:22Z'  # e632
+  by: agent  # e632
+  actor: jgstern_agent  # e632
+  clock: 1  # e632
+  nonce: e632  # e632
+  data:  # e632
+    kind: work_item  # e632
+    title: "C# #if/#else alternatives tie in the stable id; D, Nim, Pascal, Fortran/Haskell CPP and .mm guards were not checked"  # e632
+    status: todo_soft  # e632
+    priority: 4  # e632
+    parent:  # e632
+    tags:  # e632
+    - stable_id  # e632
+    - csharp  # e632
+    - needs_decision  # e632
+    isbefore: []  # e632
+    duplicate_of: []  # e632
+    not_duplicate_of: []  # e632
+    pr_ref:  # e632
+    description: "WHAT\nConditional-compilation alternatives enter the stable id in Rust (#[cfg], and since PR #2354 inner #![cfg] and cfg_attr), Swift (#if), and since PR #2354 C, C++, CUDA, HLSL, GLSL and Objective-C (#if/#ifdef/#elif/#else). C# is not covered: two declarations of one name and signature in the #if and #else branches tie and are split only by occurrence order. The owner's WI-sifar ruling covered C and C++ (\"yes to A\"); C# is outside it, so building C# needs the same ruling for C#.\nThe same mechanism exists in languages nobody checked: D `version (...)` / `static if`, Nim `when`, Pascal `{$IFDEF}`, Fortran and Haskell sources run through CPP, and Objective-C++ (.mm).\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/csharp_if/c.cs (copy of the guards agent's sibling fixture /tmp/v19_guards/sib/c.cs):\n  class K {\n  #if FAST\n    int Run(int x) { return x; }\n  #else\n    int Run(int x) { return -x; }\n  #endif\n  }\nObserved by the guards agent: K.Run x2 tie (one pre-split stable id). Not re-run by the drafting agent.\n\nMEASURED\nC#: fixture only (guards agent). No C# corpus tree was searched for #if around declarations (the coordinator's 49 trees include csharp_tflite_unity and csharp_sherpa_dotnet_examples; not searched).\n\nNOT CHECKED\nD, Nim, Pascal, Fortran, Haskell CPP, Objective-C++ (.mm): not checked at all (guards/RESULTS.md, STATUS.md line 155). For each, a fixture with two same-signature alternatives decides whether the tie exists.\n\nA fix adds the branch label to the hashed scope chain: guarded symbols' stable ids move. Needs a scheme bump and an owner ruling per language (the WI-sifar ruling named C and C++ only).\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/guards/RESULTS.md (\"Open point and residuals\"), ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md lines 78 and 155"  # e632
+    fields: {}  # e632

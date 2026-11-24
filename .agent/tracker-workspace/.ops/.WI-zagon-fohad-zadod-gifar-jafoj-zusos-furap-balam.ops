@@ -1,0 +1,24 @@
+- op: create  # 51dc
+  at: '2026-11-24T05:40:26Z'  # 51dc
+  by: agent  # 51dc
+  actor: jgstern_agent  # 51dc
+  clock: 1  # 51dc
+  nonce: 51dc  # 51dc
+  data:  # 51dc
+    kind: work_item  # 51dc
+    title: "Type spellings hashed apart after v19: cross-file shadowing, sugar forms, Julia <: bounds, Solidity file-wide names"  # 51dc
+    status: todo_soft  # 51dc
+    priority: 4  # 51dc
+    parent:  # 51dc
+    tags:  # 51dc
+    - stable_id  # 51dc
+    - csharp  # 51dc
+    - swift  # 51dc
+    - julia  # 51dc
+    - solidity  # 51dc
+    isbefore: []  # 51dc
+    duplicate_of: []  # 51dc
+    not_duplicate_of: []  # 51dc
+    pr_ref:  # 51dc
+    description: "WHAT\nPR #2354 extended the per-file type-name canonicalization (FileTypeNames, analyze/base.py, built by WI-palus for imports) to built-in aliases (C# keyword types, Swift.X, Go byte/rune/any, Solidity uint/int, Rust leading ::) and to Julia and Solidity imports. Spellings of one type still hash apart, or two types can hash alike, in these forms:\n1. Cross-file shadowing is not decidable from one file. C#: a same-namespace `String` declared in another file, or global/implicit usings in another file (GlobalUsings.cs, SDK ImplicitUsings) leave a bare `String` unfolded (two spellings, two ids) or fold a user type into System.String (two types, one hash). Swift: a type declared in another file of the module or in an imported module can shadow the standard library's (vapor Count.swift, `Swift.Range<Int>` inside `extension Validator`). No tie arose in the measured trees.\n2. Sugar spellings: C# `int?` / `Nullable<int>`; Swift `[Int]` / `Array<Int>`, `Int?` / `Optional<Int>`, `[K: V]` / `Dictionary<K, V>`. Not built, no repro run.\n3. Julia `<:` bounds: `Vector{<:T}` and `Vector{<:Foo.T}` hash apart: the shared chain regex skips a name that follows `:`.\n4. Solidity's declared set is file-wide: a contract-level `struct T` keeps every `T` in the file as written, including in other contracts that mean the imported `T`.\n5. The call resolver keeps its own _TYPE_ALIASES table, not merged with the hashing tables built here (two alias vocabularies).\n\nREPRO\n- 3: ~/hypergumbo_lab_notebook/v19_11232026/types/probe/fixtures/residuals/jl1 and jl2.\n- 1: vapor Sources/.../Count.swift (types agent names the file; not re-run). C#: no fixture.\n- 2, 4, 5: no fixture on disk.\n\nMEASURED\nNo tie or split was counted on a corpus tree for any of the five (types agent: \"No tie arose in the measured trees\" for part 1; parts 2-5 not counted).\n\nNOT CHECKED\n- Objective-C .h headers that another analyzer (C/C++) may claim (types agent, WI-rafis Objective-C check).\n- Whether _TYPE_ALIASES and the hashing tables disagree on any pair.\nRelated, tracked elsewhere: C# `global::` on a non-built-in path (WI-jogih, Scala `_root_`, see WI-jogih). Owner-level: Julia Base.X folding, Julia relative paths, Solidity `address payable` vs `address` (WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar).\n\nEach fix that folds a new spelling moves the stable ids of symbols that write it: needs a scheme bump (owner-ruled). Part 5 moves no id.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/types/RESULTS.md residuals 7, 10, 11, 13 and \"Follow-up\"; ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md line 169"  # 51dc
+    fields: {}  # 51dc

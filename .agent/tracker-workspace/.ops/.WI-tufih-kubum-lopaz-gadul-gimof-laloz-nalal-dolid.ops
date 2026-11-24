@@ -1,0 +1,21 @@
+- op: create  # a2dd
+  at: '2026-11-24T05:39:54Z'  # a2dd
+  by: agent  # a2dd
+  actor: jgstern_agent  # a2dd
+  clock: 1  # a2dd
+  nonce: a2dd  # a2dd
+  data:  # a2dd
+    kind: work_item  # a2dd
+    title: "Solidity: overloaded events share one stable id (event_parameter not read), and parameter names are hashed"  # a2dd
+    status: todo_soft  # a2dd
+    priority: 4  # a2dd
+    parent:  # a2dd
+    tags:  # a2dd
+    - solidity  # a2dd
+    - stable_id  # a2dd
+    isbefore: []  # a2dd
+    duplicate_of: []  # a2dd
+    not_duplicate_of: []  # a2dd
+    pr_ref:  # a2dd
+    description: "WHAT\nSolidity's hashed signature (_extract_solidity_signature, solidity.py) has two defects:\n1. Overloaded events share one stable id: the reader takes `parameter` children, and an event's parameters are `event_parameter` nodes, so `event E(uint a)` and `event E(address a)` both hash an empty parameter list.\n2. Parameter NAMES are hashed: renaming `amount` to `value` moves a function's id. Every other typed language drops a typed parameter's name (Go's grouped/tuple-result names are WI-ruduh's).\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/types/probe/fixtures/residuals/sol1 (and sol2 for part 2):\n- `event E(uint a)` and `event E(address a)`: both hgstableid18:d55a5bc02ef612f7 (types agent, before the v19 label).\n- sol1 vs sol2 differ only in a parameter name: the function's id differs (types agent).\n\nMEASURED\nFixture only (types agent). openzeppelin-contracts and zksync-era were measured for the import and alias fixes, not for these two.\n\nNOT CHECKED\n- Errors (`error E(uint a)`) and modifiers: whether they read `parameter` children or their own node type.\n- Corpus count of overloaded events and of functions whose parameter rename would move them.\n\nBoth fixes change hashed input (events gain their types; every Solidity function, modifier and constructor with a named parameter drops the name): need a scheme bump (owner-ruled), with Solidity churn measured on openzeppelin and zksync-era.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/types/RESULTS.md residuals 4 and 5"  # a2dd
+    fields: {}  # a2dd

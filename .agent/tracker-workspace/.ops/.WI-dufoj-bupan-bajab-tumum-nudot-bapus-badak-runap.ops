@@ -1,0 +1,21 @@
+- op: create  # c0fb
+  at: '2026-11-24T05:40:00Z'  # c0fb
+  by: agent  # c0fb
+  actor: jgstern_agent  # c0fb
+  clock: 1  # c0fb
+  nonce: c0fb  # c0fb
+  data:  # c0fb
+    kind: work_item  # c0fb
+    title: "Rust struct-pattern parameter hashes its bound names: `Point { x: px, y }: Point` and `{ x: qx, y }` get two stable ids"  # c0fb
+    status: todo_soft  # c0fb
+    priority: 4  # c0fb
+    parent:  # c0fb
+    tags:  # c0fb
+    - rust  # c0fb
+    - stable_id  # c0fb
+    isbefore: []  # c0fb
+    duplicate_of: []  # c0fb
+    not_duplicate_of: []  # c0fb
+    pr_ref:  # c0fb
+    description: "WHAT\nA Rust function parameter written as a struct pattern hashes the names it binds: `fn f(Point { x: px, y }: Point)` and `fn f(Point { x: qx, y }: Point)` get two stable ids, while a typed parameter `p: Point` hashes its type alone. The jsts agent read the cause from code: the shared names-first signature normalizer splits a parameter at its first `:`, which inside a struct pattern is the field separator `x: px`, not the parameter's type annotation. PR #2354 fixed the same cut for JS/TS patterns (0f5db7682: a typed pattern hashes its type alone, an untyped pattern is hashed whole); Rust patterns were not touched.\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/residuals/probes/rust_pattern/{a,b,c}/lib.rs, PR tip 3269081cf (drafting agent, 2026-11-24):\n  a: fn f(Point { x: px, y }: Point) -> i32   hgstableid19:597d560f7513baca\n  b: fn f(Point { x: qx, y }: Point) -> i32   hgstableid19:147001cdd5c83ee1\n  c: fn f(p: Point) -> i32                    hgstableid19:0f0ba73db7a3d482\na and b differ only in a bound name and hash apart.\n\nMEASURED\nFixture only. The jsts agent's statement was \"read from code, NOT run\"; the probe above is the first run. No corpus count of struct-pattern or tuple-struct-pattern parameters.\n\nNOT CHECKED\n- Tuple-struct patterns `Wrapper(inner): Wrapper`, tuple patterns `(a, b): (i32, i32)`, slice patterns, closures.\n- Which string the hash receives for a/b (the hashed text was not printed).\n- Other languages through the same normalizer (Kotlin, Scala, Swift take no pattern parameters; not checked for others).\n\nA fix changes the hashed text of every Rust callable with a pattern parameter: needs a scheme bump (owner-ruled).\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md line 119 (jsts agent's final message)"  # c0fb
+    fields: {}  # c0fb

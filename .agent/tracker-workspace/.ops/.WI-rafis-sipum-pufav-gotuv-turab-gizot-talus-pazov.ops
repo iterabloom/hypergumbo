@@ -18,3 +18,18 @@
     pr_ref:  # a6a5
     description: "Typed stable ids not checked for import canonicalization: Objective-C, Julia, Solidity; TypeScript conditional type without a space before the colon.\n\nWI-palus did not check whether Objective-C, Julia or Solidity hash a qualified and an imported spelling of one type apart. Its TypeScript rewrite would skip C in a conditional type written 'A extends B ? C: D' (no space before the colon); not observed in the measured trees. Found by PR 5 agent 4 (stable-id v17 branch, 2026-11-20) while building WI-palus (type names hashed through the file's imports): ~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/pr5/palus/RESULTS.md section 6; repros in pr5/palus/residual_probe/."  # a6a5
     fields: {}  # a6a5
+- op: update  # 4ad2
+  at: '2026-11-24T05:40:45Z'  # 4ad2
+  by: agent  # 4ad2
+  actor: jgstern_agent  # 4ad2
+  clock: 2  # 4ad2
+  nonce: 4ad2  # 4ad2
+  set:  # 4ad2
+    status: done  # 4ad2
+- op: discuss  # 31f1
+  at: '2026-11-24T05:40:45Z'  # 31f1
+  by: agent  # 31f1
+  actor: jgstern_agent  # 31f1
+  clock: 3  # 31f1
+  nonce: 31f1  # 31f1
+  message: "Checked and, where a defect was found, fixed in PR #2354 (dev 39bef1108).\nRE-RUN on dev 39bef1108 (pair fixtures, a/ = imported spelling, b/ = qualified spelling):\n- Objective-C: no defect. K and its methods hash alike in a and b on dev 05ed6f5fe and on 39bef1108 (untyped tier).\n- Julia: defect, fixed. f1..f4, Sub2.b, P.a, P.b, P.d, P.f: DIFFERENT on 05ed6f5fe, SAME on 39bef1108. Still DIFFERENT by design: a relative path (.Sub.Inner: X), a type parameter shadowing the import, Base.Int, a name with no import. No Julia repository is on this machine: fixture only.\n- Solidity: defect, fixed. C.f1..f4, C.m1, C.t1, C.u1: DIFFERENT, now SAME. Builder's measure: openzeppelin 155 of 4,206 ids moved.\n- TypeScript conditional type: f(x: T extends string ? Foo : Bar) against \"? Foo: Bar\" with Foo imported: DIFFERENT on 05ed6f5fe, SAME on 39bef1108. 0 ids moved on four trees.\nNOT FIXED, filed: WI-tufih-kubum-lopaz-gadul-gimof-laloz-nalal-dolid (Solidity events and parameter names), WI-zagon-fohad-zadod-gifar-jafoj-zusos-furap-balam (cross-file shadowing, sugar spellings, Julia <: bounds), a note on WI-jogih (C# global:: on a non-built-in path); Julia Base.X, Julia relative paths and Solidity address payable are put to the owner in WI-siror-bupaz-zofiz-jomam-jimim-komoh-vavad-sirar.\nEvidence: ~/hypergumbo_lab_notebook/v19_11232026/closure/ (out_dev.txt = dev 39bef1108 after the merge, out_base.txt = dev 05ed6f5fe before it; repro trees t/, run.sh, q.py, presplit.py)."  # 31f1

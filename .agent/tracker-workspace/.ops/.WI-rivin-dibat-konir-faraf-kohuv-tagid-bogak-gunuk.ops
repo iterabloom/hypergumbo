@@ -1,0 +1,25 @@
+- op: create  # 6fb3
+  at: '2026-11-24T05:39:15Z'  # 6fb3
+  by: agent  # 6fb3
+  actor: jgstern_agent  # 6fb3
+  clock: 1  # 6fb3
+  nonce: 6fb3  # 6fb3
+  data:  # 6fb3
+    kind: work_item  # 6fb3
+    title: "No symbol for C++/ObjC members in #if branches, ObjC C functions, Julia parametric structs, Groovy closures, CUDA locals"  # 6fb3
+    status: todo_soft  # 6fb3
+    priority: 4  # 6fb3
+    parent:  # 6fb3
+    tags:  # 6fb3
+    - analysis_quality  # 6fb3
+    - cpp  # 6fb3
+    - objc  # 6fb3
+    - julia  # 6fb3
+    - groovy  # 6fb3
+    - cuda  # 6fb3
+    isbefore: []  # 6fb3
+    duplicate_of: []  # 6fb3
+    not_duplicate_of: []  # 6fb3
+    pr_ref:  # 6fb3
+    description: "WHAT\nDeclarations the v19 sweeps found with no symbol at all. Each is its own analyzer fix; they are grouped because each is a missing-symbol gap met while checking stable-id ties, none was the subject of PR #2354, and none can be given an id (or a scope label for its locals) until it is emitted. Split on pickup if one analyzer's part is taken alone.\n1. C++ (cpp.py): fields, enumerators, and file-scope or namespace-scope variables inside an #if/#ifdef branch are not emitted (same on the base arm). The same declarations outside a branch are emitted.\n2. Objective-C (objc.py): methods inside one @implementation whose alternatives sit under #ifdef/#else are not emitted: tree-sitter-objc parses them as expression_statement + compound_statement (parse recovery).\n3. Objective-C: C functions in a .m file are not emitted (`int helper(int x) { return x; }`).\n4. Julia: a parametric struct (`struct Para{T} ... end`) emits no struct and no fields.\n5. Groovy: a closure bound to a local (`def h = { -> 1 }` in a method) emits no symbol.\n6. CUDA emits no local declarations (stated by the guards agent while building C++ locals, cb14e41d6: \"CUDA emits no locals\"; not examined further).\n(C# local functions are not emitted either: already WI-lusof.)\n\nREPRO (outputs as the reports state them)\n1. ~/hypergumbo_lab_notebook/v19_11232026/guards/repro_cpp_unemitted/a.cpp: `int x;` in struct Q, `X = 1` in enum E, `int v = 1;` at file scope and `int nv = 1;` in namespace n, each under #ifdef A: none emitted; `int y`, `Z`, `int w` emitted.\n2. ~/hypergumbo_lab_notebook/v19_11232026/guards/repro_objc/objc2/a.m: the two `- (int)run` methods under #ifdef FAST / #else inside @implementation Foo: not emitted.\n3. ~/hypergumbo_lab_notebook/v19_11232026/guards/repro_objc/objc1/a.m: `int helper(int x)`: not emitted.\n4. ~/hypergumbo_lab_notebook/v19_11232026/types/probe/fixtures/julia_pair/a/f.jl line 16 `struct Para{T}`: no struct, no fields.\n5. ~/hypergumbo_lab_notebook/v19_11232026/locals/fixtures/sweep_langs/groovy/a.groovy: methods A.f x2 emitted, the closures h not (locals/fixtures/sweep_langs/base_sweep.txt, base arm).\n\nMEASURED\nFixtures only, for all six. No corpus count of the missing declarations was made. ObjC trees measured for other fixes (AFNetworking, CocoaLumberjack, ReactiveObjC) were not searched for forms 2 and 3. No Julia repository is on this machine (types agent).\n\nNOT CHECKED\n- C: whether c.py has form 1 (only C++ was reported).\n- ObjC .mm files (Objective-C++).\n- Groovy closures as fields or script-level variables.\n- What CUDA local forms exist and are dropped (form 6).\nRelated: WI-gafip (open) is a different ObjC parse failure (bare project macros), WI-fanup (open) lists other Groovy symbols that are not emitted (constructors, fields, properties), WI-lusof (open) the C# local functions.\n\nEmitting new symbols moves no existing stable id, except where a new symbol joins a same-name occurrence-split group and renumbers it. State the churn when fixing; no scheme bump is needed for additions alone.\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/guards/RESULTS.md (\"Open point and residuals\", \"Follow-up\" objc1/objc2, \"Follow-up 3\"), ~/hypergumbo_lab_notebook/v19_11232026/types/RESULTS.md residual 6, ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md lines 126-128 and 138"  # 6fb3
+    fields: {}  # 6fb3

@@ -1,0 +1,22 @@
+- op: create  # df08
+  at: '2026-11-24T05:39:48Z'  # df08
+  by: agent  # df08
+  actor: jgstern_agent  # df08
+  clock: 1  # df08
+  nonce: df08  # df08
+  data:  # df08
+    kind: work_item  # df08
+    title: "V: selector calls such as p.norm(2) emit no call edge, and a receiver method roots at its file, not its struct"  # df08
+    status: todo_soft  # df08
+    priority: 4  # df08
+    parent:  # df08
+    tags:  # df08
+    - call_graph  # df08
+    - containment  # df08
+    - analysis_quality  # df08
+    isbefore: []  # df08
+    duplicate_of: []  # df08
+    not_duplicate_of: []  # df08
+    pr_ref:  # df08
+    description: "WHAT\nV language (v_lang.py): since PR #2354 (6a44fc81b) a function with a receiver is kind `method`, as Go's is. Two gaps around it remain:\n1. A selector call `p.norm(2)` emits no call edge, so no call edge reaches any V method. Since the method kind change, dead-code-maybe withholds V methods for lack of incoming call evidence instead of listing them (fixture: norm and twice are withheld though both are called through selectors).\n2. A V method roots in containment at its file, not at its receiver's struct, and its name is bare (`norm`, where Go names `Point.norm`); the stable id still hashes `Point/norm`.\n\nREPRO\n~/hypergumbo_lab_notebook/v19_11232026/kinds/fixture_methods/ (2 methods, 2 functions): base 7d15fd17b vs 6a44fc81b, edges 7 -> 7 identical after id mapping; no call edge resolved to a V method in either arm (kinds agent).\n\nMEASURED\nFixture only. No V-language source exists under the corpus roots (kinds agent: the .v files found are Verilog and linker scripts).\n\nNOT CHECKED\n- Whether renaming V methods to `Struct.method` (Go's convention) is wanted; it moves node ids (name slot); whether it moves stable ids (which already hash `Point/norm`) was not checked.\n- Generic receivers, pointer/mut receivers.\n\nA fix to 1 adds edges and moves no id. Rooting a method at its struct adds/moves contains edges only. Naming methods `Struct.method` moves node ids; if it also moves stable ids it needs a scheme bump (owner-ruled).\n\nFound 2026-11-23/24 while building PR #2354 (stable-id v19). Detail: ~/hypergumbo_lab_notebook/v19_11232026/kinds/RESULTS.md (\"Follow-up (coordinator): V methods and single-letter unions\"), ~/hypergumbo_lab_notebook/v19_11232026/STATUS.md lines 66-67"  # df08
+    fields: {}  # df08
