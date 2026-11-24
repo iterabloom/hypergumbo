@@ -152,7 +152,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
 
 from .analyze.base import (
     CONTENT_NAME_LANGUAGES, ArityFlags, assemble_stable_id, is_table_kind,
-    make_declaration_stable_id, make_file_stable_id, make_typed_stable_id,
+    layout_free, make_declaration_stable_id, make_file_stable_id, make_typed_stable_id,
 )
 from .paths import normalize_path
 
@@ -178,16 +178,23 @@ def parameter_entry(
     *,
     default: bool = False,
     variadic: bool = False,
+    declarator: str = "",
 ) -> dict[str, Any]:
     """One element of ``meta["parameters"]``, in the shape every producer shares.
 
     ``variadic`` is written only when true, so an entry for an ordinary
     parameter is exactly the ``{name, type, default}`` triple ``py.py`` has
-    always written.
+    always written. ``declarator`` is the C family's: the marks a parameter's
+    declarator adds to ``type`` (``*``, ``&``, ``[3]``, ``(*)(int)``), its name
+    removed (``analyze.c_family.c_family_parameter_declarator``); it is kept
+    beside ``type``, which readers take as a type NAME, and written only when
+    there is one.
     """
     entry: dict[str, Any] = {"name": name, "type": type_, "default": default}
     if variadic:
         entry["variadic"] = True
+    if declarator:
+        entry["declarator"] = declarator
     return entry
 
 
@@ -332,7 +339,9 @@ def declared_arity_of_entries(entries: Sequence[Any]) -> Optional[DeclaredArity]
 
     Variadic and default are read the way :func:`bounds_of_entries` reads them,
     including Python's ``*args`` / ``**kwargs`` spelling (``**`` is the
-    keyword variadic).
+    keyword variadic). A C-family entry's ``declarator`` marks are spelled
+    after its type (``int*``, ``int(*)(int)``; WI-pohom-turot), so
+    ``f(int)`` / ``f(int*)`` hash apart.
     """
     has_defaults = has_varargs = has_kwargs = False
     spelled: list[str] = []
@@ -349,9 +358,11 @@ def declared_arity_of_entries(entries: Sequence[Any]) -> Optional[DeclaredArity]
         has_varargs = has_varargs or variadic
         has_defaults = has_defaults or default
         type_ = entry.get("type")
-        typed = typed or bool(type_)
+        declarator = entry.get("declarator")
+        typed = typed or bool(type_) or bool(declarator)
         mark = "*" if variadic or kwargs else ""
-        spelled.append(f"{mark}{type_ or '_'}{'=' if default else ''}")
+        written = layout_free(f"{type_ or '_'} {declarator}") if declarator else type_ or "_"
+        spelled.append(f"{mark}{written}{'=' if default else ''}")
     flags = ArityFlags(
         param_count=len(spelled),
         has_defaults=has_defaults,

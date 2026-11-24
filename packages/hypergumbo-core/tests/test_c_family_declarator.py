@@ -94,11 +94,14 @@ int d(int, ...) { return 0; }
 """)
     assert got[0] == []  # ``(void)`` is the C spelling of no parameter
     assert got[1] == [
-        {"name": "s", "type": "const char", "default": False},
-        {"name": "n", "type": "int", "default": False},
+        {"name": "s", "type": "const char", "default": False, "declarator": "*"},
+        {"name": "n", "type": "int", "default": False, "declarator": "&"},
         {"name": "y", "type": "int", "default": True},
     ]
-    assert got[2] == [{"name": "args", "type": "Args", "default": False, "variadic": True}]
+    assert got[2] == [{
+        "name": "args", "type": "Args", "default": False, "variadic": True,
+        "declarator": "&&...",
+    }]
     assert got[3] == [
         {"name": "", "type": "int", "default": False},
         {"name": "...", "type": None, "default": False, "variadic": True},
@@ -124,7 +127,7 @@ def test_glsl_and_hlsl_qualifiers_belong_to_the_type() -> None:
     glsl = _params("glsl", "vec2 f(in vec2 x, out float y[2]) { return x; }\n")
     assert glsl == [[
         {"name": "x", "type": "in vec2", "default": False},
-        {"name": "y", "type": "out float", "default": False},
+        {"name": "y", "type": "out float", "default": False, "declarator": "[2]"},
     ]]
     hlsl = _params(
         "hlsl", "float2 f(float2 x : TEXCOORD0, uniform float y = 1.0) { return x; }\n",
@@ -199,8 +202,8 @@ def test_scope_chain_labels_functions_by_signature_on_request() -> None:
     locals of two overloads do not tie; one hashing no type keeps its bare
     name. A lambda bound to a variable is labelled by it (``a = []``); an
     unbound one adds nothing. Without ``signatures`` the label is the name.
-    The types are the ones the function's own id hashes, so a pointer or
-    reference mark is not in them (as in the function's id)."""
+    The types are the ones the function's own id hashes, a pointer or
+    reference mark included (``const X &``; WI-pohom-turot)."""
     hlsl = "float f(float x) {\n  float y = x;\n  return y;\n}\nfloat g() {\n  float y = 1;\n  return y;\n}\n"
     tree = tlp.get_parser("hlsl").parse(hlsl.encode())
     locals_ = [n for n in iter_tree(tree.root_node) if n.type == "declaration"]
@@ -216,8 +219,18 @@ def test_scope_chain_labels_functions_by_signature_on_request() -> None:
     tree = tlp.get_parser("cpp").parse(cpp.encode())
     tags = [n for n in iter_tree(tree.root_node) if n.type == "struct_specifier"]
     assert [c_family_scope_chain(n, cpp.encode(), functions=True, signatures=True) for n in tags] == [
-        ["a = []"], ["h"], ["operator==(const X,int)"],
+        ["a = []"], ["h"], ["operator==(const X &,int)"],
     ]
     misparse = "class C FINAL : public B\n{\n  struct P { int a; };\n};\n"
     tag = _first("cpp", misparse, "struct_specifier")
     assert c_family_scope_chain(tag, misparse.encode(), functions=True, signatures=True) == []
+
+
+def test_a_type_declared_in_a_parameter_list_is_no_local_of_the_function() -> None:
+    """Only what a function's BODY declares is local to it: a tag declared
+    in its parameter list gets no callable label in its chain."""
+    code = "void f(struct P { int a; } *p) { struct R { int b; } r; }\n"
+    tree = tlp.get_parser("cpp").parse(code.encode())
+    tags = [n for n in iter_tree(tree.root_node) if n.type == "struct_specifier"]
+    assert [c_family_scope_chain(n, code.encode(), functions=True, signatures=True)
+            for n in tags] == [[], ["f(struct P{ int a; }*)"]]

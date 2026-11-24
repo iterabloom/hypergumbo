@@ -164,7 +164,7 @@ template <typename... Args> void pack(int n, Args&&... rest) { }
     assert _params(result, "voided", 2) == []
     assert _params(result, "both", 3) == [
         {"name": "a", "type": "int", "default": False},
-        {"name": "b", "type": "const char", "default": False},
+        {"name": "b", "type": "const char", "default": False, "declarator": "*"},
     ]
     assert _params(result, "pack", 4)[-1]["variadic"] is True
 
