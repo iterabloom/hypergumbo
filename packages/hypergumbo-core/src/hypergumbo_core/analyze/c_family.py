@@ -102,7 +102,7 @@ import re
 from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 
 from .. import kept_work
-from ..overload_arity import parameter_entry
+from ..overload_arity import declared_arity_of_entries, parameter_entry
 from .base import iter_tree, layout_free, without_comments
 
 if TYPE_CHECKING:
@@ -432,7 +432,7 @@ _SCOPE_NAMES = {
 
 def c_family_scope_chain(
     node: "tree_sitter.Node", source: bytes, *, types: bool = True, functions: bool = False,
-    guards: bool = False,
+    guards: bool = False, signatures: bool = False,
 ) -> list[str]:
     """The names of the scopes enclosing ``node``, outermost first.
 
@@ -448,10 +448,13 @@ def c_family_scope_chain(
     or class, or a macro-named function, contributes nothing. ``guards=True``
     adds the preprocessor branches open at ``node``
     (:func:`c_family_open_guards`), each at the level it opens in.
+    ``signatures=True`` (with ``functions``) labels an enclosing function by
+    :func:`c_family_callable_label` instead of its bare name, and a lambda
+    bound to a variable by that variable, for a language with overloads.
     """
     chain: list[str] = []
     starts: list[int] = []
-    current = node.parent
+    child, current = node, node.parent
     while current is not None:
         name_types = _SCOPE_NAMES.get(current.type) if types else None
         if name_types is not None:
@@ -460,6 +463,11 @@ def c_family_scope_chain(
                 chain.append(
                     source[name.start_byte:name.end_byte].decode("utf-8", errors="replace")
                 )
+                starts.append(current.start_byte)
+        elif functions and signatures and current.type in _CALLABLE_SCOPES:
+            label = c_family_callable_label(current, child, source)
+            if label is not None:
+                chain.append(label)
                 starts.append(current.start_byte)
         elif functions and current.type == "function_definition":
             declared = c_family_declarator(current).name
@@ -470,11 +478,55 @@ def c_family_scope_chain(
                     )
                 )
                 starts.append(current.start_byte)
-        current = current.parent
+        child, current = current, current.parent
     if guards:
         return c_family_with_guards(node, source, list(zip(starts, chain, strict=True)))
     chain.reverse()
     return chain
+
+
+#: The nodes :func:`c_family_callable_label` labels.
+_CALLABLE_SCOPES = frozenset({"function_definition", "lambda_expression"})
+
+
+def c_family_callable_label(
+    node: "tree_sitter.Node", child: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """A callable's label in the scope chain of ``child``, one of its
+    children, for a language with overloads (C++, HLSL; WI-finam, the defect
+    WI-podor fixed for Swift); ``None`` unless ``child`` is the callable's
+    body. Only what the body declares is local to it, and only a definition
+    whose declarator holds a parameter list is a function: tree-sitter reads
+    ``class C MACRO : public B { .. }`` as a function definition of
+    ``thread_ctx_t``-like name with no parameter list whose TYPE is ``class
+    C``; neither that class nor its members are locals of a function.
+
+    A function definition is labelled by its name and the parameter types its
+    own stable id hashes (``declared_arity_of_entries`` over
+    :func:`c_family_parameters`, the typed tier's ``(T1,T2)``): ``h(int)``,
+    ``operator==(int)``, ``A(double)``. A name alone is shared by two
+    overloads, two constructors, two operator overloads, and the declarations
+    local to them tied. A function whose parameters declare no type (``f()``,
+    ``f(void)``) keeps its bare name. A lambda bound to a variable is labelled
+    by it (``a = []``: two lambdas' locals tied); an unbound lambda (a call
+    argument) and a macro-named function have no label. Neither label can
+    meet the other or a type's name: a name holds no ``(`` or space.
+    """
+    if node.child_by_field_name("body") != child:
+        return None
+    if node.type == "lambda_expression":
+        binding = node.parent
+        target = binding.child_by_field_name("declarator") if binding is not None else None
+        if binding is None or binding.type != "init_declarator" or target is None:
+            return None
+        return f"{_text(source, target.start_byte, target.end_byte)} = []"
+    shape = c_family_declarator(node)
+    if shape.name is None or shape.function_declarator is None:
+        return None  # a misparse (``class C MACRO : B {``) declares no function
+    name = _text(source, shape.name.start_byte, shape.name.end_byte)
+    params = c_family_parameter_list(node)
+    arity = declared_arity_of_entries(c_family_parameters(params, source)) if params else None
+    return name + (arity.type_signature if arity is not None else "")
 
 
 def c_family_with_guards(

@@ -134,7 +134,10 @@ Call-edge details:
   slot. Since scheme v19 the preprocessor branches open at a declaration
   are in the slot too, at the level they open in (``c_family_open_guards``,
   WI-sifar; a whole-file include guard is not a branch), so ``K::run`` under
-  ``#ifdef FAST`` and under its ``#else`` do not tie.
+  ``#ifdef FAST`` and under its ``#else`` do not tie; and so are the
+  functions and bound lambdas enclosing a local declaration, by name and
+  hashed parameter types (WI-finam: the locals of ``h(int)`` and
+  ``h(double)`` do not tie).
 - **Overloads** (WI-hilum): every definition records its parameters in
   ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
   stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
@@ -215,7 +218,7 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
     c_family_array_declarator, c_family_declarator, c_family_declares_local,
     c_family_file_scope_variables, c_family_is_value_operand, c_family_parameter_list, c_family_parameters,
-    c_family_scope_chain, c_family_with_guards,
+    c_family_callable_label, c_family_scope_chain, c_family_with_guards,
 )
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
@@ -374,8 +377,15 @@ def _cpp_scope_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
     spells, so the drop skips it: ``K::run`` under ``#ifdef FAST`` in ``class
     K`` hashes ``#ifdef FAST/K::run``. An unguarded declaration hashes what it
     did.
+
+    The functions and bound lambdas enclosing ``node`` are in the slot too
+    (WI-finam, scheme v19), by name and hashed parameter types: a local
+    ``struct L`` of ``f()`` and of ``g()``, of ``h(int)`` and ``h(double)``,
+    of two constructors or of two lambdas bound to ``a`` and ``b`` tied
+    until then, its fields and methods with it. A declaration outside every
+    function hashes what it did.
     """
-    chain = _cpp_scope_chain(node, source, guards=True)
+    chain = _cpp_scope_chain(node, source, guards=True, functions=True)
     scopes = [i for i, label in enumerate(chain) if not label.startswith("#")]
     names = [chain[i] for i in scopes]
     if names == chain:
@@ -426,15 +436,17 @@ def _cpp_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 
 
 def _cpp_scope_chain(
-    node: "tree_sitter.Node", source: bytes, *, guards: bool = False,
+    node: "tree_sitter.Node", source: bytes, *, guards: bool = False, functions: bool = False,
 ) -> list[str]:
     """``c_family_scope_chain`` for C++, with each enclosing class declared
     under a qualified name contributing every part of it (``A::B`` is ``A``,
     ``B``), so a member of ``class A::B`` has the chain an in-body member of
     a nested ``B`` in ``A`` has. Every other scope is read as
-    ``c_family_scope_chain`` reads it, ``guards`` included."""
+    ``c_family_scope_chain`` reads it, ``guards`` included; ``functions``
+    adds the enclosing functions and bound lambdas, each labelled by
+    ``c_family_callable_label`` (``h(int)``, ``a = []``; WI-finam)."""
     chain: list[tuple[int, str]] = []
-    current = node.parent
+    child, current = node, node.parent
     while current is not None:
         if current.type in _CPP_CLASS_SPECIFIERS:
             name = _cpp_type_name(current, source)
@@ -449,7 +461,11 @@ def _cpp_scope_chain(
             )
             if ns is not None:
                 chain.append((current.start_byte, _node_text(ns, source)))
-        current = current.parent
+        elif functions and current.type in ("function_definition", "lambda_expression"):
+            label = c_family_callable_label(current, child, source)
+            if label is not None:
+                chain.append((current.start_byte, label))
+        child, current = current, current.parent
     if guards:
         return c_family_with_guards(node, source, chain)
     return [label for _start, label in reversed(chain)]
@@ -3013,7 +3029,9 @@ def _extract_edges_from_tree(
             stable_id=_analyzer.compute_stable_id(
                 declaration, kind="variable", name=name,
                 qualified_name=nested_qualified_name(
-                    c_family_scope_chain(declaration, source, functions=True, guards=True), name,
+                    c_family_scope_chain(
+                        declaration, source, functions=True, guards=True, signatures=True,
+                    ), name,
                 ),
                 file_stable_id=_analyzer._file_anchor(rel_path),
             ),

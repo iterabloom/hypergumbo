@@ -107,3 +107,20 @@ def test_wgsl_has_no_preprocessor(tmp_path: Path) -> None:
     result = analyze_wgsl_files(tmp_path)
     found = [s for s in result.symbols if s.name == "f"]
     assert len(found) == 1 and found[0].stable_id is not None
+
+
+def test_hlsl_locals_of_two_overloads_get_distinct_ids(tmp_path: Path) -> None:
+    """WI-finam: an HLSL local is scoped by its function's name and parameter
+    types, so the ``y`` of ``f(float)`` and of ``f(float2)`` do not tie; a
+    function with no parameter keeps its bare name in the chain."""
+    def ys(rel: str, text: str) -> list[str | None]:
+        (tmp_path / rel).write_text(text)
+        return [s.stable_id for s in analyze_hlsl(tmp_path).symbols
+                if s.name == "y" and s.path.endswith(rel)]
+
+    two = ys("a.hlsl", "float f(float x) { float y; y = x; return y; }\n"
+                       "float f(float2 x) { float y; y = 1; return y; }\n")
+    assert len(two) == 2  # reach: both locals are emitted
+    assert two[0] != two[1]
+    bare = ys("b.hlsl", "float g() { float y; y = 1; return y; }\n")
+    assert len(bare) == 1 and bare[0] is not None
