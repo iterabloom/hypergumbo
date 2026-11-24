@@ -32,7 +32,9 @@ the failure mode is silent: an un-faked tool *works*, so nothing looks wrong.
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import _forge_github_harness as H
@@ -98,7 +100,6 @@ class TestCredentialScrub:
         The scrub list covered FORGEJO_TOKEN and HG_GITHUB_TOKEN, which ``gh``
         does not consult, and omitted the two it does.
         """
-        import os
         bindir = H.bindir_with_fakes(tmp_path)
         marker = "sentinel-not-a-real-token"
         for var in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"):
@@ -111,3 +112,47 @@ class TestCredentialScrub:
         finally:
             for var in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"):
                 os.environ.pop(var, None)
+
+
+class TestShadowDirectoryIsRemoved:
+    """The shadow directory must not outlive the process that built it.
+
+    It holds one symlink per executable on ``PATH`` (about 3,250 here). Left
+    behind by every test process, 839 of them had taken 2.1 of the 3.0 million
+    inodes of a tmpfs ``/tmp`` in twelve days; the tracker tests then failed
+    with ``No space left on device`` while ``df`` showed free blocks.
+    """
+
+    _PROBE = (
+        "import sys; sys.path.insert(0, sys.argv[1]); "
+        "import _forge_github_harness as H; print(H._gh_free_path())"
+    )
+
+    def _run(self, tmp_path: Path, tail: str = "") -> Path:
+        r = subprocess.run(
+            [sys.executable, "-c", self._PROBE + tail, str(Path(H.__file__).parent)],
+            capture_output=True, text=True,
+            env={**os.environ, "TMPDIR": str(tmp_path)},
+        )
+        shadow = Path(r.stdout.strip())
+        # Reach before absence: the path printed must be the one the process
+        # built under this test's own temp root, or "gone" proves nothing.
+        assert shadow.name == "bin" and shadow.parent.parent == tmp_path, r.stderr
+        return shadow
+
+    def test_gone_after_a_normal_exit(self, tmp_path: Path) -> None:
+        shadow = self._run(tmp_path)
+        assert not shadow.parent.exists(), f"{shadow.parent} was left behind"
+
+    def test_gone_after_sys_exit_and_after_an_uncaught_error(self, tmp_path: Path) -> None:
+        for tail in ("; sys.exit(3)", "; raise RuntimeError('x')"):
+            shadow = self._run(tmp_path, tail)
+            assert not shadow.parent.exists(), f"{tail}: {shadow.parent} left behind"
+
+    def test_exists_while_the_process_runs(self, tmp_path: Path) -> None:
+        """Positive control: removal must happen at exit, not before use."""
+        shadow = self._run(
+            tmp_path,
+            "; import os; assert os.path.islink(os.path.join(H._gh_free_path(), 'git'))",
+        )
+        assert not shadow.parent.exists()
