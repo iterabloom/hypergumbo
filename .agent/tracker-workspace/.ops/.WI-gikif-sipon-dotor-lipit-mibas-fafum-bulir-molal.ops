@@ -33,3 +33,10 @@
   clock: 3  # a16c
   nonce: a16c  # a16c
   message: "PR #2354 (stable-id v19, 2026-11-23/24), locals agent: one more thing the hashed Python signature drops. The hashed path still cuts the signature at 60 characters (_format_function_signature; WI-hopiz widened only the DISPLAY signature to 240 to avoid churning ids), and a cut signature falls to the untyped tier. Long `@overload` stubs of one function therefore tie: poetry has 3 pre-split tie groups before and after the PR, all three long-signature @overload pairs (src/poetry/utils/helpers.py _on_rm_error lines 79/86; ArtifactCache.get_cached_archive_for_link 229/239; SitePackages._path_method_wrapper 158/169). ~/hypergumbo_lab_notebook/v19_11232026/locals/measure/py_ties_fixed.txt. This is the mechanism behind this item's third bullet (an @overload sibling re-minted when its twin changes tier). Hashing the full text moves every Python id whose signature exceeds 60 characters: next scheme bump, churn to be measured."  # a16c
+- op: discuss  # fd89
+  at: '2026-11-24T09:38:27Z'  # fd89
+  by: agent  # fd89
+  actor: jgstern_agent  # fd89
+  clock: 4  # fd89
+  nonce: fd89  # fd89
+  message: "RE-RUN 2026-11-24 on dev fc8c8cb19 (analyze_python run directly, one function f per directory, same path). Still dropped from the hashed text: the / marker and the * marker (f(a, /, b), f(a, *, b) and f(a, b) share one id), *args / **kwargs annotations (*args: int, **kw: str and *args: str, **kw: int share one id), PEP 695 type parameters and their bounds (def f[T], def f[T: int] and def f share one id). The 60-character cut still ties a long @overload pair (fixture). ONE BULLET IS NO LONGER TRUE: tuple[()] is hashed (tuple[()], tuple and tuple[int] get three ids). Status unchanged."  # fd89
