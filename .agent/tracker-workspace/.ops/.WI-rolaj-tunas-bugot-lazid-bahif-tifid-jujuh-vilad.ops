@@ -1,0 +1,22 @@
+- op: create  # cb4f
+  at: '2026-11-24T10:13:39Z'  # cb4f
+  by: agent  # cb4f
+  actor: jgstern_agent  # cb4f
+  clock: 1  # cb4f
+  nonce: cb4f  # cb4f
+  data:  # cb4f
+    kind: work_item  # cb4f
+    title: "SECURITY.md does not list the playbook re-injection hook's OpenRouter calls"  # cb4f
+    status: todo_soft  # cb4f
+    priority: 3  # cb4f
+    parent:  # cb4f
+    tags:  # cb4f
+    - security  # cb4f
+    - governance  # cb4f
+    - docs  # cb4f
+    isbefore: []  # cb4f
+    duplicate_of: []  # cb4f
+    not_duplicate_of: []  # cb4f
+    pr_ref:  # cb4f
+    description: "WHAT\nSECURITY.md lists the tracker stop hook's OpenRouter call (WI-puban) and not the other caller in the repository: .agent/hooks/_shared/on_transcript_change.py, the playbook re-injection hook, which posts to https://openrouter.ai/api/v1/chat/completions (OPENROUTER_URL, line 143; openrouter_distill, line 660) when OPENROUTER_API_KEY is set. Its module docstring says it sends recent session-transcript entries to one model to distill the agent's goals and then the goals to a second model to pick playbooks.\n\nREPRO\ngrep -n -i openrouter SECURITY.md -> 3 lines, all about hypergumbo_tracker.stop_hook._call_openrouter / htrac guidance.\ngrep -n -i openrouter .agent/hooks/_shared/on_transcript_change.py -> lines 8, 10, 16, 19, 143, 660-673.\n\nNOT CHECKED\n- What exactly is in the request body, and whether any secret scrubbing runs before it (the reviewer says none does and that scrub_secrets.py is deliberately not wired in: not verified).\n- Whether SECURITY.md is meant to cover development hooks at all (it is produced by generate-security-md from shipped code's I/O; this hook is not shipped in a package).\nThe owner said in session (2026-11-24) that re-injection matters less with current models and that this call needs better documenting. .agent/** is a governance path: a change to the hook itself needs the owner's approval; this item asks for the documentation.\nRelated: WI-puban (open) is the tracker call and the allowlist; openrouter.ai is still absent from ALLOWED_WEBSITES.md while stop_hook.py line 398 says it is covered.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # cb4f
+    fields: {}  # cb4f

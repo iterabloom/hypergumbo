@@ -1,0 +1,22 @@
+- op: create  # 1932
+  at: '2026-11-24T10:13:47Z'  # 1932
+  by: agent  # 1932
+  actor: jgstern_agent  # 1932
+  clock: 1  # 1932
+  nonce: '1932'  # 1932
+  data:  # 1932
+    kind: work_item  # 1932
+    title: "No I/O catalogue rows for Rust peer-to-peer crates (libp2p, quinn, iroh, webrtc)"  # 1932
+    status: todo_soft  # 1932
+    priority: 3  # 1932
+    parent:  # 1932
+    tags:  # 1932
+    - rust  # 1932
+    - catalogue  # 1932
+    - io_boundary  # 1932
+    isbefore: []  # 1932
+    duplicate_of: []  # 1932
+    not_duplicate_of: []  # 1932
+    pr_ref:  # 1932
+    description: "WHAT\nNo I/O catalogue row exists for a Rust peer-to-peer or QUIC networking crate: libp2p, quinn, iroh, webrtc. A boundary or taint claim about network traffic in a program built on one of them can only come back inconclusive.\n\nREPRO\ngrep -rl -i -e libp2p -e quinn -e iroh -e webrtc packages/*/src --include=*.yaml -> no file.\n\nMEASURED\nNot measured on any repository that uses these crates. The reviewer reports that the Rust catalogue covers tokio and reqwest (not re-checked).\n\nNOT CHECKED\n- Which calls of each crate are the crossings (dial, listen, open a stream, send a datagram) and which tier the rows belong in (ADR-0047, ADR-0061: a third-party crate's rows are community rows, which can add findings and never clear a claim).\nThe owner said in session (2026-11-24) that the application hypergumbo was started for is a federated peer-to-peer network in Rust and Tauri.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # 1932
+    fields: {}  # 1932

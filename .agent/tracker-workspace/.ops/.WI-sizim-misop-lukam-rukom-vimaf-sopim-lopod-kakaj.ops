@@ -1,0 +1,23 @@
+- op: create  # fa25
+  at: '2026-11-24T10:13:32Z'  # fa25
+  by: agent  # fa25
+  actor: jgstern_agent  # fa25
+  clock: 1  # fa25
+  nonce: fa25  # fa25
+  data:  # fa25
+    kind: work_item  # fa25
+    title: "python: a return annotation naming an external type is not carried to the receiver (get_db() returning sqlite3.Connection)"  # fa25
+    status: todo_hard  # fa25
+    priority: 3  # fa25
+    parent:  # fa25
+    tags:  # fa25
+    - python  # fa25
+    - io_boundary  # fa25
+    - call_graph  # fa25
+    - analysis_quality  # fa25
+    isbefore: []  # fa25
+    duplicate_of: []  # fa25
+    not_duplicate_of: []  # fa25
+    pr_ref:  # fa25
+    description: "WHAT\nPython: a declared return type that names an external (catalogued) type is not carried to the receiver of a call on the returned value. A parameter or local annotated with the same type is.\n\nREPRO\nfx/p1_ret/a.py, def get_db() -> sqlite3.Connection, then four callers of .execute(\"select 1\"):\n  db = get_db(); db.execute(...)                       via_return\n  def via_param(con: sqlite3.Connection): con.execute  via_param\n  db: sqlite3.Connection = get_db(); db.execute(...)   via_local\n  get_db().execute(...)                                via_chain\nio-boundaries on the directory: db_write sqlite3.Connection.execute (2). The two are via_param and via_local (their edges carry resolution_quality); via_return and via_chain do not reach the row. The reviewer notes the return type IS carried when the returned class is declared in the repository (not re-run).\n\nMEASURED\nFixture only (out/p1_iob.txt, out/summary.txt).\n\nNOT CHECKED\n- Which code path types a receiver from a return annotation and why it stops at an external type (py.py not read).\n- Return annotations naming a third-party type, Optional[T], a string annotation.\nRelated, NOT the same: WI-jidij (wont_do, 2026-08-10) declined a map for UNANNOTATED stdlib factories (conn = sqlite3.connect(...)) on a corpus count of 7 sites. This item is the annotated-return case and does not reopen it. One fact bearing on WI-jidij, not put forward as grounds to reopen: Flask's own tutorial (flaskr get_db) is the unannotated factory shape stored on flask.g.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # fa25
+    fields: {}  # fa25
