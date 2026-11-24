@@ -1,0 +1,23 @@
+- op: create  # 6fb8
+  at: '2026-11-24T12:57:53Z'  # 6fb8
+  by: agent  # 6fb8
+  actor: jgstern_agent  # 6fb8
+  clock: 1  # 6fb8
+  nonce: 6fb8  # 6fb8
+  data:  # 6fb8
+    kind: work_item  # 6fb8
+    title: "cpp/cuda: the displayed signature leaves out defaulted parameters and parameter packs"  # 6fb8
+    status: todo_soft  # 6fb8
+    priority: 4  # 6fb8
+    parent:  # 6fb8
+    tags:  # 6fb8
+    - v20_residual  # 6fb8
+    - cpp  # 6fb8
+    - cuda  # 6fb8
+    - analysis_quality  # 6fb8
+    isbefore: []  # 6fb8
+    duplicate_of: []  # 6fb8
+    not_duplicate_of: []  # 6fb8
+    pr_ref:  # 6fb8
+    description: "WHAT\nC++ / CUDA: the DISPLAYED signature leaves out a parameter that has a default value and a parameter pack, so it shows fewer parameters than the function declares.\n\nREPRO\npytorch aten/src/ATen/native/cuda/ForeachBinaryOpList.cu line 28: foreach_tensor_list_op(TensorList tensors1, TensorList tensors2, const Scalar& alpha = 1) is displayed \"(TensorList tensors1, TensorList tensors2)\". MultiTensorApply.cuh line 100: multi_tensor_apply_kernel(T tensorListMeta, U callable, ArgTypes... args) is displayed \"(T tensorListMeta, U callable)\". cutlass_common.cuh line 11: invoke(Args&&... args) is displayed \"()\".\n\nMEASURED\nRead in 9 samples of the 51-tree comparison of PR #2370 (bump/mine2_run1.txt); not counted. meta[\"parameters\"] does carry these parameters (their declarator marks moved the ids), so only the display string is short.\n\nNOT CHECKED\nWhich function builds the display string, and whether plain C++ (not CUDA) files show the same (the three samples are .cu / .cuh).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # 6fb8
+    fields: {}  # 6fb8
