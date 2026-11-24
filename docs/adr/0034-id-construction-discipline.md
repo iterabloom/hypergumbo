@@ -66,6 +66,8 @@ Linker passes that emit call_site Symbols frequently produce ADR-0031 Class B "s
 
 For the canonical-ID's first segment, the **`discovery_language`** of the host file (where the protocol call was detected) is the correct choice. The discovery_language is always a real language string — the language of the file in which the linker found the call. This keeps the canonical first segment a parseable language even when `Symbol.language` itself is `None`.
 
+**Amendment — a stand-in with no host file (owner, 2026-11-23).** The rule above gives no value for one stand-in: the WASM module node the `wasm_bindgen` linker mints for an `init('./pkg/app_bg.wasm')` reference (`linkers/wasm_bindgen.py::_create_wasm_load_edges`). The module is named by a path or URL and is not found in a host file, so it has no discovery language (ADR-0031's table gives it `discovery_language=None`). Its id's first segment is the literal `wasm`, and the owner's ruling is that this is ACCEPTED: `wasm` stays in the slot although it is not a member of the language catalog. It is the one such literal; any other stand-in follows the rule above.
+
 ```python
 # Pattern for linker-emitted call_site Symbols
 return Symbol(

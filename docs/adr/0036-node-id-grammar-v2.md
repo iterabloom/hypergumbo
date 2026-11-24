@@ -73,7 +73,7 @@ grammar with per-slot colon rules:
 | `lang` | MUST be colon-free | lowercase identifier, member of the language catalog |
 | `path` | **colon-tolerant** | any non-empty string; Rust `::` module paths, Windows drive prefixes etc. keep their native form |
 | `span` | MUST be colon-free | `\d+-\d+` |
-| `name` | MUST be colon-free | sanitized per the rule below, optionally followed by `@<column>` (amendment below); may be empty |
+| `name` | MUST be colon-free | sanitized per the rule below, optionally followed by `@<column>` (amendment below); MUST be non-empty |
 | `kind` | MUST be colon-free | lowercase identifier, member of the symbol-kind registry (Ruling 2) |
 
 **Name sanitization.** Names containing `:` are sanitized `:` → `.` in the ID name slot
@@ -238,6 +238,17 @@ Three layers, extending ADR-0034's:
    that the slot is colon-free, not that it equals `Symbol.name`: a producer
    that hands the factory another string than the name it stores still mints
    a well-formed id.
+   The factories do NOT reject an empty name or an empty path (owner,
+   2026-11-23; this table said the name slot "may be empty" until that day,
+   against the validator row below). `make_symbol_id` and `make_file_id` are
+   called for every emitted symbol, and a raise there would abort a user's
+   whole analysis for one malformed node. The validator reports both instead,
+   each as an `id_format` error: an empty name slot by `_check_id_roundtrip`,
+   an empty path slot by `_check_id_format` (the id no longer has the
+   five-slot shape). The boundary synthesizer is the one guarded factory: an
+   empty path becomes `<external>` (Ruling 3's no-anchor sentinel) and an
+   empty name raises, which its one production caller never passes
+   (`ir._canonical_external_id`).
 2. **Runtime validator** (`spec_validator.py`, class `id_format`), on every run:
 
    | Rule | Implementation | Severity |
