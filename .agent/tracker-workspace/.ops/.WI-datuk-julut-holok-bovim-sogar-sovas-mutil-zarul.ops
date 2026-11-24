@@ -1,0 +1,23 @@
+- op: create  # fd9f
+  at: '2026-11-24T12:58:43Z'  # fd9f
+  by: agent  # fd9f
+  actor: jgstern_agent  # fd9f
+  clock: 1  # fd9f
+  nonce: fd9f  # fd9f
+  data:  # fd9f
+    kind: work_item  # fd9f
+    title: "view_template_spring never runs: its activation names spring / spring-mvc, detection only reports spring-boot"  # fd9f
+    status: todo_hard  # fd9f
+    priority: 3  # fd9f
+    parent:  # fd9f
+    tags:  # fd9f
+    - v20_residual  # fd9f
+    - linker  # fd9f
+    - frameworks  # fd9f
+    - analysis_quality  # fd9f
+    isbefore: []  # fd9f
+    duplicate_of: []  # fd9f
+    not_duplicate_of: []  # fd9f
+    pr_ref:  # fd9f
+    description: "WHAT\nThe Spring view-template linker never runs in a CLI run: its activation names the frameworks spring / spring-mvc, and the profile only ever detects spring-boot.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/standins/fixtures_src/spring: spring-boot is detected; no view-template-linker entry appears in analysis_runs (standins agent).\n\nNOT CHECKED\nOther linkers whose activation names a framework id the profile never emits (sweep by mechanism: compare each linker's activation list with the set of ids framework detection can produce).\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # fd9f
+    fields: {}  # fd9f
