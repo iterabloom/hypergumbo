@@ -11,9 +11,9 @@ two ``operator==``, or in two lambdas bound to ``a`` and ``b``, tied; the
 occurrence split numbered them by order. Each case runs the analyzer: no two
 symbols of the file share a stable id, and blanking the first alternative
 moves no survivor's id. Left tied, as the callables themselves still tie:
-the locals of ``c() const`` and ``c()`` (a ``const`` qualifier is not in a
-method's id), and those of a member of an explicit specialisation
-``template <> struct Tp<int>``.
+the locals of a member of an explicit specialisation ``template <> struct
+Tp<int>``. (Those of ``c() const`` and ``c()`` tied until v20, when a
+member's qualifiers entered its id and its label: WI-pohom-turot.)
 """
 from __future__ import annotations
 
@@ -48,6 +48,10 @@ CASES: dict[str, tuple[str, str, str]] = {
         "int g(void) { return 1; }\n", "void f(int) { int (*tbl[])(void) = { g }; }\n",
         "void f(double) { int (*tbl[])(void) = { g }; }\n",
     ),
+    "const-twins": ("struct S {\n", "  void c() const { struct L { int a; }; }\n",
+                    "  void c() { struct L { int a; }; }\n};\n"),
+    "ref-qualified-twins": ("struct S {\n", "  void c() & { struct L { int a; }; }\n",
+                            "  void c() && { struct L { int a; }; }\n};\n"),
     "methods-of-two-classes": ("", "struct P { void run() { struct L {}; } };\n",
                                "struct Q { void run() { struct L {}; } };\n"),
 }

@@ -2665,7 +2665,8 @@ class TestCppPureVirtualStableId:
     ``virtual int find(int) = 0`` and ``find(int, int)`` in one class shared a
     key and both went null. It now records its parameters (types included) and
     mints ``declared_arity_stable_id`` over them, the class in its name and
-    ``abstract,virtual`` as its decorators.
+    ``abstract,virtual`` as its decorators, with its cv- and ref-qualifiers
+    sorted in since v20 (``abstract,const,virtual``).
     """
 
     _CODE = (
@@ -2697,11 +2698,13 @@ class TestCppPureVirtualStableId:
             [parameter_entry("x", "int"), parameter_entry("y", "int", default=True)],
             [],
         ]
-        for m in methods:
+        # ``find(int, int) const`` adds its qualifier (WI-pohom-turot).
+        decorators = ["abstract,virtual", "abstract,const,virtual", "abstract,virtual"]
+        for m, decorated in zip(methods, decorators, strict=True):
             assert m.stable_id == declared_arity_stable_id(
                 kind="method", lang="cpp", path="s.cpp", name=m.name,
                 qualified_name="", arity=declared_arity(m.meta),
-                decorators="abstract,virtual",
+                decorators=decorated,
                 containing_stable_id=make_file_stable_id("cpp", "s.cpp"),
             )
         assert len({m.stable_id for m in methods}) == 3

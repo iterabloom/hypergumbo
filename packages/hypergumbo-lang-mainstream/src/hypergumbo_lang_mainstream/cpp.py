@@ -139,7 +139,12 @@ Call-edge details:
   ``#ifdef FAST`` and under its ``#else`` do not tie; and so are the
   functions and bound lambdas enclosing a local declaration, by name and
   hashed parameter types (WI-finam: the locals of ``h(int)`` and
-  ``h(double)`` do not tie).
+  ``h(double)`` do not tie), and, since v20, its cv- and ref-qualifiers.
+- **Qualified members** (WI-pohom-turot): a member function's ``const`` /
+  ``volatile`` / ``&`` / ``&&`` after its parameter list fill the
+  decorators slot (``c_family_function_qualifiers``), so ``T& data()`` and
+  ``const T& data() const`` do not tie; an in-class definition, an
+  out-of-class one and a pure virtual read them off the same declarator.
 - **Overloads** (WI-hilum): every definition records its parameters in
   ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
   stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
@@ -220,7 +225,8 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
     c_family_array_declarator, c_family_declarator, c_family_declares_local,
     c_family_file_scope_variables, c_family_is_value_operand, c_family_parameter_list, c_family_parameters,
-    c_family_callable_label, c_family_scope_chain, c_family_with_guards,
+    c_family_callable_label, c_family_function_qualifiers, c_family_scope_chain,
+    c_family_with_guards,
 )
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
@@ -495,7 +501,9 @@ def _emit_cpp_pure_virtual(
     (``declared_arity_stable_id``, WI-tusad): ``virtual int find(int) = 0`` and
     ``find(int, int)`` in one class would otherwise tie on the backstop floor
     key and both go null. ``abstract,virtual`` is its decorator string, so it never
-    ties with an out-of-line definition of the same pure virtual in the file.
+    ties with an out-of-line definition of the same pure virtual in the file;
+    its cv- and ref-qualifiers join it (``abstract,const,virtual``;
+    WI-pohom-turot), so ``f() const = 0`` and ``f() = 0`` do not tie.
     """
     start_line = field_decl.start_point[0] + 1
     end_line = field_decl.end_point[0] + 1
@@ -530,7 +538,10 @@ def _emit_cpp_pure_virtual(
             kind="method", lang="cpp", path=str(file_path), name=full_name,
             qualified_name=_cpp_scope_slot(field_decl, source, full_name),
             arity=declared_arity(meta),
-            decorators="abstract,virtual", containing_stable_id=file_stable_id,
+            decorators=",".join(sorted([
+                "abstract", "virtual", *c_family_function_qualifiers(field_decl, source),
+            ])),
+            containing_stable_id=file_stable_id,
         ),
     ))
 
@@ -1547,6 +1558,9 @@ def _extract_symbols_from_tree(
                         _analyzer, node, kind=kind, name=name, meta=fn_meta,
                         file_stable_id=file_stable_id,
                         qualified_name=_cpp_scope_slot(node, source, name),
+                        # WI-pohom-turot: ``d()`` / ``d() const`` and
+                        # ``r() &`` / ``r() &&`` are different members.
+                        qualifiers=c_family_function_qualifiers(node, source),
                     ),
                 )
                 analysis.symbols.append(symbol)
