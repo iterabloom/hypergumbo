@@ -55,6 +55,23 @@ Offset and indexing conventions pinned here:
   a non-UTF-8 encoding, and adding a conversion pass without a real
   input to test against would be speculative.
 
+Several records under one moniker:
+
+* scip-python names a ``def`` nested in a method by the class and the
+  ``def`` alone (``...TestGate#fake().``), so two methods of one class that
+  each define a local ``fake`` give one Document two ``SymbolInformation``
+  records with ONE symbol string, and a Definition occurrence at each
+  ``def``. The nth record of a moniker is placed at the moniker's nth
+  Definition occurrence, both in document order, so each node has its own
+  span and its own node id. (Every record used to take the FIRST
+  Definition's range: N nodes under one node id and one span, 29 such ids
+  on hypergumbo's own tree.) A single record with several Definitions
+  keeps the first, as before; a record beyond the Definitions names none of
+  its own and is skipped. The records still share a moniker, so their
+  ``stable_id`` is one value until the per-file occurrence split, and an
+  edge endpoint naming the moniker stays ambiguous
+  (``resolve.MonikerResolver``): that is not decided here.
+
 Edge cases intentionally handled by skip rather than raise:
 
 * ``SymbolInformation`` with no ``Definition``-role occurrence in the
@@ -433,14 +450,22 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
     out: List[Symbol] = []
     for doc in index.documents:
         lang = _resolve_language(doc)
-        def_occ: Dict[str, scip_pb2.Occurrence] = {}
+        def_occs: Dict[str, List[scip_pb2.Occurrence]] = {}
         for occ in doc.occurrences:
-            if occ.symbol_roles & _ROLE_DEFINITION and occ.symbol not in def_occ:
-                def_occ[occ.symbol] = occ
+            if occ.symbol_roles & _ROLE_DEFINITION:
+                def_occs.setdefault(occ.symbol, []).append(occ)
+        records_seen: Dict[str, int] = {}
         for sym_info in doc.symbols:
-            occ = def_occ.get(sym_info.symbol)
-            if occ is None:
+            definitions = def_occs.get(sym_info.symbol)
+            if not definitions:
                 continue
+            # The nth record of a moniker is placed at its nth Definition
+            # (module docstring, "Several records under one moniker").
+            nth = records_seen.get(sym_info.symbol, 0)
+            records_seen[sym_info.symbol] = nth + 1
+            if nth >= len(definitions):
+                continue
+            occ = definitions[nth]
             if is_local_symbol(sym_info.symbol):
                 # A function-local binding is not part of the map — see
                 # the module docstring (WI-jikok / INV-kukiz).

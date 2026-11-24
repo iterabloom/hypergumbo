@@ -212,6 +212,60 @@ def test_multiple_definitions_for_same_symbol_picks_first() -> None:
     assert s.span.start_line == 6
 
 
+def _two_local_defs_of_one_moniker() -> scip_pb2.Index:
+    """What scip-python records for ``def fake`` nested in two methods of one
+    class: two ``SymbolInformation`` records under ONE symbol string
+    (``...TestGate#fake().``) and one Definition occurrence at each ``def``."""
+    sym = "scip-python python repo 0 `tests.test_gate`/TestGate#fake()."
+    return _make_index(
+        path="tests/test_gate.py",
+        symbols=[scip_pb2.SymbolInformation(symbol=sym), scip_pb2.SymbolInformation(symbol=sym)],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[867, 12, 16]),
+            scip_pb2.Occurrence(symbol=sym, symbol_roles=0, range=[870, 8, 12]),
+            scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[880, 12, 16]),
+        ],
+    )
+
+
+def test_two_records_of_one_moniker_take_one_definition_each() -> None:
+    """Each record is placed at its own Definition, in document order. Both
+    took the first Definition's range, so the nodes shared one node id and
+    one span (29 ids on hypergumbo's own tree; the scheduled full suite's
+    self-tree-validation step went red on it once node-id uniqueness became
+    an error)."""
+    first, second = scip_index_to_symbols(_two_local_defs_of_one_moniker())
+    assert (first.span.start_line, second.span.start_line) == (868, 881)
+    assert first.id == "python:tests/test_gate.py:868-868:fake:method"
+    assert second.id == "python:tests/test_gate.py:881-881:fake:method"
+    assert first.id != second.id
+    # One moniker, one path: the stable id is the same before the per-file
+    # occurrence split, as it was.
+    assert first.stable_id == second.stable_id
+
+
+def test_a_record_beyond_the_definitions_is_not_emitted() -> None:
+    """Three records and two Definitions: the third names no definition of
+    its own. It is dropped rather than stacked on another record's place."""
+    idx = _two_local_defs_of_one_moniker()
+    idx.documents[0].symbols.append(
+        scip_pb2.SymbolInformation(symbol=idx.documents[0].symbols[0].symbol)
+    )
+    assert [s.span.start_line for s in scip_index_to_symbols(idx)] == [868, 881]
+
+
+def test_another_monikers_definitions_do_not_shift_the_pairing() -> None:
+    idx = _two_local_defs_of_one_moniker()
+    other = _py_symbol("other")
+    idx.documents[0].symbols.insert(1, scip_pb2.SymbolInformation(symbol=other))
+    idx.documents[0].occurrences.insert(
+        1, scip_pb2.Occurrence(symbol=other, symbol_roles=DEFINITION_ROLE, range=[874, 4, 9]),
+    )
+    assert [(s.name, s.span.start_line) for s in scip_index_to_symbols(idx)] == [
+        ("fake", 868), ("other", 875), ("fake", 881),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Descriptor / kind handling
 # ---------------------------------------------------------------------------
