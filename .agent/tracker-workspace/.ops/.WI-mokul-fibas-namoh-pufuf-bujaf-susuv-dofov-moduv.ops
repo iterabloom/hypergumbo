@@ -1,0 +1,23 @@
+- op: create  # b299
+  at: '2026-11-24T20:42:50Z'  # b299
+  by: agent  # b299
+  actor: jgstern_agent  # b299
+  clock: 1  # b299
+  nonce: b299  # b299
+  data:  # b299
+    kind: work_item  # b299
+    title: "objc: every message send is bound by selector to the last-declared method at 0.9, typed receiver or not"  # b299
+    status: todo_hard  # b299
+    priority: 2  # b299
+    parent:  # b299
+    tags:  # b299
+    - call_graph  # b299
+    - analysis_quality  # b299
+    - call_matrix  # b299
+    - objc  # b299
+    isbefore: []  # b299
+    duplicate_of: []  # b299
+    not_duplicate_of: []  # b299
+    pr_ref:  # b299
+    description: "WHAT\nEvery Objective-C message send in the fixture is bound by selector name to the LAST-declared method of that name, at 0.9 (evidence_type message_send), in all six call shapes:\n  Conn *db = [App get_db]; [db execute];         [[App get_db] execute];\n  Conn *c = [[Conn alloc] init]; [c execute];    Child *ch = [[Child alloc] init]; [ch ping];\n  id x = [ExtLib make]; [x execute];             + (void)via_amb_param:(id)x { [x execute]; }\nThe third has the receiver's type written on the line above. The last two have no type to find (id) and are bound anyway.\nALSO: helper() called from a method emits no edge, and a C function defined in a .m file has no symbol (the second is WI-rivin; in the first version of the fixture the callers were C functions and none of them had a symbol).\nEXPECTED: the typed receivers reach their class's method (ping through Base); the two `id` receivers stay unresolved.\nRELATED: WI-koful (three receiver shapes untyped after WI-garar stage 2), WI-juzit (inherited_calls refuses objc classes).\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/objc__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw objc\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # b299
+    fields: {}  # b299

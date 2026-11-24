@@ -1,0 +1,23 @@
+- op: create  # b494
+  at: '2026-11-24T20:42:56Z'  # b494
+  by: agent  # b494
+  actor: jgstern_agent  # b494
+  clock: 1  # b494
+  nonce: b494  # b494
+  data:  # b494
+    kind: work_item  # b494
+    title: "groovy: calls on a returned value, an inherited method, an untyped receiver and an imported class bind the last-declared same-named method"  # b494
+    status: todo_hard  # b494
+    priority: 2  # b494
+    parent:  # b494
+    tags:  # b494
+    - call_graph  # b494
+    - analysis_quality  # b494
+    - call_matrix  # b494
+    - groovy  # b494
+    isbefore: []  # b494
+    duplicate_of: []  # b494
+    not_duplicate_of: []  # b494
+    pr_ref:  # b494
+    description: "WHAT\nWith two classes that both declare execute(), groovy binds these calls to whichever class is declared LAST, at 0.85:\n  def db = get_db(); db.execute()        (get_db() is declared `static Conn get_db()`)\n  def ch = new Child(); ch.ping()        (Child extends Base; an unrelated Stray also declares ping())\n  def x = Lib.make(); x.execute()        (Lib is not in the repository: nothing says what x is)\n  static void via_amb_param(x) { x.execute() }   (untyped parameter)\nand `import util.Util; Util.helper()` to the helper of whichever class named Util is in the later-sorting directory, at 0.78.\nThe constructor form (def c = new Conn(); c.execute()) is right in both orders; the chain get_db().execute() is unresolved in both.\nEXPECTED: the first, second and fifth name their declared target; the third and fourth stay unresolved.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/groovy__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw groovy\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # b494
+    fields: {}  # b494

@@ -1,0 +1,23 @@
+- op: create  # a3e6
+  at: '2026-11-24T20:43:02Z'  # a3e6
+  by: agent  # a3e6
+  actor: jgstern_agent  # a3e6
+  clock: 1  # a3e6
+  nonce: a3e6  # a3e6
+  data:  # a3e6
+    kind: work_item  # a3e6
+    title: "csharp: when the receiver's type has no such method or is unknown, the call binds the last-declared same-named method at 0.85"  # a3e6
+    status: todo_hard  # a3e6
+    priority: 2  # a3e6
+    parent:  # a3e6
+    tags:  # a3e6
+    - call_graph  # a3e6
+    - analysis_quality  # a3e6
+    - call_matrix  # a3e6
+    - csharp  # a3e6
+    isbefore: []  # a3e6
+    duplicate_of: []  # a3e6
+    not_duplicate_of: []  # a3e6
+    pr_ref:  # a3e6
+    description: "WHAT\ncsharp types `var db = get_db()` and `var c = new Conn()` correctly in both declaration orders. When that typed lookup has no answer it binds by method name to the LAST-declared class, at 0.85:\n  var ch = new Child(); ch.ping();       (Child : Base; an unrelated Stray also declares ping()) -> Stray.ping when Stray is declared last\n  var x = Factory.make(); x.execute();   (Factory is not in the repository) -> the last-declared execute()\nand `using UtilNs; Util.helper()` binds the helper of whichever class named Util is in the later-sorting directory, at 0.78.\nThe chain get_db().execute() is unresolved in both orders.\nEXPECTED: ping() reaches Base.ping; the external-bound call stays unresolved; Util.helper() reaches UtilNs.Util.helper.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/csharp__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw csharp\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # a3e6
+    fields: {}  # a3e6
