@@ -1,0 +1,22 @@
+- op: create  # b127
+  at: '2026-11-24T10:12:12Z'  # b127
+  by: agent  # b127
+  actor: jgstern_agent  # b127
+  clock: 1  # b127
+  nonce: b127  # b127
+  data:  # b127
+    kind: work_item  # b127
+    title: "typescript: a call chained on a function's declared return type (getDb().execute()) is unresolved"  # b127
+    status: todo_hard  # b127
+    priority: 3  # b127
+    parent:  # b127
+    tags:  # b127
+    - typescript  # b127
+    - call_graph  # b127
+    - analysis_quality  # b127
+    isbefore: []  # b127
+    duplicate_of: []  # b127
+    not_duplicate_of: []  # b127
+    pr_ref:  # b127
+    description: "WHAT\nTypeScript: a method call chained on a call whose declared return type is an in-repo class is unresolved, while the same call through a variable resolves.\n\nREPRO\nfx/tsx/a.ts: class Conn and class Other, each with execute(); function getDb(): Conn.\n  const db = getDb(); db.execute();   -> Conn.execute at 0.85\n  getDb().execute();                  -> external_symbol execute at 0.5 (unresolved)\n  const c = new Conn(); c.execute();  -> Conn.execute at 0.85\n\nMEASURED\nFixture only.\n\nNOT CHECKED\n- The reviewer reports the same unresolved chain for C#, Go and Kotlin, and a resolved chain for Java, Python and Swift, on 10.0.0: none of those was re-run on dev.\n- Property chains (a.b().c()), awaited calls, generic returns.\nRelated, distinct: WI-zimat (open, C++ return-type registry for auto x = f() and f().m()). No open item asks for one cross-language fixture that pins these three call shapes in every language; this item does not ask for it either, it records the TypeScript arm.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # b127
+    fields: {}  # b127

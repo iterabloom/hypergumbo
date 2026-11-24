@@ -1,0 +1,23 @@
+- op: create  # e344
+  at: '2026-11-24T10:12:19Z'  # e344
+  by: agent  # e344
+  actor: jgstern_agent  # e344
+  clock: 1  # e344
+  nonce: e344  # e344
+  data:  # e344
+    kind: work_item  # e344
+    title: "flask: a route with methods=[GET, POST] is reported with its first method only"  # e344
+    status: todo_hard  # e344
+    priority: 3  # e344
+    parent:  # e344
+    tags:  # e344
+    - python  # e344
+    - flask  # e344
+    - frameworks  # e344
+    - analysis_quality  # e344
+    isbefore: []  # e344
+    duplicate_of: []  # e344
+    not_duplicate_of: []  # e344
+    pr_ref:  # e344
+    description: "WHAT\nA Flask route declared with several methods is reported with the first one only.\n\nREPRO\nfx/f2_methods/app.py:\n  @app.route(\"/login\", methods=[\"GET\", \"POST\"])   -> one route node \"GET /login\"; concept method GET\n  @app.route(\"/only_post\", methods=[\"POST\"])      -> \"POST /only_post\" (control: a one-element list is right)\nExpected: GET /login and POST /login.\n\nMEASURED\nFixture only.\n\nNOT CHECKED\n- methods given as a tuple, a set, a name bound elsewhere, or add_url_rule(..., methods=[...]).\n- Other frameworks whose route call takes a method list (Django require_http_methods, Starlette Route(methods=), aiohttp, Bottle): not run.\nRelated, closed: WI-kohav (done) is about the usage-context key name methods; it did not change what a decorator's list yields.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # e344
+    fields: {}  # e344
