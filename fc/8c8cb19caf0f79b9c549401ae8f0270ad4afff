@@ -1,0 +1,21 @@
+Original commit body from 18bf58bb95b537c9b1e235fbb66cdcb7433f7925:
+
+Docstring staleness audit of 2026-11-24, second bundle: functionality that 13 module docstrings did not mention (severity C). Documentation only, apart from five re-pinned line numbers in signature_axis.py. The first bundle (wrong claims and minor drift in 36 files) is #2359.
+
+Each addition was confirmed by a default-REJECT verifier, and each editor re-read the code before writing. Five verifier texts were corrected against the code: the store's rate limit counts every writer; dart's guard counts methods, not classes; kotlin withholds only short-name matches; sketch's list of gated sections is not exhaustive; and the sketch_embeddings paragraph was placed where the docstring's own structure needs it.
+
+FILES
+- analyze/base.py: the same-line @<column> id rule.
+- kotlin.py: a bare call prefers the enclosing type's own member; a short-name match on another type's method is withheld to an unresolved edge that carries enclosing_class.
+- framework_patterns.py: the adopts key and usage_row_names_call.
+- tracker store.py: two-user sharing on the write path, and the discussion limits.
+- cli.py and sketch.py: files the VCS ignores, and the declared test-input directories.
+- sketch_embeddings.py: the shipped probe embeddings and their freshness check.
+- dart.py: Pass 2 call resolution.
+- prose_only.py: the shared work each test used.
+- analyze/file_records.py: name_file_pseudo_symbols_by_path.
+- kept_work_guard.py: its other failure classes.
+- statement_narrow.py: the fourth refusal.
+- entrypoint_kinds.py: the watched-read check (found by the blind re-review).
+
+The code defects the audit found are filed in the tracker (#2360).
