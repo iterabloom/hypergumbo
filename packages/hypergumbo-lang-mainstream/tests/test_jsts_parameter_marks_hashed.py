@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.identity_schemes import STABLE_ID_PREFIX
 from hypergumbo_lang_mainstream.js_ts import (
     _get_parser_for_file,
     _jsts_callable_hashed,
@@ -158,16 +159,16 @@ def test_the_qualifier_rule_is_the_unmarked_one(tmp_path: Path) -> None:
 #: was hashed): forms with no mark to hash keep their ids. An untyped
 #: parameter is hashed whole (``x?``, ``...xs``), so its marks were in already.
 UNCHANGED: dict[str, tuple[str, str, str, str]] = {
-    "plain": ("export function f(x: number) {}\n", "f", "a.ts", "hgstableid19:9a3af27e3d5ad247"),
+    "plain": ("export function f(x: number) {}\n", "f", "a.ts", f"{STABLE_ID_PREFIX}9a3af27e3d5ad247"),
     "default": ("export function f(x: number = 5) {}\n", "f", "a.ts",
-                "hgstableid19:7476eb82f4214bbf"),
-    "untyped-optional": ("export function f(x?) {}\n", "f", "a.ts", "hgstableid19:8ab835d1f8ae5e68"),
-    "untyped-rest": ("export function f(...xs) {}\n", "f", "a.ts", "hgstableid19:aa42fc6e9e98c9c5"),
-    "js-rest": ("export function f(...xs) {}\n", "f", "a.js", "hgstableid19:0988d20633f5626e"),
+                f"{STABLE_ID_PREFIX}7476eb82f4214bbf"),
+    "untyped-optional": ("export function f(x?) {}\n", "f", "a.ts", f"{STABLE_ID_PREFIX}8ab835d1f8ae5e68"),
+    "untyped-rest": ("export function f(...xs) {}\n", "f", "a.ts", f"{STABLE_ID_PREFIX}aa42fc6e9e98c9c5"),
+    "js-rest": ("export function f(...xs) {}\n", "f", "a.js", f"{STABLE_ID_PREFIX}0988d20633f5626e"),
     "function-type-optional": ("export function f(cb: (y?: number) => void) {}\n", "f", "a.ts",
-                               "hgstableid19:cf1f4ee437c2bb0b"),
+                               f"{STABLE_ID_PREFIX}cf1f4ee437c2bb0b"),
     "interface-member": ("export interface I { m(x?: number): void; }\n", "I.m", "a.ts",
-                         "hgstableid19:87e250b896ad7a79"),
+                         f"{STABLE_ID_PREFIX}87e250b896ad7a79"),
 }
 
 
