@@ -20,8 +20,8 @@ logic.
 Key constructs extracted:
 - function: Public and private function declarations
 - type_definition: Custom types with constructors (similar to enums/ADTs),
-  emitted as kind ``class``
-- type_alias: Type aliases, emitted as kind ``type``
+  emitted as kind ``type``
+- type_alias: Type aliases, emitted as kind ``type_alias``
 - import: Module imports
 - function_call: Direct and qualified function calls
 
@@ -31,6 +31,17 @@ Every symbol carries meta ``is_public`` (``pub`` present); custom types add
 unresolved edge when not found. A qualified call ``mod.fn(x)`` is always
 emitted unresolved (via ``make_unresolved_edge``, target ``mod.fn``): the
 module qualifier is not resolved against imports.
+
+Kinds and identity (WI-lilab, stable-id scheme v19): a custom type is kind
+``type`` and an alias ``type_alias``, the registered kinds (ADR-0027) the
+sibling analyzers of the same construct report (Elm, PureScript and OCaml
+emit ``type`` for a custom/data type; PureScript and Rust emit
+``type_alias``). They were ``class`` and ``type``: a custom type is an
+algebraic data type built by its constructors, with no methods and no
+inheritance, and ``class`` also put it among ``type_like_kind_names``, where
+Elm's equal construct is not. The stable id hashes the Symbol's kind; it hashed ``fn`` for a function
+before v19 (the two type words it hashed were already ``type`` and
+``type_alias``, so those stable ids did not move; their node ids did).
 """
 from __future__ import annotations
 
@@ -192,7 +203,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "function"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=name, file_stable_id=file_anchor),
+                    stable_id=self.compute_stable_id(node, kind="function", name=name, file_stable_id=file_anchor),
                     name=name,
                     kind="function",
                     language="gleam",
@@ -219,10 +230,10 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 constructor_count = _count_constructors(node)
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "class"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
                     stable_id=self.compute_stable_id(node, kind="type", name=name, file_stable_id=file_anchor),
                     name=name,
-                    kind="class",
+                    kind="type",
                     language="gleam",
                     path=rel_path,
                     span=Span(
@@ -242,10 +253,10 @@ class GleamAnalyzer(TreeSitterAnalyzer):
             if name:
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type_alias"),
                     stable_id=self.compute_stable_id(node, kind="type_alias", name=name, file_stable_id=file_anchor),
                     name=name,
-                    kind="type",
+                    kind="type_alias",
                     language="gleam",
                     path=rel_path,
                     span=Span(
