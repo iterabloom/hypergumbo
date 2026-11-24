@@ -22,3 +22,12 @@
     fields:  # 8760
       statement: "A call whose receiver type is not known, and whose method name is declared by more than one in-repository type, is not bound to one of them."  # 8760
       root_cause: "Not read in the code. Observed on fixtures: a receiver bound from a function's declared return type is untyped, and the call is then bound by method name to the last-declared candidate, or by the type of a same-named variable in another function of the file."  # 8760
+- op: update  # e072
+  at: '2026-11-24T10:21:13Z'  # e072
+  by: agent  # e072
+  actor: jgstern_agent  # e072
+  clock: 2  # e072
+  nonce: e072  # e072
+  set: {}  # e072
+  add:  # e072
+    tags: [outside_review_10_0_0]  # e072
