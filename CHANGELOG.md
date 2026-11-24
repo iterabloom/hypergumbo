@@ -12,53 +12,60 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Summary
+
+- **More entry points are found**: code a program hands to a framework (middleware, CLI actions, IPC and WebSocket handlers, jobs) in JavaScript, Go, Python, Ruby, Elixir, Swift, Scala and Kotlin.
+- **Entry kinds mean one thing each** (ADR-0063): manifest executables, program starts and hosted applications are told apart, and every reader agrees which is which.
+- **Stable ids survive reformatting and respelling, and different declarations no longer share one.** Scheme v15 → v19 changes many digests.
+- **Every node id names its own node, and no two nodes share one**; edges end on a real node or a stand-in.
+- **`verify-claims` answers `inconclusive` when a secret may leave through an alias**, and its exit 1 always means a violated claim.
+- **A crash and a broken pipe have their own exit codes** (70, 141).
+- **Node and edge order no longer depends on thread timing.**
+
 ### Breaking and contract changes
 
+- **Behavior map `SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
 - **`stable_id_scheme` v15 → v19** (`hgstableid19:`): many digests change, most in Swift, Rust, Scala, Kotlin, C, C++ and JS/TS (spec: "`stable_id_scheme` version history").
-- **Some node kinds are corrected**: Gleam custom types are `type` and aliases `type_alias`; Odin and V structs and unions are `struct`, `union`; a V function with a receiver is `method`.
-- **A Vue or Svelte component's file node is `vue:` / `svelte:`**, also when only its script was read (was `typescript:` / `javascript:`).
-- **Many node ids are respelled; their stable ids are not**: Rust and Perl members (`A..run`), Tcl, Julia, Robot, Maven, reStructuredText, linker stand-ins.
-- **Linker stand-ins are named `<role>:<name>`** (`message_sender:ping`); the bare name is in `meta`.
-- **Every file node's `name` is its repo-relative path.**
-- **Vue, Svelte and Astro member names include their element** (`button:v-on:click`).
-- **`SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
+- **`verify-claims --json` 3.1 → 3.2** adds `withheld_flows`.
+- **`validation_report` 0.5 → 0.6** adds `name_slot_stats.column_suffixed`, the count of node ids carrying `@<column>`.
+- **Exit codes**: a crash exits 70, a broken pipe 141 (both were 1); a missing `--input` or empty claims file exits 2, so `verify-claims` exit 1 always means a violated claim.
 - **Manifest executables are kind `package_executable`**: npm `bin`, Cargo `[[bin]]`, `[project.scripts]`.
 - **Server app objects (Flask, FastAPI, Tornado) and Verilog top modules are kind `hosted_application`**, ranked with routes; Swift `ParsableCommand` types are `cli_command`.
-- **Exit codes**: a crash exits 70, a broken pipe 141 (both were 1); a missing `--input` or empty claims file exits 2, so `verify-claims` exit 1 always means a violated claim.
-- **`verify-claims --json` 3.1 → 3.2** adds `withheld_flows`.
+- **Many node ids are respelled; their stable ids are not**: Rust and Perl members (`A..run`), Tcl, Julia, Robot, Maven, reStructuredText, tsconfig entries, linker stand-ins. More under Fixed, "Node ids".
+- **Linker stand-ins are named `<role>:<name>`** (`message_sender:ping`); the bare name is in `meta`.
+- **Every file node's `name` is its repo-relative path.**
+- **A Vue or Svelte component's file node is `vue:` / `svelte:`**, also when only its script was read (was `typescript:` / `javascript:`).
+- **Vue, Svelte and Astro member names include their element** (`button:v-on:click`).
+- **A go-swagger route marker's `name` is its route** (`GET /alerts`), not its handler, which is in `meta.handler_name`.
+- **Some node kinds are corrected**: Gleam custom types are `type` and aliases `type_alias`; Odin and V structs and unions are `struct`, `union`; a V function with a receiver is `method`.
 - **Stand-in `fingerprint` values carry the `hgstandinfp1:` label**; digests are unchanged.
-- **Some node ids change text**: see "Node ids and edges".
 
 ### Added
 
+#### Entry points
+
+- **JavaScript and TypeScript**: Express, Koa, Fastify and hapi middleware; CLI actions; Electron IPC handlers and preload scripts (`electron_preload`); Socket.IO handlers, also without Express.
+- **Go**: CLI commands, middleware and cron jobs.
+- **Python**: handlers passed to library calls; Click, Typer and Ariadne decorators, matched by their maker; Flask-RESTful error-handler subclasses.
+- **Ruby**: handlers named by symbol or class; Thor commands and dry-cli `#call` methods. dry-cli and Commander are detected; Sidekiq workers are tasks.
+- **Elixir**: modules using OTP, Oban or Phoenix; plugs, sockets and fallback controllers.
+- **Scala and Kotlin**: Scala `@main`, `App` and `extends IOApp.Simple`, and Kotlin `@JvmStatic main`, start programs. Ktor modules are hosted applications, and `Application::module` reaches them. Play CSRF error handlers are error-handler entries.
+- **Swift**: SwiftUI, UIKit and AppKit apps, detected by their import; Argument Parser commands; Vapor WebSocket handlers. Vapor `use:` handlers get callers.
+- **PHP**: Slim error-handler subclasses, Laravel queued jobs, PHPUnit tests.
+- **Also**: Yesod, Lapis, Shiny, Plumber and Saturn applications are hosted-application entries; C# and Rust tests and WGSL shaders are detected.
+
+#### Output and configuration
+
 - **`test_input_dirs` in `.hypergumbo.toml`** declares directories only tests read; every command treats them as test code, and `supply_chain_summary.declared_test_inputs` records them.
 - **Sketch lists agent instruction files (`AGENTS.md`, `CLAUDE.md`, …) and never prints their text**; `explain` holds their source back.
-- **Electron preload scripts are `electron_preload` entry points.**
-- **C#, Rust and PHPUnit tests, WGSL shaders and Laravel queued jobs are detected.**
-- **SwiftUI, UIKit and AppKit apps are detected by their import**; Swift Argument Parser commands too.
-- **Yesod, Lapis, Shiny, Plumber and Saturn applications are hosted-application entries.**
-- **Scala `extends IOApp.Simple` is a program start**; dotted parent types are recorded.
-- **Haskell symbols carry module-qualified names**; an instance records its class.
-- **R and F# calls are recorded as usage contexts.**
-- **Usage rows now decide which calls analyzers record.**
-- **Framework rows gain `adopts:` for `use` and `include`.**
-- **Express, Koa, Fastify and hapi middleware are entry points.**
-- **CLI actions and Electron IPC handlers are entry points.**
-- **Socket.IO handlers are detected without Express.**
-- **Go CLI commands, middleware and cron jobs are entries.**
-- **Python handlers passed to library calls are entries.**
-- **Click, Typer and Ariadne decorators match by their maker.**
-- **Flask-RESTful and Slim error-handler subclasses are entries.**
-- **Vapor WebSocket handlers are entries; `use:` handlers get callers.**
-- **Ruby handlers named by symbol or class are entries.**
-- **Thor commands and dry-cli `#call` methods are entries.**
-- **dry-cli and Commander are detected; Sidekiq workers are tasks.**
-- **Elixir modules using OTP, Oban or Phoenix are entries.**
-- **Elixir plugs, sockets and fallback controllers are entries.**
-- **Scala `@main` / `App` and Kotlin `@JvmStatic main` start programs.**
-- **Ktor modules are hosted applications; `Application::module` reaches them.**
-- **Play CSRF error handlers are error-handler entries.**
 - **`analysis_runs[].non_id_edge_endpoints`** counts edge endpoints that are not node ids.
+- **Haskell symbols carry module-qualified names**; an instance records its class. Scala records dotted parent types.
+- **R and F# calls are recorded as usage contexts.**
+
+#### Framework pattern files
+
+- **Usage rows decide which calls analyzers record.**
+- **Rows gain `adopts:`** for modules a type takes in with `use` or `include`.
 
 ### Changed
 
@@ -68,55 +75,44 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`compact` seeds entry points in the entry list's order**, not by confidence.
 - **`dead-code-maybe` 0.4.0 withholds callables of languages lacking call edges.**
 - **Sketch headings**: "Middleware & Error Handlers" and "Framework-Reflected Classes" are new; "Mobile" is now "Hosted Applications".
-- **An unknown config setting's refusal says a newer hypergumbo may be needed.**
 - **`explain` first states that quoted repository text is data**; the schema calls docstring and README fields untrusted.
+- **An unknown config setting's refusal says a newer hypergumbo may be needed.**
 - **A framework row's `symbol_kind` binds every match type.**
 
 ### Removed
 
 - **Four functions only tests called**: `compact.estimate_behavior_map_tokens`, `selection_index._bitmap`, `selection_index.stored_edges`, `installed_env.forget_kept_answers`.
 - **164 framework pattern rows that could never match** (`argparse`, Go `kong`, Ruby `OptionParser`).
-- **Rails callback usage rows, which never fired, are removed.**
+- **Rails callback usage rows**, which never fired.
 
 ### Fixed
 
 #### Stable ids
 
-- **Reformatting a declaration keeps its id.**
-- **Two spellings of one thing hash alike**: an imported and a qualified type name, Rust `self` and `mut self`.
-- **Renaming what callers never write keeps the id**: a callback type's inner parameter, a Dart positional parameter, a JS/TS destructuring pattern.
-- **Declarations that differ no longer share a hash**: bounded generic overloads, Swift argument labels, static and instance members (Swift, JS/TS), constrained Swift extensions, Rust `impl` blocks, `#[cfg]` and `#if` alternatives, Java anonymous classes, Dart named parameters.
-- **Swift names containing `$` are read whole.**
-- **A comment inside a declaration no longer moves its id.**
-- **Layout is not hashed in more places**: a TypeScript type's leading `&` or `|`, attribute text, F# primed types, untyped names in every language.
-- **A JS/TS default value no longer changes the id**; a destructured parameter is in the signature whole.
-- **More names callers never write are not hashed**: TypeScript interface-member, object-type and type-predicate parameters, Go interface-literal parameters.
-- **Built-in spellings of one type hash alike**: C# `string` / `System.String`, Swift `Int` / `Swift.Int`, Go `byte` / `uint8`, Solidity `uint` / `uint256`, Rust `::std::X` / `std::X`.
-- **Julia and Solidity imported types hash by their import path**; TypeScript's rewrite no longer depends on colon spacing.
-- **Preprocessor alternatives no longer share a hash**: C, C++, CUDA, HLSL, GLSL, Objective-C (include guards are not hashed); Rust inner `#![cfg]` and `cfg_attr`.
-- **Rust `cfg` `any` / `all` argument order does not change the id.**
+- **Reformatting a declaration keeps its id.** Layout is not hashed in a TypeScript type's leading `&` or `|`, attribute text, F# primed types, an Elixir module name, a Vue or Svelte bound expression, or an untyped name in any language. A comment inside a declaration is not hashed either, nor a PHP `#` comment inside a type.
+- **Two spellings of one type hash alike**: an imported and a qualified name (Julia and Solidity too; TypeScript whatever the colon spacing), Rust `self` and `mut self`, and built-in spellings: C# `string` / `System.String`, Swift `Int` / `Swift.Int`, Go `byte` / `uint8`, Solidity `uint` / `uint256`, Rust `::std::X` / `std::X`.
+- **Renaming what callers never write keeps the id**: a callback type's inner parameter, a Dart positional parameter, a JS/TS destructuring pattern, TypeScript interface-member, object-type and type-predicate parameters, Go interface-literal parameters.
+- **A JS/TS default value no longer changes the id**, nor does the argument order of a Rust `cfg` `any` / `all`.
+- **Declarations that differ no longer share a hash**: bounded generic overloads, Swift argument labels, static and instance members (Swift, JS/TS), constrained Swift extensions, Rust `impl` blocks, Java anonymous classes, Dart named parameters.
+- **Conditional-compilation alternatives no longer share a hash**: Rust `#[cfg]`, inner `#![cfg]` and `cfg_attr`; Swift `#if`; preprocessor branches in C, C++, CUDA, HLSL, GLSL and Objective-C (include guards are not hashed).
 - **Same-named locals of different functions no longer share a hash**: Kotlin, Python, Scala, Dart, PHP, JS/TS, C++, HLSL.
 - **Nine analyzers hash the kind they report**: Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl, V.
 - **Vue and Svelte script members anchor on the component's file.**
-- **Layout is not hashed in three more places**: an Elixir module name, a Vue or Svelte bound expression, a PHP `#` comment inside a type.
-- **Vue 3.4 shorthand directives (`:album`) are read one by one.**
-- **V unions named by one capital letter are emitted.**
-- **SCIP: same-named local functions of one class get separate nodes.**
+- **A destructured JS/TS parameter is in the signature whole.**
+- **Swift names containing `$` are read whole.**
 
 #### Entry points
 
 - **A `main` no longer hides application objects in its file.**
-- **A `main` entry follows its language's rule in Go and Erlang.**
-- **A Haskell `main` is an entry only in module `Main`.**
+- **A `main` entry follows its language's rule in Go and Erlang**; a Haskell `main` is an entry only in module `Main`.
 - **Test, example and vendored entry points no longer demote library exports**; a JS/TS package declaring `exports` keeps its own.
-- **A bare `createServer` is an HTTP server only when imported from `http`.**
+- **A tests-only library keeps its connectivity entry points.**
 - **`slice --entry auto` picks the Go `main` that builds the module's binary**, and prefers production code to examples.
 - **Duplicate routes keep the production one, the same one every run.**
-- **A handler name binds same-language code, in the module its reference names.**
-- **A framework's call rows match only calls written in its language.**
-- **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
+- **A bare `createServer` is an HTTP server only when imported from `http`.**
+- **A handler name binds same-language code, in the module its reference names**; a framework's call rows match only calls written in its language.
 - **Class test methods and Falcon responders are detected.**
-- **A tests-only library keeps its connectivity entry points.**
+- **Sketch deals tied Entry Points lines across files** and keeps a line per kind.
 - **A checkout under `test/` or `fixtures/` keeps linker output.**
 
 #### Secret-leak claims (`verify-claims`)
@@ -125,32 +121,38 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Closures that run later are followed**: `() => x`, `lambda: x`, Go `defer` closures, goroutines, `atexit` callbacks.
 - **Request-parameter seeding survives a colon in a file path.**
 
-#### Node ids and edges
+#### Node ids
 
-- **LaTeX and eleven more analyzers (Nix, Robot, Meson, Fortran, …) start edges at a file node and end them on a real node or stand-in.**
-- **An unresolved name gets its own stand-in node in thirteen languages**; all of Racket's shared one.
-- **A colon in a name no longer breaks a node id**: event names (`mouse:up`), BibTeX keys, Blade views, Handlebars partials.
-- **No id slot is empty or holds a newline** (JavaScript, Tcl, Markdown).
-- **Node and edge list order no longer depends on thread timing.**
-- **Namespaced Ruby class methods sit under their own class.**
-- **Scala class-body calls reach the class's own methods.**
-- **Scala methods and fields passed as arguments are referenced.**
-- **IPC and WebSocket channels reach their handlers.**
-- **A cobra handler's edge starts at its command.**
 - **A node id's name slot is its sanitized name**, optionally plus `@<column>` (JavaScript callbacks, same-line twins); a mismatch is a validation error.
 - **No two nodes share an id**: Vue nested templates, repeated Svelte events and Make targets, event and message stand-ins, same-line twins in Swift, Nix and Vue (`T.init@15`). The validator reports any.
-- **Boundary ids never carry an empty path or name.**
-- **Edge endpoints are valid ids** for Bash commands, Bazel labels, Terraform module sources, Ansible includes, qualified Rust attributes.
-- **Imports reach the imported file**: proto, Thrift, Cap'n Proto, Make, requirements, Terraform, Ruby `require_relative`. Phantom file nodes are gone.
-- **Tcl calls resolve through namespaces and `namespace import`.**
-- **Babashka `.bb` scripts are analysed as Clojure**, and their guarded code reaches what it calls.
-- **BitBake no longer parses C, PHP or assembler `.inc` files**; CSS imports skip ignored files.
+- **A colon in a name no longer breaks a node id**: event names (`mouse:up`), BibTeX keys, Blade views, Handlebars partials.
+- **No id slot is empty or holds a newline** (JavaScript, Tcl, Markdown); boundary ids never carry an empty path or name.
 - **Every analysis run id has the `uuid:` prefix.**
+
+#### Edges and resolution
+
+- **LaTeX and eleven more analyzers (Nix, Robot, Meson, Fortran, …) start edges at a file node and end them on a real node or stand-in.**
+- **Edge endpoints are valid ids** for Bash commands, Bazel labels, Terraform module sources, Ansible includes, qualified Rust attributes.
+- **An unresolved name gets its own stand-in node in thirteen languages**; all of Racket's shared one.
+- **Imports reach the imported file**: proto, Thrift, Cap'n Proto, Make, requirements, Terraform, Ruby `require_relative`. Phantom file nodes are gone.
+- **Component imports resolve on Svelte-only and Astro-only projects**; component and CSS imports skip ignored files.
 - **Template members are contained by their file**: Vue, Svelte, Astro, Solidity events, reStructuredText directives.
-- **Component imports resolve on Svelte-only and Astro-only projects.**
+- **Tcl calls resolve through namespaces and `namespace import`.**
+- **Scala class-body calls reach the class's own methods**; methods and fields passed as arguments are referenced.
+- **Namespaced Ruby class methods sit under their own class.**
+- **IPC and WebSocket channels reach their handlers**; a cobra handler's edge starts at its command.
 - **An OpenAPI document alone yields operation nodes**, with `basePath` applied and real line spans.
 - **N-API names registered in several addons link every target**; a C-extension registration binds its own file's function.
 - **DI edges carry the highest-confidence binding**; FFI edges keep one order across runs.
+- **Node and edge list order no longer depends on thread timing.**
+
+#### Symbols and files read
+
+- **Vue 3.4 shorthand directives (`:album`) are read one by one.**
+- **V unions named by one capital letter are emitted.**
+- **SCIP: same-named local functions of one class get separate nodes.**
+- **Babashka `.bb` scripts are analysed as Clojure**, and their guarded code reaches what it calls.
+- **BitBake no longer parses C, PHP or assembler `.inc` files.**
 
 ### Development tools and CI
 
@@ -160,17 +162,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Local runs and PR CI skip tests no changed statement reaches**; `--no-by-statement` turns it off.
 - **Tests coverage cannot speak for are always kept**: those starting a child able to run Python, reading a changed file, or sharing changed fixture teardown code.
 - **Code that runs once is paired with every test using it**: shared fixtures, caches, code run at import.
+- **A new overriding method selects the overridden method's tests**; a base outside the repository stops narrowing.
 - **A `SCHEMA_VERSION` bump no longer selects every test.**
+- **An explicit run names its ungated changed files; `--gate-changed` gates them.** A directory argument runs that directory and nothing else.
 - **Each local run reports its wall time against a 60 s target.**
-- **`coverage-select statement-bar` and `budget-report`** report the selector's record and a test cut's cost.
+- **The coverage summary claims 100% only over a report it read.**
+- **`coverage-select statement-bar` and `budget-report`** report the selector's record and a test cut's cost. The bar ignores failures in edited test files; run records name unjudged files even when no source changed.
 - **Test ids are stored under one name** (xdist groups, the timing store).
 - **Tests no longer leak environment variables to later tests**, nor put the clock in a test id.
-- **The coverage summary claims 100% only over a report it read.**
-- **An explicit run names its ungated changed files; `--gate-changed` gates them.**
-- **A directory argument runs that directory and nothing else.**
-- **A new overriding method selects the overridden method's tests**; a base outside the repository stops narrowing.
-- **Run records name unjudged files even when no source changed.**
-- **The selector's bar ignores failures in edited test files.**
 
 #### Scheduled runs
 
@@ -192,11 +191,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Documentation
 
 - **ADR-0063** (entry kinds and roles) and [audit 0027](docs/audits/0027-entry-point-kinds.md); ADR-0039 ruling 3 and ADR-0017 §7b amended.
+- **ADR-0036 Ruling 1 amended**: a name slot may end `@<column>` and is never empty; ADR-0034 accepts the `wasm` language slot.
 - **The spec's stated schema versions match the code**; Appendix A states the 0.x version rule.
 - **`docs/VERIFY-CLAIMS-SCOPE.md`** lists alias and closure forms followed and not.
 - **Docs state the full suite's schedule**: 01:00, 09:00 and 21:00 UTC.
 - **The smart-test playbook states explicit-run gating and new-def refusals.**
-- **Audit 0029 records the 136 deleted rows' verdicts.**
+- **Audits 0028 and 0029 record the verdicts on the deleted framework rows**: 28 route rows, then the other 136.
 
 ## [10.0.0] - 2026-11-16
 
@@ -219,7 +219,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`verify-claims` exit codes: bad input is 2, inconclusive is 4 (was 2).** Some malformed claims, maps and taint catalogues that loaded before are refused.
 - **`verify-claims --json` 2.6 → 3.1**: walk verdicts `confirmed` / `unconfirmed` become `reached` / `refuted`; command-line arguments are `untrusted_input`, counted only when a claim sets `include_command_line: true`.
 - **`io-boundaries --json` 2.4 → 2.5**: Unix-domain sockets are IPC, not network (ADR-0050 §1): a server is `ipc_listen`, its reads and writes `ipc_recv` / `ipc_send`.
-- **`validation_report` 0.4 → 0.6** adds `name_slot_stats`.
+- **`validation_report` 0.4 → 0.5** adds `name_slot_stats`.
 - **Files git ignores and does not track are not analysed** (ADR-0004 point 9), ignored generated source included; committed files and `--trace-deps` dependencies are unaffected. The run names what it left out, also in `supply_chain_summary.vcs_ignored_skipped`. There is no opt-out.
 - **Sketch never downloads an embedding model**: run `hypergumbo install-embeddings` to use one.
 - **A catalogue file with a key nothing reads is refused**, naming the key.
@@ -242,7 +242,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`scip_stable_id_scheme`**: rust-analyzer stable ids have their own scheme and `hgscipid1:` label.
 - **`metrics.framework_patterns`** counts, per framework pattern file, the symbols it tagged.
 - **`hypergumbo catalog` names each pass's grammar package.**
-- **`validation_report.name_slot_stats` counts, per producer, node ids not matching their name**, and ids carrying `@<column>`.
+- **`validation_report.name_slot_stats` counts, per producer, node ids not matching their name.**
 - **Go functions and methods record `meta.parameters`.**
 - **External dependency declarations carry `directness: direct` and an `ecosystem`**, so `supply_chain_summary` no longer counts them `unknown`.
 - **Missing scip-python or rust-analyzer prints copy-paste install steps.**
