@@ -75,6 +75,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
+    distinguish_same_line_ids,
     html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
@@ -269,6 +270,10 @@ class VueAnalyzer(TreeSitterAnalyzer):
                     tree.root_node, path, repo_root, content,
                     symbols, edges, current_imports, run.execution_id,
                 )
+                # Two same directives on one line (``<span v-if="a"></span>
+                # <span v-if="b"></span>``) would share a node id: the second
+                # gets ``@<column>``. No edge of this pass names a member's id.
+                distinguish_same_line_ids(symbols[before:])
                 populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
                 files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112

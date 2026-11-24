@@ -593,7 +593,11 @@ class NixAnalyzer(TreeSitterAnalyzer):
             tree.root_node, source, rel_path, run.execution_id,
         )
 
-        analysis.symbols.extend(symbols)
+        # add_symbol, not extend: a binding and the attribute inside its
+        # value on one line (``tutorial = mkDevShell { tutorial = true; };``)
+        # would share a node id; the inner one gets ``@<column>``.
+        for symbol in symbols:
+            analysis.add_symbol(symbol)
         # Populate symbol_by_name with function symbols for edge resolution
         analysis.symbol_by_name.update(symbol_registry)
 
