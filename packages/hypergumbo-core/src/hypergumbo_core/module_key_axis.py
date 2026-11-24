@@ -306,7 +306,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2743,
+                line=2757,
                 anchor="module_hint = module_slot(_slots)",
                 note=(
                     "Every header the file can see (its own includes, quoted "

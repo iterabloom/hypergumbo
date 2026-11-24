@@ -572,6 +572,7 @@ def node_declared_arity_stable_id(
     file_stable_id: str,
     qualified_name: str = "",
     result_type: str = "",
+    qualifiers: Sequence[str] = (),
 ) -> StableId:
     """``compute_stable_id`` with the arity read from ``meta`` instead of the node.
 
@@ -583,15 +584,19 @@ def node_declared_arity_stable_id(
     ``meta`` declares no arity gets exactly ``compute_stable_id``'s value, so
     only the ids of callables WITH parameters change: the scheme-bump scope.
     ``result_type`` is passed through to :func:`declared_arity_stable_id`
-    (Ada functions).
+    (Ada functions). ``qualifiers`` are words the producer read that make
+    the callable another one and that ``_extract_decorator_names`` does not
+    see (a C++ member's ``const`` / ``volatile`` / ``&`` / ``&&``,
+    ``analyze.c_family.c_family_function_qualifiers``; WI-pohom-turot): they
+    join the decorators, sorted, so a callable with none keeps its value.
     """
     arity = declared_arity(meta)
-    if arity is None:
+    if arity is None and not qualifiers:
         return analyzer.compute_stable_id(
             node, kind=kind, name=name, qualified_name=qualified_name,
             file_stable_id=file_stable_id,
         )
-    decorators = ",".join(sorted(analyzer._extract_decorator_names(node)))
+    decorators = ",".join(sorted([*analyzer._extract_decorator_names(node), *qualifiers]))
     return declared_arity_stable_id(
         kind=kind, lang=analyzer.lang, path="", name=name,
         qualified_name=qualified_name, arity=arity, decorators=decorators,

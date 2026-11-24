@@ -40,9 +40,12 @@ its qualified name carrying the enclosing namespaces and classes and, since
 scheme v19, the preprocessor branches open at the definition
 (``c_family_scope_chain(guards=True)``, WI-sifar: ``__global__ void k()``
 under ``#ifdef FAST`` and under its ``#else`` tied until then; a whole-file
-include guard is not a branch). Without that stable_id only the backstop floor
-key (kind, path, name) would remain, which the overloads ``f(int)`` /
-``f(float)`` share, so both would go null (history: WI-tusad).
+include guard is not a branch), and its decorators slot carrying a member's
+cv- and ref-qualifiers (``c_family_function_qualifiers``; since v20,
+WI-pohom-turot: ``g() const`` and ``g()`` tied until then). Without that
+stable_id only the backstop floor key (kind, path, name) would remain,
+which the overloads ``f(int)`` / ``f(float)`` share, so both would go null
+(history: WI-tusad).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the CUDA-specific
@@ -93,8 +96,8 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.analyze.c_family import (
-    c_family_declarator, c_family_parameter_list, c_family_parameters,
-    c_family_scope_chain,
+    c_family_declarator, c_family_function_qualifiers, c_family_parameter_list,
+    c_family_parameters, c_family_scope_chain,
 )
 from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -304,6 +307,9 @@ def _extract_cuda_symbols(
                     stable_id=declared_arity_stable_id(
                         kind=kind, lang="cuda", path=rel_path, name=func_name,
                         qualified_name=qualified, arity=declared_arity(meta),
+                        # A member's ``const`` / ``&&`` make it another
+                        # function (WI-pohom-turot).
+                        decorators=",".join(c_family_function_qualifiers(node, source)),
                     ),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)

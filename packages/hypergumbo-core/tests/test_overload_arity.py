@@ -404,6 +404,36 @@ def test_node_helper_reads_arity_from_meta_and_decorators_from_the_node() -> Non
     )
 
 
+def test_node_helper_sorts_qualifiers_into_the_decorators() -> None:
+    """A C++ member's ``const`` / ``&&`` (WI-pohom-turot) join the node's
+    decorators, sorted; with none the value is the one it was. A callable
+    declaring no arity but a qualifier takes the zero-parameter formula
+    with it, not ``compute_stable_id``, which cannot hold one."""
+    analyzer, node = _Analyzer(), _decorated_function()
+    anchor = make_file_stable_id("python", "a.py")
+    meta = {PARAMETERS_KEY: [parameter_entry("x", "int")]}
+
+    def sid(meta, qualifiers=()):
+        return node_declared_arity_stable_id(
+            analyzer, node, kind="method", name="f", meta=meta, file_stable_id=anchor,
+            qualifiers=qualifiers,
+        )
+
+    assert sid(meta, ("const",)) == declared_arity_stable_id(
+        kind="method", lang="python", path="a.py", name="f", qualified_name="",
+        arity=declared_arity(meta), decorators="const,deco", containing_stable_id=anchor,
+    )
+    assert sid(meta, ("const",)) != sid(meta) != sid(meta, ("&&",))
+    assert sid(meta, ("volatile", "const")) == sid(meta, ("const", "volatile"))
+    assert sid(None, ("const",)) == declared_arity_stable_id(
+        kind="method", lang="python", path="a.py", name="f", qualified_name="",
+        arity=None, decorators="const,deco", containing_stable_id=anchor,
+    )
+    assert sid(None) == analyzer.compute_stable_id(
+        node, kind="method", name="f", qualified_name="", file_stable_id=anchor,
+    )
+
+
 def test_a_result_type_takes_the_typed_tier_with_the_result_spelled() -> None:
     """Ada overloads on the result type: ``function F return Integer`` and
     ``function F return Float`` take no parameter, so only the result tells

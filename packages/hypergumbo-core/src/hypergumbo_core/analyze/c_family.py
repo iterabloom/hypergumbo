@@ -347,13 +347,11 @@ def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
     )
 
 
-def c_family_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
-    """The ``parameter_list`` of a function definition or prototype, or None.
-
-    The function's own declarator, at any depth (:func:`c_family_declarator`).
-    A C++ conversion operator (``operator bool() const``) has none: its
-    parameter list sits in the ``operator_cast``'s abstract declarator.
-    """
+def _own_function_declarator(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The declarator holding a function's OWN parameter list, or None: its
+    ``function_declarator`` at any depth (:func:`c_family_declarator`), or,
+    for a C++ conversion operator (``operator bool() const``), which has
+    none, the ``operator_cast``'s abstract one."""
     shape = c_family_declarator(node)
     declarator = shape.function_declarator
     if declarator is None and shape.name is not None:
@@ -361,9 +359,49 @@ def c_family_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.N
             (n for n in iter_tree(shape.name) if n.type == "abstract_function_declarator"),
             None,
         )
+    return declarator
+
+
+def c_family_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The ``parameter_list`` of a function definition or prototype, or None.
+
+    The function's own declarator, at any depth (:func:`c_family_declarator`).
+    A C++ conversion operator (``operator bool() const``) has none: its
+    parameter list sits in the ``operator_cast``'s abstract declarator.
+    """
+    declarator = _own_function_declarator(node)
     if declarator is None:
         return None
     return next((c for c in declarator.children if c.type == "parameter_list"), None)
+
+
+#: The nodes a member function's declarator holds after its parameter list
+#: that make it another function: cv-qualifiers and a ref-qualifier.
+_FUNCTION_QUALIFIERS = frozenset({"type_qualifier", "ref_qualifier"})
+
+
+def c_family_function_qualifiers(node: "tree_sitter.Node", source: bytes) -> tuple[str, ...]:
+    """A C++ member function's cv-qualifiers and ref-qualifier, sorted
+    (WI-pohom-turot part 1): ``const``, ``volatile``, ``&``, ``&&``; ``()``
+    for a function with none, or for a node that declares no function.
+
+    ``T& data()`` and ``const T& data() const``, ``r() &`` and ``r() &&``
+    are different functions with one parameter list: these words are what
+    tell them apart, so they are identity input (the decorators slot, and
+    :func:`c_family_callable_label`). They are read off the function's own
+    declarator, so an in-class definition, an out-of-class one and a pure
+    virtual declaration read the same. A trailing return type
+    (``h() const -> int``), ``noexcept``, ``override``, ``final`` and
+    ``= 0`` are other nodes and stay out. Sorted, not interpreted:
+    ``const volatile`` and ``volatile const`` are one spelling.
+    """
+    declarator = _own_function_declarator(node)
+    if declarator is None:
+        return ()
+    return tuple(sorted(
+        _text(source, c.start_byte, c.end_byte)
+        for c in declarator.children if c.type in _FUNCTION_QUALIFIERS
+    ))
 
 
 def _parameter_name_node(param: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
@@ -556,9 +594,12 @@ def c_family_callable_label(
     A function definition is labelled by its name and the parameter types its
     own stable id hashes (``declared_arity_of_entries`` over
     :func:`c_family_parameters`, the typed tier's ``(T1,T2)``): ``h(int)``,
-    ``operator==(int)``, ``A(double)``. A name alone is shared by two
-    overloads, two constructors, two operator overloads, and the declarations
-    local to them tied. A function whose parameters declare no type (``f()``,
+    ``operator==(int)``, ``A(double)``, followed by its cv- and
+    ref-qualifiers (:func:`c_family_function_qualifiers`: ``d const``,
+    ``r(int) &&``; WI-pohom-turot). A name alone is shared by two
+    overloads, two constructors, two operator overloads, a member and its
+    ``const`` twin, and the declarations local to them tied. A function
+    whose parameters declare no type and that has no qualifier (``f()``,
     ``f(void)``) keeps its bare name. A lambda bound to a variable is labelled
     by it (``a = []``: two lambdas' locals tied); an unbound lambda (a call
     argument) and a macro-named function have no label. Neither label can
@@ -578,7 +619,8 @@ def c_family_callable_label(
     name = _text(source, shape.name.start_byte, shape.name.end_byte)
     params = c_family_parameter_list(node)
     arity = declared_arity_of_entries(c_family_parameters(params, source)) if params else None
-    return name + (arity.type_signature if arity is not None else "")
+    qualifiers = "".join(f" {q}" for q in c_family_function_qualifiers(node, source))
+    return name + (arity.type_signature if arity is not None else "") + qualifiers
 
 
 def c_family_with_guards(
