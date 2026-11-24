@@ -45,3 +45,10 @@
   clock: 4  # c7f2
   nonce: c7f2  # c7f2
   message: "OWNER, in session 2026-11-24: queued NEXT after stable-id v20 (PR #2370, merged), ahead of the fifteen open items that wait for a scheme bump: first WI-tazuk (the call-resolution fixture in every mainstream language), then INV-hupis (the Rust wrong-class binding). The decision on a shared resolution layer waits for the fixture's matrix: ~/hypergumbo_lab_notebook/notebookjournal_11242026_0538.md."  # c7f2
+- op: discuss  # 5236
+  at: '2026-11-24T20:46:04Z'  # 5236
+  by: agent  # 5236
+  actor: jgstern_agent  # 5236
+  clock: 5  # 5236
+  nonce: '5236'  # 5236
+  message: "MATRIX RE-RUN 2026-11-24 (dev 44a858dbb; ~/hypergumbo_lab_notebook/call_matrix_11242026/RESULTS.md): five Rust cells depend on declaration order at 0.85: variable from a return, chain, a trait's default method called on an implementor (an unrelated struct also declares it), a local bound from an external call (let x = extlib::make()), and `use util::helper; helper()` (a second module declares helper). The constructor form is right in both orders. CODE READ (rust.py): (1) the short method name is written to a per-file table, symbol_by_name[func_name] (line 2006), last writer wins, and the call path consults that table before the list resolver; (2) _infer_type_from_rust_rhs reads a declared return type for Type::f() and recv.m() only, so `let db = get_db()` leaves db untyped; (3) for extlib::make() it takes the path 'extlib' as the type; (4) var_types is file-scoped, first writer wins, which is why a same-named variable in another function typed the receiver in the 11-24 fixture. NOT read: why the use-path lookup (_rust_use_path_function, WI-lirik) misses `use util::helper`. The general invariant is INV-jutog."  # 5236

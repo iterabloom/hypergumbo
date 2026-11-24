@@ -1,0 +1,23 @@
+- op: create  # 5ef0
+  at: '2026-11-24T20:45:11Z'  # 5ef0
+  by: agent  # 5ef0
+  actor: jgstern_agent  # 5ef0
+  clock: 1  # 5ef0
+  nonce: 5ef0  # 5ef0
+  data:  # 5ef0
+    kind: work_item  # 5ef0
+    title: "java: a static call on an imported class is resolved or unresolved depending on where a same-named class of another package sorts"  # 5ef0
+    status: todo_hard  # 5ef0
+    priority: 3  # 5ef0
+    parent:  # 5ef0
+    tags:  # 5ef0
+    - call_graph  # 5ef0
+    - analysis_quality  # 5ef0
+    - call_matrix  # 5ef0
+    - java  # 5ef0
+    isbefore: []  # 5ef0
+    duplicate_of: []  # 5ef0
+    not_duplicate_of: []  # 5ef0
+    pr_ref:  # 5ef0
+    description: "WHAT\n  import util.Util;   ...   Util.helper();\nis resolved to util/Util.java's helper at 0.95 (ast_call_static) when a second class named Util, in a package the file does not import, sorts FIRST (adecoy/Util.java), and is left unresolved (dst java:util.Util:0-0:helper:external_symbol, 0.5) when it sorts LAST (zdecoy/Util.java).\nThe decoy is never bound, so no edge is wrong; the result still depends on file order, and one order loses a call the import names exactly.\nEXPECTED: util.Util.helper in both orders.\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/java__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw java\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # 5ef0
+    fields: {}  # 5ef0
