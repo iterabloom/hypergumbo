@@ -210,14 +210,15 @@ def test_v_method_signature_shows_the_receiver_type_not_its_name(tmp_path: Path)
     syms = _symbols(analyze_v, tmp_path / "a", "src/m.v",
                     "module m\n\nstruct Box {}\n\nfn (b Box) run(x int) int {\n\treturn x\n}\n"
                     "fn plain(y int) int {\n\treturn y\n}\n")
-    sigs = {s.name: s.signature for s in syms if s.kind == "function"}
+    callables = ("function", "method")  # a receiver makes it a method (WI-lilab)
+    sigs = {s.name: s.signature for s in syms if s.kind in callables}
     assert sigs == {"run": "fn (Box) (x) int", "plain": "fn(y) int"}
     renamed = _symbols(analyze_v, tmp_path / "b", "src/m.v",
                        "module m\n\nstruct Box {}\n\nfn (other Box) run(x int) int {\n\treturn x\n}\n"
                        "fn plain(y int) int {\n\treturn y\n}\n")
     assert [s.signature for s in renamed if s.name == "run"] == ["fn (Box) (x) int"]
-    assert ({s.name: s.stable_id for s in syms if s.kind == "function"}
-            == {s.name: s.stable_id for s in renamed if s.kind == "function"})
+    assert ({s.name: s.stable_id for s in syms if s.kind in callables}
+            == {s.name: s.stable_id for s in renamed if s.kind in callables})
 
 
 # -- Twig: else is no conditional of its own ----------------------------------

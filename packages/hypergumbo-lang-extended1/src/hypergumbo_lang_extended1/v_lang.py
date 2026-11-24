@@ -30,7 +30,8 @@ A method's ``signature`` shows its receiver TYPE and declared parameters
 (``fn(b, x) int``), so renaming that variable changed it.
 
 Key constructs extracted:
-- function_declaration: fn name(params) return_type { body }
+- function_declaration: fn name(params) return_type { body } (kind
+  ``function``), or fn (r T) name(params) ... with a receiver (kind ``method``)
 - struct_declaration: struct Name { fields } (kind ``struct``), or
   union Name { fields } (kind ``union``)
 - enum_declaration: enum Name { variants }
@@ -45,7 +46,10 @@ Odin report ``union``); both were
 ``class`` before v19, and the stable id hashed ``struct`` for both. Every
 stable id hashes the Symbol's kind: a function or method hashed the role
 word ``fn``, a union ``struct``; a struct's stable id did not move (its node
-id did).
+id did). A function declared with a receiver (``fn (p Point) norm()``) is
+kind ``method``, as the Go analyzer reports one (:func:`_function_kind`); it
+was ``function`` before v19. Its name is still the declared word (``norm``);
+the stable id still hashes the receiver-scoped ``Point/norm`` beside it.
 """
 
 from __future__ import annotations
@@ -146,6 +150,18 @@ def _receiver_and_parameter_lists(
             else:
                 receiver = child
     return receiver, params
+
+
+def _function_kind(node: "tree_sitter.Node") -> str:
+    """``method`` for a function declared with a receiver, else ``function``.
+
+    The Go analyzer reports a function with a receiver as ``method``; V's
+    ``fn (p Point) norm()`` is the same construct. The symbol and the caller
+    id a call edge starts on (:func:`_find_enclosing_function`) both read it,
+    so the two cannot disagree.
+    """
+    receiver, _ = _receiver_and_parameter_lists(node)
+    return "function" if receiver is None else "method"
 
 
 def _receiver_type(receiver: "tree_sitter.Node") -> str:
@@ -283,7 +299,10 @@ def _find_enclosing_function(
         if current.type == "function_declaration":
             name = _get_identifier(current)
             if name:
-                return make_symbol_id("v", str(path.relative_to(repo_root)), current.start_point[0] + 1, current.end_point[0] + 1, name, "function")
+                return make_symbol_id(
+                    "v", str(path.relative_to(repo_root)), current.start_point[0] + 1,
+                    current.end_point[0] + 1, name, _function_kind(current),
+                )
         current = current.parent
     return None  # pragma: no cover
 
@@ -331,6 +350,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 is_pub = _is_public(node)
                 receiver, param_list = _receiver_and_parameter_lists(node)
                 params = _extract_function_params(param_list)
+                kind = _function_kind(node)
 
                 # A method shows its receiver TYPE, never the receiver
                 # variable's name: ``fn (B) (x) int``.
@@ -345,14 +365,14 @@ class VAnalyzer(TreeSitterAnalyzer):
                 }
                 if receiver is None:
                     stable_id = self.compute_stable_id(
-                        node, kind="function", name=name, file_stable_id=file_stable_id,
+                        node, kind=kind, name=name, file_stable_id=file_stable_id,
                     )
                 else:
                     # A method: the receiver type scopes it, and its arity is
                     # the declared parameter list, not the receiver list
                     # compute_stable_id would read (WI-tusad scheme bump).
                     stable_id = node_declared_arity_stable_id(
-                        self, node, kind="function", name=name, meta=meta,
+                        self, node, kind=kind, name=name, meta=meta,
                         file_stable_id=file_stable_id,
                         qualified_name=nested_qualified_name(
                             [_receiver_type(receiver)], name,
@@ -360,10 +380,10 @@ class VAnalyzer(TreeSitterAnalyzer):
                     )
 
                 sym = Symbol(
-                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, kind),
                     stable_id=stable_id,
                     name=name,
-                    kind="function",
+                    kind=kind,
                     language="v",
                     path=rel_path,
                     span=Span(

@@ -213,7 +213,7 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
     "tcl": ("tcl", "analyze_tcl", "demo.tcl", _TCL,
             frozenset({"function", "namespace"})),
     "v": ("v_lang", "analyze_v", "demo.v", _V,
-          frozenset({"function", "struct", "union", "enum", "interface"})),
+          frozenset({"function", "method", "struct", "union", "enum", "interface"})),
 }
 
 
