@@ -37,6 +37,13 @@ extract:
   ``f(x: number = 5)`` and ``f(x: number = 6)`` are one function, and
   ``f(x: number)`` another. Through v18 a TypeScript default was hashed as
   written
+- A typed parameter's optional mark ``?`` and rest mark ``...`` are hashed
+  before its type, in a function type's spelling (``x?: T`` -> ``?T``,
+  ``...xs: T[]`` -> ``...T[]``; ``_ts_parameter_mark_edits``; stable-id v20,
+  owner ruling 2026-11-24), so ``f(x?: number)`` and ``f(x: number)`` are
+  two functions. Through v19 the names-first normalizer dropped them with
+  the name. An untyped parameter (``x?``, ``...xs``) is hashed whole, marks
+  included
 - The typed stable_id reads its texts from the syntax tree
   (``_jsts_hashed_text``), where ``layout_free`` (language-blind) cannot tell
   layout from code: the ``&`` or ``|`` that opens an intersection or union
@@ -1679,12 +1686,45 @@ def _ts_predicate_subject_position(predicate: "tree_sitter.Node", name: str) -> 
     return None
 
 
-def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
+def _ts_parameter_mark_edits(parameter: "tree_sitter.Node") -> list[tuple[int, int, str]]:
+    """The edits that write a typed outer parameter's optional mark ``?`` or
+    rest mark ``...`` before its type too: ``x?: T`` -> ``x?: ?T``,
+    ``...xs: T[]`` -> ``...xs: ...T[]``, ``{ a }?: O`` -> ``{ a }?: ?O``
+    (stable-id v20, owner ruling 2026-11-24). The mark beside the name is
+    left: the normalizer drops it with the name.
+
+    The names-first normalizer keeps a typed parameter's text after its
+    ``:`` and drops the rest, the marks with the name, so through v19
+    ``f(x?: number)`` hashed like ``f(x: number)`` and ``f(...xs: T[])``
+    like ``f(xs: T[])``. Written before the type, a mark is hashed in a
+    function type's spelling, the one an interface's method member hashes
+    (:func:`_ts_function_parameter_type`), and :func:`_jsts_parameter_patterns`
+    normalizes the type behind it as an unmarked one. An untyped parameter
+    (``x?``, ``...xs``) has no type to write a mark before: the normalizer
+    hashes it whole, marks included, so it gets no edit."""
+    annotation = parameter.child_by_field_name("type")
+    if annotation is None:
+        return []
+    type_node = next(c for c in annotation.children if c.is_named)
+    pattern = parameter.child_by_field_name("pattern")
+    marks = [child for child in parameter.children if child.type == "?"]
+    if pattern is not None and pattern.type == "rest_pattern":
+        marks += [child for child in pattern.children if child.type == "..."]
+    return [(type_node.start_byte, type_node.start_byte, mark.type) for mark in marks]
+
+
+def _jsts_hashed_text(
+    node: "tree_sitter.Node", source: bytes, *, outer_parameter: bool = False,
+) -> str:
     """``node``'s text as the typed stable id hashes it: the displayed text
     but for what is not an identity input (a default value) and for what
     ``layout_free`` (core, language-blind) cannot tell from layout and the
     syntax tree can.
 
+    - ``outer_parameter``: ``node`` is a parameter of the callable whose
+      signature is hashed, and its optional or rest mark is written before
+      its type (:func:`_ts_parameter_mark_edits`; since v20). A parameter
+      of a function type inside it already hashes that spelling.
     - A parameter's default value is written ``...``, at any depth of the
       parameter (``x: number = 5`` -> ``x: number = ...``, ``{ a = 1 } = {}``
       -> ``{ a = ... } = ...``): owner ruling 2026-11-23, stable-id v19. A
@@ -1722,12 +1762,12 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       parameter moves nothing, and which parameter is narrowed stays.
       ``this is T`` is kept.
 
-    None occurs in a text that had no default value, no type predicate, no
+    None occurs in a text that had no marked outer parameter, no default value, no type predicate, no
     ``:`` without a space after it (or, in a conditional type, before it), no
     leading ``&`` or ``|``, no comment and no whitespace or ``/`` in a regex, so every other
     hashed text is the displayed one, byte for byte.
     """
-    edits: list[tuple[int, int, str]] = []
+    edits = _ts_parameter_mark_edits(node) if outer_parameter else []
     pending = [node]
     while pending:
         current = pending.pop()
@@ -1824,8 +1864,8 @@ def _extract_jsts_signature(
     for child in params_node.children:
         if child.type in ("required_parameter", "optional_parameter"):
             # TypeScript: name: type or name?: type
-            param_text = text(child, source)
-            param_strs.append(param_text)
+            param_strs.append(_jsts_hashed_text(child, source, outer_parameter=True)
+                              if hashed else _node_text(child, source))
         elif child.type == "identifier":
             # JavaScript: just the name
             param_strs.append(_node_text(child, source))
@@ -1920,12 +1960,17 @@ def _ts_function_parameter_type(part: str) -> str:
 #: a parameter at its first ``:`` (:func:`_jsts_parameter_patterns`): it holds
 #: neither, nor a bracket, a quote or a character a source text can hold.
 _TS_PATTERN_STAND_IN = "\x00{}\x00"
+#: The marks an optional or rest parameter's type opens with in a hashed
+#: signature (:func:`_ts_parameter_mark_edits`).
+_TS_PARAMETER_MARKS = ("...", "?")
 
 
-def _jsts_parameter_patterns(signature: str) -> tuple[str, list[str]]:
-    """``signature`` with each destructured parameter of its own list made
-    safe for :func:`~hypergumbo_core.analyze.base.normalize_signature_names_first`,
-    and the untyped patterns it stood in for (stable-id v19).
+def _jsts_parameter_patterns(
+    signature: str, type_params: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """``signature`` with each destructured or marked parameter of its own list
+    made safe for :func:`~hypergumbo_core.analyze.base.normalize_signature_names_first`,
+    and the hashed texts it stood in for (stable-id v19; marks since v20).
 
     The shared normalizer splits a parameter list at its commas (a ``{`` that
     opens a parameter is a Dart group there, whose commas split) and takes a
@@ -1945,8 +1990,15 @@ def _jsts_parameter_patterns(signature: str) -> tuple[str, list[str]]:
     - an UNTYPED pattern (``{ a: x, b = ... }``, ``[c, d] = ...``) is the
       parameter's only description, as an untyped parameter's name is, and
       is hashed whole: keys, bound names and nesting, each default ``...``.
+
+    A parameter whose type opens with an optional or rest mark (written
+    there by :func:`_ts_parameter_mark_edits`: ``x?: ?T``, ``...xs: ...T[]``)
+    is stood in for whole by its hashed text, the mark before the type as
+    the normalizer writes the type alone (``?`` + ``normalize_type(T)``,
+    since v20): the normalizer cuts a qualifier off a type's head only, and
+    ``?ns.Foo`` would keep the ``ns.`` that ``ns.Foo`` loses.
     """
-    from hypergumbo_core.analyze.base import find_matching_paren
+    from hypergumbo_core.analyze.base import find_matching_paren, normalize_type
 
     close = find_matching_paren(signature, 0)
     if close < 0:
@@ -1962,11 +2014,16 @@ def _jsts_parameter_patterns(signature: str) -> tuple[str, list[str]]:
         rest = "..." if parameter.startswith("...") else ""
         body = parameter[len(rest):].lstrip()
         end = _ts_pattern_end(body)
-        if end < 0:
-            out.append(parameter)
-        else:
-            out.append(rest + _TS_PATTERN_STAND_IN.format(len(patterns)) + body[end + 1:])
+        if end >= 0:
+            parameter = rest + _TS_PATTERN_STAND_IN.format(len(patterns)) + body[end + 1:]
             patterns.append(body[:end + 1])
+        colon = parameter.find(":")
+        typed = parameter[colon + 1:].strip() if colon >= 0 else ""
+        mark = next((m for m in _TS_PARAMETER_MARKS if typed.startswith(m)), None)
+        if mark is not None:
+            parameter = _TS_PATTERN_STAND_IN.format(len(patterns))
+            patterns.append(mark + normalize_type(typed[len(mark):], type_params))
+        out.append(parameter)
     out.append(inner[pos:])
     return f"({''.join(out)}){signature[close + 1:]}", patterns
 
@@ -2051,12 +2108,14 @@ def normalize_jsts_signature(
     A function type's parameter names are left out of every type in it
     (:func:`_jsts_without_function_type_names`; stable-id v17). A
     destructured parameter is hashed as its type when it has one, else whole
-    (:func:`_jsts_parameter_patterns`; stable-id v19)."""
+    (:func:`_jsts_parameter_patterns`; stable-id v19). A typed parameter's
+    optional or rest mark is hashed before its type (``?T``, ``...T``;
+    :func:`_ts_parameter_mark_edits`; stable-id v20)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
     patterns: list[str] = []
     if signature:
         signature = _jsts_without_function_type_names(signature, declaration=True)
-        signature, patterns = _jsts_parameter_patterns(signature)
+        signature, patterns = _jsts_parameter_patterns(signature, type_params)
     normalized = normalize_signature_names_first(signature, type_params, return_sep=":")
     if normalized is None:
         return None  # pragma: no cover - a list _jsts_parameter_patterns read is one the normalizer reads
