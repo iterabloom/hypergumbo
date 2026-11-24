@@ -1,0 +1,21 @@
+- op: create  # f3ed
+  at: '2026-11-24T08:00:40Z'  # f3ed
+  by: agent  # f3ed
+  actor: jgstern_agent  # f3ed
+  clock: 1  # f3ed
+  nonce: f3ed  # f3ed
+  data:  # f3ed
+    kind: work_item  # f3ed
+    title: "elixir: a @spec/@type/@callback inside a quote in defmacro __using__ emits calls edges from the macro to its type references"  # f3ed
+    status: todo_hard  # f3ed
+    priority: 3  # f3ed
+    parent:  # f3ed
+    tags:  # f3ed
+    - docstring_audit  # f3ed
+    - analysis_quality  # f3ed
+    isbefore: []  # f3ed
+    duplicate_of: []  # f3ed
+    not_duplicate_of: []  # f3ed
+    pr_ref:  # f3ed
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. _inside_typespec is checked only in _caller_outside_def (elixir.py:1096), which runs only when _get_enclosing_function returns None (3169-3171 and siblings); inside a quote the enclosing function is __using__. `defmacro __using__(_) do quote do @spec foo() :: :inet.ip_address() ... end end` gives calls M.__using__ -> elixir:inet:0-0:ip_address:unresolved ast_call_direct; the same @spec at module level emits nothing. Residue of WI-dokib. r24, v08."  # f3ed
+    fields: {}  # f3ed

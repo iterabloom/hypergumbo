@@ -1,0 +1,21 @@
+- op: create  # c14a
+  at: '2026-11-24T08:01:10Z'  # c14a
+  by: agent  # c14a
+  actor: jgstern_agent  # c14a
+  clock: 1  # c14a
+  nonce: c14a  # c14a
+  data:  # c14a
+    kind: work_item  # c14a
+    title: "kept_work_guard counts a bare-name NAME |= ... as a module-container mutate, though without global the statement binds a local"  # c14a
+    status: todo_hard  # c14a
+    priority: 3  # c14a
+    parent:  # c14a
+    tags:  # c14a
+    - docstring_audit  # c14a
+    - code_hygiene  # c14a
+    isbefore: []  # c14a
+    duplicate_of: []  # c14a
+    not_duplicate_of: []  # c14a
+    pr_ref:  # c14a
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. kept_work_guard.py:186-187 yields mutate for any AugAssign on a module container name, with no local-rebinding or global check (unlike :192, :197, :203). Without `global`, `|=` makes the name local (running it raises UnboundLocalError); with `global` the guard's global check catches it first. So every hit of this branch is a false positive that would force a bogus exemption. Repro: `_C = {}` then `def f(): _C = {}; _C |= {1: 2}` gives `mutate _C`. r30, v11."  # c14a
+    fields: {}  # c14a

@@ -1,0 +1,21 @@
+- op: create  # 16d2
+  at: '2026-11-24T07:59:45Z'  # 16d2
+  by: agent  # 16d2
+  actor: jgstern_agent  # 16d2
+  clock: 1  # 16d2
+  nonce: 16d2  # 16d2
+  data:  # 16d2
+    kind: work_item  # 16d2
+    title: "cpp: a pointer or reference local of a class type (T* p; T& r = s; T* q = get()) emits a stack_construction instantiates edge to T"  # 16d2
+    status: todo_hard  # 16d2
+    priority: 2  # 16d2
+    parent:  # 16d2
+    tags:  # 16d2
+    - docstring_audit  # 16d2
+    - analysis_quality  # 16d2
+    isbefore: []  # 16d2
+    duplicate_of: []  # 16d2
+    not_duplicate_of: []  # 16d2
+    pr_ref:  # 16d2
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. The declaration arm (cpp.py:2838-2870) never checks the declarator's shape, so every local whose type names a class is read as a stack construction. `T* p;`, `T& r = s;` and `T* q = get();` each emit instantiates -> T with evidence stack_construction; `T* p = new T(1);` emits it beside the new edge. Nothing is constructed. r20, v04."  # 16d2
+    fields: {}  # 16d2

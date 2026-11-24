@@ -19,3 +19,10 @@
     pr_ref:  # 68d7
     description: "Found 2026-10-27 in passing during WI-ziruv (production `hypergumbo survey`, dev 7207fb0ecf).\n    def stdlib_local\n      http = Net::HTTP.new(\"x\")\n      http.get(\"/\")\n    end\nemits `calls -> ruby:Net::HTTP:0-0:new` and NO edge at all for `http.get` (line 14). Controls in the same file: a local typed to an IN-REPO class (`c = Client.new; c.get(\"/\")`) emits `calls -> Client#get` (resolved), and the chained form `Net::HTTP.new(\"x\").get(\"/\")` emits `calls -> ruby:external:0-0:get`. An untyped local (`m = make; m.fire`) emits `calls -> ruby:external:0-0:fire`. So a method call on a local whose type the analyzer knows to be an EXTERNAL class is dropped: every external client object used through a variable (Net::HTTP, File, a gem client) vanishes from the call graph and from io-boundaries. Check the analogue in the other analyzers' typed-receiver arms (the in-repo lookup succeeds or the call is dropped, with no external fallback) before fixing one. Related, distinct: WI-jubag (external constructors), WI-gaduf (in-repo Local.new)."  # 68d7
     fields: {}  # 68d7
+- op: discuss  # c6c2
+  at: '2026-11-24T08:01:27Z'  # c6c2
+  by: agent  # c6c2
+  actor: jgstern_agent  # c6c2
+  clock: 2  # c6c2
+  nonce: c6c2  # c6c2
+  message: "2026-11-24 docstring audit (dev 7e204b35b): the external-class half still reproduces (x = JSON.parse(s); x.each emits no edge; ruby.py:3450-3476). The in-repo half (a local typed to an in-repo class whose method is inherited emits no edge either) is filed as its own item. r15, v05."  # c6c2

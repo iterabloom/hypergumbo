@@ -1,0 +1,21 @@
+- op: create  # d94d
+  at: '2026-11-24T08:00:58Z'  # d94d
+  by: agent  # d94d
+  actor: jgstern_agent  # d94d
+  clock: 1  # d94d
+  nonce: d94d  # d94d
+  data:  # d94d
+    kind: work_item  # d94d
+    title: "rust def/use: a closure's own parameters are recorded as uses of the enclosing statement"  # d94d
+    status: todo_hard  # d94d
+    priority: 3  # d94d
+    parent:  # d94d
+    tags:  # d94d
+    - docstring_audit  # d94d
+    - analysis_quality  # d94d
+    isbefore: []  # d94d
+    duplicate_of: []  # d94d
+    not_duplicate_of: []  # d94d
+    pr_ref:  # d94d
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. A closure inside a let or expression statement goes through _collect_ids_recursive (rust_def_use.py:99-101), which walks into closure_parameters: `let g = |x| x + y;` gives defines [g], uses [x, x, y]; `v.iter().map(|x| x + y);` gives uses [v, x, x, y]. The closure handler excludes only bare identifier parameters (rust_def_use.py:355): `|x: i32| x + y` gives uses [x, y]. A parameter named like an outer variable creates a false use of it. Related to WI-faful (done), not the same defect. r32, v10."  # d94d
+    fields: {}  # d94d

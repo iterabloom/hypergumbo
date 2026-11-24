@@ -1,0 +1,21 @@
+- op: create  # 27d6
+  at: '2026-11-24T08:01:21Z'  # 27d6
+  by: agent  # 27d6
+  actor: jgstern_agent  # 27d6
+  clock: 1  # 27d6
+  nonce: 27d6  # 27d6
+  data:  # 27d6
+    kind: work_item  # 27d6
+    title: "rust def/use: an index write through a field (self.data[i] = v) defines the index i instead of the base"  # 27d6
+    status: todo_hard  # 27d6
+    priority: 3  # 27d6
+    parent:  # 27d6
+    tags:  # 27d6
+    - docstring_audit  # 27d6
+    - analysis_quality  # 27d6
+    isbefore: []  # 27d6
+    duplicate_of: []  # 27d6
+    not_duplicate_of: []  # 27d6
+    pr_ref:  # 27d6
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. The index-assignment handler takes the first identifier child of the index_expression (rust_def_use.py:260-263); when the base is a field_expression the first identifier child is the index. `self.data[i] = v;` gives defines [i], uses [self, i, v], which kills the reaching definition of i; `data[i] = v;` correctly defines data. The module docstring says an index write is a mutation of the indexed value (rust_def_use.py:13). Found by the blind re-review b01; re-run by the orchestrator."  # 27d6
+    fields: {}  # 27d6

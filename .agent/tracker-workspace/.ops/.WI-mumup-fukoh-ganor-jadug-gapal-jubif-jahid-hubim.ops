@@ -1,0 +1,21 @@
+- op: create  # 3fe6
+  at: '2026-11-24T08:00:34Z'  # 3fe6
+  by: agent  # 3fe6
+  actor: jgstern_agent  # 3fe6
+  clock: 1  # 3fe6
+  nonce: 3fe6  # 3fe6
+  data:  # 3fe6
+    kind: work_item  # 3fe6
+    title: "discovery: classify_dot_inc_file reads a BitBake comment line starting '# if' / '# include' / '# else' as a C directive and drops the include from BitBake analysis"  # 3fe6
+    status: todo_hard  # 3fe6
+    priority: 3  # 3fe6
+    parent:  # 3fe6
+    tags:  # 3fe6
+    - docstring_audit  # 3fe6
+    - analysis_quality  # 3fe6
+    isbefore: []  # 3fe6
+    duplicate_of: []  # 3fe6
+    not_duplicate_of: []  # 3fe6
+    pr_ref:  # 3fe6
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. _C_DIRECTIVE (discovery.py:657) allows whitespace after '#', so a comment such as '# if you change this, bump PR' or a wrapped '# include this file must set FOO.' is not skipped (L688) and the file is classified other (L690); bitbake.py:147 then drops it. The docstring (L667-670) says '#' comments are skipped. C itself writes '# define' (glibc style), so removing \\s* would break C detection; the decision needs more than one line. r23, v08."  # 3fe6
+    fields: {}  # 3fe6

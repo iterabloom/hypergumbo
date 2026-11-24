@@ -1,0 +1,21 @@
+- op: create  # 00fc
+  at: '2026-11-24T08:01:15Z'  # 00fc
+  by: agent  # 00fc
+  actor: jgstern_agent  # 00fc
+  clock: 1  # 00fc
+  nonce: 00fc  # 00fc
+  data:  # 00fc
+    kind: work_item  # 00fc
+    title: "import_closure matches at-import functions by bare dotted name, so a repeated def that block_hash names f#2 contributes no import edges"  # 00fc
+    status: todo_hard  # 00fc
+    priority: 3  # 00fc
+    parent:  # 00fc
+    tags:  # 00fc
+    - docstring_audit  # 00fc
+    - code_hygiene  # 00fc
+    isbefore: []  # 00fc
+    duplicate_of: []  # 00fc
+    not_duplicate_of: []  # 00fc
+    pr_ref:  # 00fc
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. _ImportCollector builds names with '.'.join(self._scope) (import_closure.py:170-171), with no #N suffix; block_hash names a second same-named def f#2 (block_hash.py:246-247). Two `def f` under if/else, the second doing `import p.other`: build(..., at_import={path: ['f#2']}) gives frozenset(); ['f'] counts the imports of both defs. r33, v11."  # 00fc
+    fields: {}  # 00fc

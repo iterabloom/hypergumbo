@@ -29,3 +29,10 @@
   set: {}  # e1d5
   add:  # e1d5
     not_duplicate_of: [WI-palul-jiruz-porum-sigaj-lupub-lajug-pikuz-fugiz]  # e1d5
+- op: discuss  # 9033
+  at: '2026-11-24T08:01:28Z'  # 9033
+  by: agent  # 9033
+  actor: jgstern_agent  # 9033
+  clock: 3  # 9033
+  nonce: '9033'  # 9033
+  message: "2026-11-24 docstring audit (dev 7e204b35b): still reproduces (`public struct S : IBase {}` gives struct S meta=None; record struct gets base_classes). Line references moved: class/record _extract_base_list at csharp.py:1143, interface :1203, struct branch :1242-1278. The module docstring (L25) keeps stating the intent. r25, v07."  # 9033

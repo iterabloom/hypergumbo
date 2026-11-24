@@ -1,0 +1,21 @@
+- op: create  # ed0e
+  at: '2026-11-24T08:00:27Z'  # ed0e
+  by: agent  # ed0e
+  actor: jgstern_agent  # ed0e
+  clock: 1  # ed0e
+  nonce: ed0e  # ed0e
+  data:  # ed0e
+    kind: work_item  # ed0e
+    title: "ruby: a method call on a local typed to an in-repo class that does not itself declare the method (an inherited method) emits no edge and no receiver_type_hint"  # ed0e
+    status: todo_hard  # ed0e
+    priority: 2  # ed0e
+    parent:  # ed0e
+    tags:  # ed0e
+    - docstring_audit  # ed0e
+    - analysis_quality  # ed0e
+    isbefore: []  # ed0e
+    duplicate_of: []  # ed0e
+    not_duplicate_of: []  # ed0e
+    pr_ref:  # ed0e
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. ruby.py:3450-3476: when the typed receiver's class does not declare the method, callee is None and the branch falls through silently. `k = Kid.new; k.hello` with hello inherited from Base emits nothing end to end; `k.missing` also emits nothing, where an untyped receiver gets the external placeholder. The common real shape is `user = User.new; user.save`. The external-class half is WI-fanad. r15, v05."  # ed0e
+    fields: {}  # ed0e

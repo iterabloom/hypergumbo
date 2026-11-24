@@ -1,0 +1,22 @@
+- op: create  # acac
+  at: '2026-11-24T07:59:57Z'  # acac
+  by: agent  # acac
+  actor: jgstern_agent  # acac
+  clock: 1  # acac
+  nonce: acac  # acac
+  data:  # acac
+    kind: work_item  # acac
+    title: "csharp: an accessor event's stable id hashes its delegate type as written, not through the file's using aliases or the keyword-type table"  # acac
+    status: todo_hard  # acac
+    priority: 3  # acac
+    parent:  # acac
+    tags:  # acac
+    - docstring_audit  # acac
+    - analysis_quality  # acac
+    - stable_id  # acac
+    isbefore: []  # acac
+    duplicate_of: []  # acac
+    not_duplicate_of: []  # acac
+    pr_ref:  # acac
+    description: "Found by the 2026-11-24 docstring staleness audit (dev 7e204b35b): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_11242026/review and verify). Corpus impact not measured. csharp.py:1563-1566 uses the raw m_signature for kind event; fields and properties go through canonical_type_names (:1669, :1531). Under `using H = System.EventHandler;`, `event H E1 {add{} remove{}}` and `event System.EventHandler E1 {...}` get different stable ids (93aadaa1d5465f3b, 563b76f6d3626048) while the same pair as fields gets one. System.Action<string> vs System.Action<System.String> also differ for events only. The module docstring (L104-114) states the intent. r25, v07."  # acac
+    fields: {}  # acac
