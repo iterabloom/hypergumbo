@@ -196,3 +196,38 @@ def test_a_declared_name_wins_over_a_binding_built_by_hand() -> None:
     built without :func:`file_type_names` still keeps a local type's name."""
     names = FileTypeNames(bound={"Foo": "a.Foo"}, declared=frozenset({"Foo"}))
     assert names.canonical("List<Foo>") == "List<Foo>"
+
+
+#: A C#-shaped file: ``using Str = System.String;`` and the built-in alias
+#: table (WI-juzom), with ``global::`` naming the root namespace.
+_ROOTED = file_type_names(
+    [("Str", "System.String")],
+    defaults={"System.String": "string", "System.Int32": "int"},
+    root="global::",
+)
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    # a root-qualified spelling of a default is that default's simple name
+    ("global::System.String", "string"),
+    ("List<global::System.Int32>", "List<int>"),
+    ("global::System.String[]", "string[]"),
+    # the same spelling without the root, and through the alias
+    ("System.String", "string"),
+    ("Str", "string"),
+    # a root-qualified path that is no default is kept as written, root included
+    ("global::App.Model", "global::App.Model"),
+    # an alias names nothing after the root: ``global::Str`` is a type named Str
+    ("global::Str", "global::Str"),
+    # a qualifier that only ends in the root's text is no root
+    ("List<global::System.Int32, x>", "List<int, x>"),
+])
+def test_a_root_qualified_name_resolves_from_the_root(text: str, expected: str) -> None:
+    assert _ROOTED.canonical(text) == expected
+
+
+def test_without_a_root_the_root_spelling_is_left_alone() -> None:
+    """A language with no root prefix (every one but C#) is not changed."""
+    plain = file_type_names([], defaults={"System.String": "string"})
+    assert plain.canonical("global::System.String") == "global::System.String"
+    assert plain.canonical("System.String") == "string"

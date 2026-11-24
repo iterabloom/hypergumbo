@@ -279,8 +279,10 @@ APART: dict[str, tuple[str, str, str, str]] = {
                   "use std::sync::*;\npub fn f(v: Vec<std::sync::Arc<u8>>) {}\n", "f"),
     "py-star": ("python", "from typing import *\ndef f(x: Optional[List[int]]) -> None: ...\n",
                 "from typing import *\ndef f(x: Optional[typing.List[int]]) -> None: ...\n", "f"),
-    "cs-namespace-using": ("csharp", "using System;\nnamespace P { public class C { public void F(String s) {} } }\n",
-                           "using System;\nnamespace P { public class C { public void F(System.String s) {} } }\n",
+    # (``using System;`` with ``String`` / ``System.String`` hashes alike since
+    # v19: the built-in alias table, test_builtin_type_alias_names.py)
+    "cs-namespace-using": ("csharp", "using System;\nnamespace P { public class C { public void F(Date s) {} } }\n",
+                           "using System;\nnamespace P { public class C { public void F(System.Date s) {} } }\n",
                            "C.F"),
     "swift-module-import": ("swift", "import Foundation\nclass S { func f(d: [Date]) {} }\n",
                             "import Foundation\nclass S { func f(d: [Foundation.Date]) {} }\n", "S.f"),

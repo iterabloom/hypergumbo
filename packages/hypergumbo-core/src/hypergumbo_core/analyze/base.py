@@ -3489,6 +3489,11 @@ class FileTypeNames:
     projection, a Rust lifetime) or right before a label's ``:`` (``a: T`` in
     a TypeScript object type) is not a type name and is left alone, and so is
     a string literal (opened by a character of :attr:`quotes`).
+
+    A chain written after :attr:`root`, the language's name for its root
+    namespace (C#'s ``global::``), is resolved from that root: no import binds
+    it, and a default does, so ``global::System.String`` is the default
+    ``System.String``; any other one is kept as written, the root included.
     """
 
     #: A name the file binds by an import -> the path it names.
@@ -3499,6 +3504,8 @@ class FileTypeNames:
     declared: frozenset[str] = frozenset()
     separator: str = "."  # axis: bounded-enum
     quotes: str = SIGNATURE_QUOTES  # axis: bounded-enum
+    #: The prefix naming the root namespace (C# ``global::``), or none.
+    root: str = ""  # axis: bounded-enum
 
     def canonical(
         self, text: str, *, skip: Container[str] = (), keep_head: bool = False,
@@ -3519,7 +3526,7 @@ class FileTypeNames:
             match = _TYPE_NAME_HEAD_RE.match(text)
             if match is not None:
                 head = match.start("name")
-        pattern = _chain_pattern(self.separator, self.quotes)
+        pattern = _chain_pattern(self.separator, self.quotes, self.root)
 
         def rewrite(m: "_re.Match[str]") -> str:
             chain = m.group("chain")
@@ -3532,23 +3539,31 @@ class FileTypeNames:
     def resolve(self, chain: str, skip: Container[str] = ()) -> str:
         """One name chain written through the imports (see the class)."""
         sep = self.separator
+        if self.root and chain.startswith(self.root):
+            return self._default(chain[len(self.root):]) or chain
         segments = chain.split(sep)
         if segments[0] in skip or segments[0] in self.declared:
             return chain
         path = self.bound.get(segments[0])
         full = chain if path is None else sep.join([path, *segments[1:]])
-        if self.defaults:
-            parts = full.split(sep)
-            for k in range(len(parts), 1, -1):
-                name = self.defaults.get(sep.join(parts[:k]))
-                if name is not None and name not in self.declared:
-                    return sep.join([name, *parts[k:]])
-        return full
+        return self._default(full) or full
+
+    def _default(self, full: str) -> Optional[str]:
+        """``full`` with its longest prefix that spells a default written as
+        that default's simple name, or None when no prefix does."""
+        sep = self.separator
+        parts = full.split(sep)
+        for k in range(len(parts), 1, -1):
+            name = self.defaults.get(sep.join(parts[:k]))
+            if name is not None and name not in self.declared:
+                return sep.join([name, *parts[k:]])
+        return None
 
 
 @functools.lru_cache(maxsize=None)
-def _chain_pattern(separator: str, quotes: str) -> "_re.Pattern[str]":
-    """A string literal (group ``string``) or a name chain (group ``chain``).
+def _chain_pattern(separator: str, quotes: str, root: str = "") -> "_re.Pattern[str]":
+    """A string literal (group ``string``) or a name chain (group ``chain``),
+    which may open with ``root``.
 
     Cached with ``lru_cache`` rather than a module dict: a handful of
     separator/quote pairs exist, and the kept-work recorder accounts for
@@ -3558,8 +3573,9 @@ def _chain_pattern(separator: str, quotes: str) -> "_re.Pattern[str]":
         rf"{_re.escape(q)}(?:\\.|[^{_re.escape(q)}\\])*{_re.escape(q)}" for q in quotes
     )
     sep = _re.escape(separator)
+    rooted = f"(?:{_re.escape(root)})?" if root else ""
     chain = (
-        rf"(?<![\w$.#':])(?P<chain>{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
+        rf"(?<![\w$.#':])(?P<chain>{rooted}{_SIG_IDENT}(?:{sep}{_SIG_IDENT})*)"
         rf"(?![\w$])(?!\??:(?!:))"
     )
     return _re.compile(rf"(?P<string>{strings})|{chain}" if strings else chain)
@@ -3572,6 +3588,7 @@ def file_type_names(
     defaults: Optional[Dict[str, str]] = None,
     separator: str = ".",
     quotes: str = SIGNATURE_QUOTES,
+    root: str = "",
 ) -> FileTypeNames:
     """A file's :class:`FileTypeNames` from its import bindings.
 
@@ -3582,7 +3599,8 @@ def file_type_names(
     is bound to neither: which one a use means is not decided by the file's
     text alone, and it stays as written. A name the file ``declared`` is
     never bound. ``defaults`` maps a qualified spelling of a type the
-    language imports into every file to its simple name.
+    language imports into every file to its simple name. ``root`` is the
+    language's root-namespace prefix (:attr:`FileTypeNames.root`).
     """
     declared_names = frozenset(declared)
     bound: Dict[str, str] = {}
@@ -3597,7 +3615,7 @@ def file_type_names(
         del bound[name]
     return FileTypeNames(
         bound=bound, defaults=dict(defaults or {}), declared=declared_names,
-        separator=separator, quotes=quotes,
+        separator=separator, quotes=quotes, root=root,
     )
 
 
@@ -3697,8 +3715,8 @@ def normalize_signature_types_first(
     ``keep_type_path`` and ``quotes`` are passed to :func:`strip_fqn_prefix`
     and to :func:`split_params_top_level` / :func:`find_matching_paren`.
     ``keep_qualifier`` (C#) skips the FQN strip: each type is hashed as
-    written, its qualifier included (``System.String`` and ``String`` hash
-    apart; WI-ririg owner ruling).
+    written, its qualifier included (``A.B`` and ``C.B`` hash apart; WI-ririg
+    owner ruling), then through the file's names (:func:`normalize_type`).
     """
     if not signature:
         return None

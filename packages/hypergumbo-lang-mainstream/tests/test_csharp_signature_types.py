@@ -222,8 +222,9 @@ namespace Fx
 PINNED = {
     ("constructor", "Clean.Clean"): f"{STABLE_ID_PREFIX}ad210095a4bc8b3e",
     # WI-ririg: ``global::System.String`` is hashed as written (was
-    # ``String``): 857b56ab37223405.
-    ("method", "Clean.H"): f"{STABLE_ID_PREFIX}831727aa0878f4b0",
+    # ``String``): 857b56ab37223405. WI-juzom (v19): it is the keyword
+    # ``string`` (was 831727aa0878f4b0).
+    ("method", "Clean.H"): f"{STABLE_ID_PREFIX}bc84b803b8550dad",
     ("method", "Clean.G"): f"{STABLE_ID_PREFIX}fd5db1288a1f18fd",
     ("method", "Clean.Def"): f"{STABLE_ID_PREFIX}c1657d9473d0a6bb",
     ("method", "Clean.RoRet"): f"{STABLE_ID_PREFIX}05fd7e7aaaaae32c",

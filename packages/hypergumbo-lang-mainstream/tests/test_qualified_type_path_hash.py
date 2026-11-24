@@ -11,9 +11,11 @@ and can be told from an enclosing type; a C# namespace and a Swift module are
 upper-case, so that rule cannot tell them apart.
 
 Owner ruling (WI-ririg, 2026-11-19): C# and Swift hash the FULL path as
-written. The hash is spelling-dependent on purpose: ``System.String`` and
-``String`` hash apart, and so do ``Swift.Int`` and ``Int``. An unqualified
-type hashes what it hashed.
+written. The normalizers alone are spelling-dependent on purpose:
+``System.String`` and ``String`` hash apart, and so do ``Swift.Int`` and
+``Int``. An unqualified type hashes what it hashed. (In an analyzed file a
+C# built-in type has one spelling since v19, WI-juzom:
+test_builtin_type_alias_names.py.)
 """
 from __future__ import annotations
 

@@ -106,6 +106,12 @@ stable id hashes is written through the file's ``using`` aliases
 (``_csharp_type_names``, read once per file and set with ``resolving_type_names``), so an
 imported and a qualified spelling of one type hash alike; a name nothing
 binds, or the file declares, is hashed as written.
+
+BUILT-IN TYPE NAMES (stable-id scheme v19, WI-juzom). The same table holds the
+language's alias table (``_CSHARP_KEYWORD_TYPES``) as its defaults: a keyword
+type and its framework spelling (``string`` / ``System.String`` /
+``global::System.String``, and a bare ``String`` under ``using System;``) are
+one type with one spelling in the hash, the keyword.
 """
 from __future__ import annotations
 
@@ -519,11 +525,11 @@ def _normalize_csharp_type(
     The types-first family's rule (``normalize_signature_types_first``,
     shared with Java, Dart and Groovy) is applied to the type itself, with
     ``keep_qualifier``: a C# type is hashed AS WRITTEN, its namespace or
-    enclosing types included (``A.B`` and ``C.B`` hash apart, and so do
-    ``System.String`` and ``String``; WI-ririg owner ruling). Until the
-    WI-ririg commit the family's FQN strip cut a type's head to its last
-    segment. A ``using`` alias is written as the type it names
-    (:func:`_csharp_type_names`). A parameter's modifiers (``ref``, ``out``, ...) are taken off
+    enclosing types included (``A.B`` and ``C.B`` hash apart; WI-ririg owner
+    ruling). Until the WI-ririg commit the family's FQN strip cut a type's head
+    to its last segment. A ``using`` alias is written as the type it names, and
+    a framework spelling of a built-in type as its keyword (``System.String``
+    -> ``string``; :func:`_csharp_type_names`). A parameter's modifiers (``ref``, ``out``, ...) are taken off
     first and put back, a return type's ``ref`` / ``ref readonly`` likewise,
     and a tuple type is kept whole; the family would otherwise read a
     modifier as the type and a tuple's element as its name.
@@ -978,27 +984,54 @@ _CSHARP_TYPE_DECLARATION_NODES = frozenset({
 })
 
 
+#: C#'s keyword types, by the ``System`` type each one aliases (C# language
+#: specification, "Simple types" and the ``object`` / ``string`` reference
+#: types; ``nint`` / ``nuint`` are aliases of ``System.IntPtr`` /
+#: ``System.UIntPtr`` since C# 11). Not listed: ``dynamic``, which the
+#: specification gives its own conversions rather than an alias, and ``void``,
+#: whose ``System.Void`` cannot be written as a type.
+_CSHARP_KEYWORD_TYPES: dict[str, str] = {
+    "Boolean": "bool", "Byte": "byte", "SByte": "sbyte", "Char": "char",
+    "Decimal": "decimal", "Double": "double", "Single": "float",
+    "Int16": "short", "UInt16": "ushort", "Int32": "int", "UInt32": "uint",
+    "Int64": "long", "UInt64": "ulong", "IntPtr": "nint", "UIntPtr": "nuint",
+    "Object": "object", "String": "string",
+}
+
+
 def _csharp_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
     """What the file's ``using`` directives make a type name mean (WI-palus,
-    scheme v17).
+    scheme v17), and which spelling of a built-in type is hashed (WI-juzom,
+    scheme v19).
 
     Bound: each alias, ``using Str = System.String;`` (and ``global using``),
     to what it names (:func:`_csharp_using_scope`), so ``Str`` and
     ``System.String`` hash alike, and ``Gen.List`` under ``using Gen =
     System.Collections.Generic;`` is ``System.Collections.Generic.List``. A
-    ``using System;`` imports a namespace: it binds no name the file writes,
-    so ``String`` and ``System.String`` stay apart (a type is hashed as
-    written, WI-ririg). Declared: every type the file declares, which keeps its
-    name.
+    ``using System;`` imports a namespace and binds no other name the file
+    writes: ``Date`` and ``Foo.Date`` stay apart (a type is hashed as written,
+    WI-ririg). It does bind the bare framework names of the built-in types
+    (``String``, ``Int32``, ...) that the file neither aliases nor declares.
+    Defaults: the alias table (``_CSHARP_KEYWORD_TYPES``), so
+    ``System.String``, ``global::System.String`` and that bare ``String`` are
+    hashed as the keyword ``string``, the spelling C# code writes most. A
+    ``String`` the file declares keeps its name. Declared: every type the file
+    declares.
     """
-    _, aliases = _csharp_using_scope(tree, source)
+    namespaces, aliases = _csharp_using_scope(tree, source)
     declared = set()
     for node in iter_tree(tree.root_node):
         if node.type in _CSHARP_TYPE_DECLARATION_NODES:
             name = node.child_by_field_name("name")
             if name is not None:
                 declared.add(node_text(name, source))
-    return file_type_names(aliases.items(), declared=declared)
+    bindings = list(aliases.items())
+    if "System" in namespaces:
+        bindings += [(n, f"System.{n}") for n in _CSHARP_KEYWORD_TYPES if n not in aliases]
+    return file_type_names(
+        bindings, declared=declared, root="global::",
+        defaults={f"System.{n}": kw for n, kw in _CSHARP_KEYWORD_TYPES.items()},
+    )
 
 
 def _csharp_base_hints(
