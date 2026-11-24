@@ -3361,6 +3361,7 @@ def _rust_free_fn_return_types(
     use_aliases: dict[str, str],
     candidates_by_name: "dict[str, list[Symbol]]",
     crates: "_InTreeCrates | None",
+    declared_return_type: "dict[str, str]",
 ) -> "Callable[[str], str | None]":
     """What a plain call ``name(..)`` in ``file_path`` returns, by declared type (INV-hupis).
 
@@ -3373,6 +3374,12 @@ def _rust_free_fn_return_types(
     them answer ``None``: an untyped receiver is unresolved, a wrongly typed
     one is a false edge. A tuple-struct constructor, a closure variable or an
     external function has no function symbol and answers ``None`` too.
+
+    ``declared_return_type`` maps a function's symbol id to its return type.
+    The analyzer fills it in pass 1 from the return type's home,
+    ``FileAnalysis.method_return_types`` (ADR-0058): the cross-file registry
+    built from that home is keyed by bare name, first writer wins, and could
+    answer for another module's ``get_db``.
     """
     own: dict[str, list[Symbol]] = {}
     for sym in file_functions:
@@ -3393,7 +3400,7 @@ def _rust_free_fn_return_types(
             target = everywhere[0] if len(everywhere) == 1 else None
         if target is None:
             return None
-        return _extract_rust_return_type_name(target.signature)
+        return declared_return_type.get(target.id)
 
     return return_type
 
@@ -5051,8 +5058,10 @@ class RustAnalyzer(TreeSitterAnalyzer):
     _seen_files: "tuple[str, dict[str, Path]] | None" = None
     _crates: "_InTreeCrates | None" = None
     # INV-hupis: who declares each method seen this run (``_rust_declaring_owner``),
-    # by symbol id; reset with ``_seen_files``.
+    # and each free function's declared return type, both by symbol id; reset
+    # with ``_seen_files``.
     _method_owner: "dict[str, tuple[str, str]] | None" = None
+    _free_fn_return: "dict[str, str] | None" = None
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -5063,10 +5072,24 @@ class RustAnalyzer(TreeSitterAnalyzer):
             self._seen_files = (run.execution_id, {})
             self._crates = None
             self._method_owner = {}
+            self._free_fn_return = {}
         self._seen_files[1][rel_path] = file_path
         owners = self._method_owner if self._method_owner is not None else {}
         self._method_owner = owners
+        returns = self._free_fn_return if self._free_fn_return is not None else {}
+        self._free_fn_return = returns
         analysis = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        # A free function's declared return type, read from its home (the
+        # file's ``method_return_types``, keyed by bare name) and kept by
+        # symbol id. Two functions of one name in a file share the key, so
+        # neither is recorded.
+        free_fns: dict[str, list[Symbol]] = {}
+        for symbol in analysis.symbols:
+            if symbol.kind == "function":
+                free_fns.setdefault(symbol.name, []).append(symbol)
+        for name, declared in free_fns.items():
+            if len(declared) == 1 and name in analysis.method_return_types:
+                returns[declared[0].id] = analysis.method_return_types[name]
         # Who declares each method, for the short-name fallback of the edge
         # pass: it must tell a trait and its implementations (one method)
         # from two types that share a spelling, across files (INV-hupis).
@@ -5198,6 +5221,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
         )
         free_fn_return_type = _rust_free_fn_return_types(
             rel_path, file_syms, import_aliases, kind_index, self.in_tree_crates(),
+            self._free_fn_return or {},
         )
         var_types = _extract_var_types_rust(
             tree.root_node, source, method_return_type_registry,
