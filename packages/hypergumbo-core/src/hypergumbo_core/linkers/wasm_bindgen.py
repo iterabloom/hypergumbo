@@ -437,9 +437,8 @@ def _create_wasm_load_edges(
             # Kind slot = node.kind (ADR-0036 Ruling 2, WI-vojur); name slot =
             # the Symbol's name, the module reference (Ruling 1; it held the
             # word ``module``). The ``wasm`` language slot stays: the module
-            # has no host discovery language, and the slot of a host-less
-            # synthetic is ADR-0036's deferred chokepoint question
-            # (make_synthetic_symbol_identity, 5b).
+            # has no host discovery language, and the owner ruled the literal
+            # accepted (ADR-0034, amendment of 2026-11-23).
             wasm_module_id = make_symbol_id("wasm", wasm_ref, 0, 0, wasm_ref, "module")
 
             if wasm_module_id not in {s.id for s in symbols}:
