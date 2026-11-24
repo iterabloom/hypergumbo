@@ -127,7 +127,11 @@ name ``Inner.go``; classes, traits and enums mint
 ``overload_arity.scoped_table_stable_id`` over it, so deleting one outer class
 does not move another's nested ``Inner``'s id or its members' (INV-fabih). For
 a member of a top-level type, and a top-level type, the chain is the nearest
-owner. Emitted names keep the nearest owner.
+owner. Emitted names keep the nearest owner. A ``def`` labels the chain by
+its name and hashed signature (``f(Int)Int``, ``this(String)``; ``()`` keeps
+the bare name) and a ``val`` / ``var`` by ``val p``, so the locals of two
+overloads, two secondary constructors or two vals do not tie (they did
+until scheme v19, WI-finam).
 
 The typed tier hashes a ``def``'s signature text (``_extract_scala_signature``,
 normalized by ``normalize_scala_signature``) and a member ``val`` / ``var``'s
@@ -174,6 +178,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     ancestor_labels,
+    layout_free,
     defer_bare_method_call,
     defer_unresolved_tie,
     emit_module_attribute_refs,
@@ -1027,10 +1032,40 @@ _SCALA_SCOPE_NODES: Final = frozenset({
 })
 
 
+def _scala_callable_hashed(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """What a ``def``'s typed stable_id hashes beside its name and scope: its
+    normalized signature, or ``None`` when it does not normalize. The one
+    reader for the ``def``'s own id and for its label in the scope chain of
+    what it declares (:func:`_scala_callable_label`)."""
+    return normalize_with_type_parameters(
+        normalize_scala_signature, _extract_scala_signature(node, source), node, source)
+
+
+def _scala_callable_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """A ``def``'s label in the scope chain (:func:`_scala_scope`): its name
+    and what its own id hashes beside it (:func:`_scala_callable_hashed`),
+    canonically spaced: ``f(Int)Int``, ``f(Int)(Int)Int``, ``this(String)``
+    for a secondary constructor. A ``def`` whose hashed text is ``()`` (or
+    that has none) keeps its bare name, so what it declares hashes what it
+    did. A name alone is shared by two overloads and by every secondary
+    constructor (``this``); the declarations local to them tied (WI-finam).
+    The name is the grammar's ``name`` field, an operator's too (``&&``,
+    an ``operator_identifier``): read as an ``identifier`` it was none, and
+    an operator ``def`` labelled nothing.
+    """
+    name_node = node.child_by_field_name("name")
+    if name_node is None:  # pragma: no cover - the grammar names every def
+        return None
+    name = node_text(name_node, source)
+    text = layout_free(_scala_callable_hashed(node, source) or "", separators=True)
+    return name if text in ("", "()") else name + text
+
+
 def _scala_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The names of every scope enclosing ``node``, outermost first: each block
-    ``package a { ... }``, class, object, trait, enum, given and function
-    (WI-tusad, INV-fabih).
+    """The labels of every scope enclosing ``node``, outermost first: each
+    block ``package a { ... }``, class, object, trait, enum, given and
+    function, and each ``val`` / ``var`` binding one name (WI-tusad,
+    INV-fabih).
 
     ``_get_enclosing_type`` keeps the nearest owner only, which two nested
     ``object Inner`` (or ``class Inner``) in classes ``A`` and ``B`` share, so
@@ -1038,8 +1073,21 @@ def _scala_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     ancestor (the rest of the file is its sibling) and applies to the whole
     file, which the file anchor already identifies, so it is not in the chain;
     a block package can repeat within a file, so it is.
+
+    A ``def`` is labelled by :func:`_scala_callable_label` (name and hashed
+    signature) and a ``val`` / ``var`` by its keyword and name (``val p``):
+    until scheme v19 a ``def`` was its bare name and a ``val`` no label, so
+    the locals of two secondary constructors, of two overloads, or of the
+    blocks bound to ``val p`` and ``val q`` tied (WI-finam). A ``val`` that
+    binds a pattern adds nothing.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in ("function_definition", "function_declaration"):
+            return _scala_callable_label(n, source)
+        if n.type in ("val_definition", "var_definition"):
+            name_node = find_child_by_type(n, "identifier")
+            keyword = "val" if n.type == "val_definition" else "var"
+            return f"{keyword} {node_text(name_node, source)}" if name_node is not None else None
         if n.type in _SCALA_SCOPE_NODES:
             name_node = find_child_by_type(n, "identifier")
             return node_text(name_node, source) if name_node is not None else None
@@ -1425,8 +1473,7 @@ def _extract_parsed_symbols(
                 meta = {"decorators": annotations} if annotations else None
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_with_type_parameters(
-                    normalize_scala_signature, signature, node, source)
+                norm_sig = _scala_callable_hashed(node, source)
                 # INV-fabih: the FULL owner chain, not the nearest owner
                 # (``full_name``), which two nested same-name owners share.
                 stable_id = make_typed_stable_id(
@@ -1490,8 +1537,7 @@ def _extract_parsed_symbols(
                 meta = {"decorators": annotations} if annotations else None
 
                 # Typed stable_id (spec §6 typed tier)
-                norm_sig = normalize_with_type_parameters(
-                    normalize_scala_signature, signature, node, source)
+                norm_sig = _scala_callable_hashed(node, source)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=func_name,
