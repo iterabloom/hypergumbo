@@ -87,7 +87,10 @@ from ..analyze.base import (
     make_dependency_stable_id, make_file_id, make_file_stable_id, make_symbol_id,
 )
 from ..supply_chain import own_package_name
-from ..ir import PASS_VERSION, AnalysisRun, Edge, NodeId, Span, Symbol, make_pass_id
+from ..ir import (
+    NO_ANCHOR_PATH, PASS_VERSION, AnalysisRun, Edge, NodeId, Span, Symbol,
+    make_pass_id,
+)
 from ..taxonomy import get_language
 from ._text_filters import note_source_read, read_source_text
 from ..js_package_entry import (
@@ -956,15 +959,20 @@ def link_js_modules(
                 pkg_sym = Symbol(
                     id=pkg_id,
                     # Synthetic external-package stand-in (an unresolved import), not a
-                    # manifest declaration — no declaring manifest path, so path="" keeps it
-                    # a single logical node (ADR-0035 §4 governs manifest-declared deps).
+                    # manifest declaration — no declaring manifest path, so the stable
+                    # id's manifest path is "" and the package is one logical node
+                    # (ADR-0035 §4 governs manifest-declared deps).
                     stable_id=make_dependency_stable_id(lang, "", pkg_name),
                     name=pkg_name,
                     kind="package",
                     language=None,
                     discovery_language=lang,
                     protocol_origin="js_module",
-                    path="",
+                    # No file in the tree anchors it: ADR-0036 Ruling 3's
+                    # sentinel, as on every boundary node. Symbol.path is the
+                    # filesystem anchor, not the stable id's manifest path
+                    # above, so the stable id does not move with it.
+                    path=NO_ANCHOR_PATH,
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
