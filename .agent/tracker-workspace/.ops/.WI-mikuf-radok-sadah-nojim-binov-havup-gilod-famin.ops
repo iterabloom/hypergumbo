@@ -1,0 +1,24 @@
+- op: create  # 9f35
+  at: '2026-11-24T10:19:51Z'  # 9f35
+  by: agent  # 9f35
+  actor: jgstern_agent  # 9f35
+  clock: 1  # 9f35
+  nonce: 9f35  # 9f35
+  data:  # 9f35
+    kind: work_item  # 9f35
+    title: "The static test-coverage estimate misleads where tests reach code indirectly (Flask 17%, Express 4%)"  # 9f35
+    status: todo_soft  # 9f35
+    priority: 4  # 9f35
+    parent:  # 9f35
+    tags:  # 9f35
+    - sketch  # 9f35
+    - developer_experience  # 9f35
+    - needs_decision  # 9f35
+    - outside_review_10_0_0  # 9f35
+    - reported_not_rerun  # 9f35
+    isbefore: []  # 9f35
+    duplicate_of: []  # 9f35
+    not_duplicate_of: []  # 9f35
+    pr_ref:  # 9f35
+    description: "WHAT (as reported)\nThe static test-coverage estimate reads far below what a user expects on some repositories: 17% for Flask, 4% for Express (37% for ripgrep, which the reviewer found believable). The output does say that tests reaching code indirectly are not counted; the reviewer's point is that the headline number misleads.\n\nASKED\nNot a number to \"fix\" by tuning: decide how the figure is labelled, or whether it is shown when the indirect share is large.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 9f35
+    fields: {}  # 9f35

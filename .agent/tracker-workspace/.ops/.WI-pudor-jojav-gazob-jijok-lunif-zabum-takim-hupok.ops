@@ -1,0 +1,23 @@
+- op: create  # d8a0
+  at: '2026-11-24T10:19:58Z'  # d8a0
+  by: agent  # d8a0
+  actor: jgstern_agent  # d8a0
+  clock: 1  # d8a0
+  nonce: d8a0  # d8a0
+  data:  # d8a0
+    kind: work_item  # d8a0
+    title: "Budgeted and --compact survey JSON spend most of their tokens on metadata (survey.4k.json: 9 symbols)"  # d8a0
+    status: todo_soft  # d8a0
+    priority: 4  # d8a0
+    parent:  # d8a0
+    tags:  # d8a0
+    - cli  # d8a0
+    - developer_experience  # d8a0
+    - outside_review_10_0_0  # d8a0
+    - reported_not_rerun  # d8a0
+    isbefore: []  # d8a0
+    duplicate_of: []  # d8a0
+    not_duplicate_of: []  # d8a0
+    pr_ref:  # d8a0
+    description: "WHAT (as reported)\nThe size-limited JSON spends most of its budget on metadata (Flask):\n- survey.4k.json holds 9 symbols; about 70% of it is profile, reproducibility_context and similar.\n- survey --compact, which the README calls the LLM-friendly JSON, is about 72k tokens for 100 symbols; 34 of them come from examples/, and 19% of the file is run logs.\nThe reviewer's comparison: the 4k Markdown sketch conveyed far more. The budgets themselves were met (3,911 / 15,834 / 63,925 tokens).\nAlso reported: the full survey is 11.2 MB for about 26,000 lines of Flask (average node 1.1 KB, edge 0.6 KB), about 900 of 3,656 nodes from .rst directives.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # d8a0
+    fields: {}  # d8a0
