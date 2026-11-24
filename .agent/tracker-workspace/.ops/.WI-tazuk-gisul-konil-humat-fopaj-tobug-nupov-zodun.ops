@@ -29,3 +29,32 @@
   clock: 2  # 2361
   nonce: '2361'  # 2361
   message: "OWNER, in session 2026-11-24: queued NEXT after stable-id v20 (PR #2370, merged), ahead of the fifteen open items that wait for a scheme bump: first WI-tazuk (the call-resolution fixture in every mainstream language), then INV-hupis (the Rust wrong-class binding). The decision on a shared resolution layer waits for the fixture's matrix: ~/hypergumbo_lab_notebook/notebookjournal_11242026_0538.md."  # 2361
+- op: discuss  # 03aa
+  at: '2026-11-24T20:46:05Z'  # 03aa
+  by: agent  # 03aa
+  actor: jgstern_agent  # 03aa
+  clock: 3  # 03aa
+  nonce: 03aa  # 03aa
+  message: "MEASURED 2026-11-24 on dev 44a858dbb, all 17 class-bearing languages of lang-mainstream, four arms each (decoy declared last/first x class names swapped): ~/hypergumbo_lab_notebook/call_matrix_11242026/RESULTS.md. 24 cells in 9 languages bind a decoy depending on declaration order (objc 6, rust 5, groovy 5, csharp 3, javascript/php/ruby/swift/cpp 1 each); none in go, kotlin, lua, perl, python, scala, typescript. The chain column is unresolved in 11 of 17. Filed: INV-jutog (the invariant), WI-mokul objc, WI-tiluh groovy, WI-dovoz csharp, WI-lizis javascript, WI-jafiz php, WI-madab ruby, WI-nuvov swift, WI-joniz cpp, WI-mugon java; rust stays INV-hupis. The reviewer's 10.0.0 table differs from dev in: C# chain (same), Go/Kotlin/TypeScript chain (same), Swift and Java (same), Rust (worse: five cells, not two). LIMIT: every class and caller of an arm is in one file; the cross-file layout is not measured. NEXT: commit the fixture as a test that pins this table."  # 03aa
+- op: update  # 08e8
+  at: '2026-11-24T20:53:04Z'  # 08e8
+  by: agent  # 08e8
+  actor: jgstern_agent  # 08e8
+  clock: 4  # 08e8
+  nonce: '08e8'  # 08e8
+  set:  # 08e8
+    status: done  # 08e8
+- op: discuss  # 067a
+  at: '2026-11-24T20:53:05Z'  # 067a
+  by: agent  # 067a
+  actor: jgstern_agent  # 067a
+  clock: 5  # 067a
+  nonce: 067a  # 067a
+  message: "Done in pull/2379 (commits e46fa749f, 235f72bd8 on dev). packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py writes one program in 17 languages (cpp, csharp, go, groovy, java, javascript, kotlin, lua, objc, perl, php, python, ruby, rust, scala, swift, typescript), four arms each, and test_call_resolution_matrix.py pins the measured row per language (38 tests). EVIDENCE, re-run on merged dev: `python packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py` prints the same table as the one filed (kept: ~/hypergumbo_lab_notebook/call_matrix_11242026/matrix_dev_after_merge.md); three deliberate mutations (a wrong cell, a missing caller, a guess without an item) each failed the test before the commit. The reviewer's first step, 'reproduce on dev', is the table itself. NOT covered: classes and callers in separate files; three or more same-named candidates; C, bash, powershell; lang-common and lang-extended1 languages; the optional backends. The 25 order-dependent cells are filed (INV-jutog and one item per language; rust is INV-hupis)."  # 067a
+- op: discuss  # 8720
+  at: '2026-11-24T20:53:58Z'  # 8720
+  by: agent  # 8720
+  actor: jgstern_agent  # 8720
+  clock: 6  # 8720
+  nonce: '8720'  # 8720
+  message: "Correction to the closing note: auto-pr rebased the branch, so on dev the two commits are bb50805a7 and 78147ee18 (PR #2379)."  # 8720

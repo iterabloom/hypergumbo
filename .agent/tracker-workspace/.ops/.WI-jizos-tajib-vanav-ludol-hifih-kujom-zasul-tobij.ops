@@ -1,0 +1,22 @@
+- op: create  # 62a9
+  at: '2026-11-24T20:45:58Z'  # 62a9
+  by: agent  # 62a9
+  actor: jgstern_agent  # 62a9
+  clock: 1  # 62a9
+  nonce: 62a9  # 62a9
+  data:  # 62a9
+    kind: work_item  # 62a9
+    title: "The forge token is passed on git's command line by tracker auto-sync and the PR scripts: readable in the process list during every push"  # 62a9
+    status: todo_hard  # 62a9
+    priority: 2  # 62a9
+    parent:  # 62a9
+    tags:  # 62a9
+    - security  # 62a9
+    - governance  # 62a9
+    - tracker  # 62a9
+    isbefore: []  # 62a9
+    duplicate_of: []  # 62a9
+    not_duplicate_of: []  # 62a9
+    pr_ref:  # 62a9
+    description: "WHAT\nEvery authenticated git push made by the tracker's auto-sync and by the PR scripts passes the forge token on git's command line:\n  git -c credential.helper=\"!f() { echo username=...; echo password=<TOKEN>; }; f\" push origin ...\nA process's command line is readable by every local user (ps, /proc/<pid>/cmdline) for as long as the push runs, and is recorded by anything that samples the process list.\n\nWHERE (grep credential.helper, dev 81d89b52c)\n  packages/hypergumbo-tracker/src/hypergumbo_tracker/sync.py: 1704, 1788, 1899\n  scripts/lib/forgejo-api.sh: 505        scripts/auto-pr, scripts/contribute, scripts/tag-release (each has a site; lines not listed)\n\nHOW IT WAS SEEN (2026-11-24)\nWhile a tracker add was running its auto-sync, `pgrep -af tracker` printed the push command with the token in clear. The agent did not look for it; the value went into that session's transcript. It is not repeated here. THE OWNER MAY WANT TO ROTATE THE TOKEN.\n\nA FIX THAT KEEPS THE TOKEN OFF THE COMMAND LINE (not built)\nPass the token in the child's environment and name a helper that reads it:\n  git -c credential.helper='!f() { echo username=$HG_PUSH_USER; echo password=$HG_PUSH_TOKEN; }; f' push ...   (single quotes: the shell git starts expands the variables, argv holds only their names)\nor GIT_ASKPASS pointing at a script that prints the variable. The environment of a process is readable only by its owner and root.\n\nGOVERNANCE: scripts/auto-pr, scripts/contribute and scripts/lib/forgejo-api.sh are governance files; sync.py and scripts/tag-release are not.\nNOT CHECKED: whether CI logs or `set -x` traces echo these command lines; whether any other secret is passed in argv (curl -H \"Authorization: ...\" sites were not searched)."  # 62a9
+    fields: {}  # 62a9
