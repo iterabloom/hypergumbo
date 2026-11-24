@@ -4,6 +4,7 @@
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/hack.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/haxe.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/janet.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/odin.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -112,6 +113,27 @@ _JANET = """\
 (def limit 10)
 """
 
+_ODIN = """\
+package demo
+
+Point :: struct {
+  x: int,
+}
+
+Value :: union {
+  int,
+  f32,
+}
+
+Color :: enum {
+  Red,
+}
+
+add :: proc(a: int, b: int) -> int {
+  return a + b
+}
+"""
+
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -127,6 +149,8 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
              frozenset({"function", "class", "interface"})),
     "janet": ("janet", "analyze_janet", "demo.janet", _JANET,
               frozenset({"function", "variable"})),
+    "odin": ("odin", "analyze_odin", "demo.odin", _ODIN,
+             frozenset({"function", "struct", "union", "enum"})),
 }
 
 
