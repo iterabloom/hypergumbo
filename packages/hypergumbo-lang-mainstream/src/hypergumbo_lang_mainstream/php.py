@@ -529,6 +529,37 @@ _PHP_PARAMETER_NODE_TYPES: frozenset[str] = frozenset({
 })
 
 
+def _php_type_text(type_node: "tree_sitter.Node", source: bytes) -> str:
+    """The source text of a type node with each comment in it written as one
+    space (WI-radim).
+
+    A comment is not an id input. The shared ``without_comments`` (applied
+    when the signature is normalized and hashed) knows ``//`` and ``/* */``
+    but not PHP's ``#`` line comment, which other languages' texts use for
+    code (``#if``, ``#[...]``), so ``int|# c\n string`` hashed the comment:
+    the grammar's ``comment`` nodes are blanked here instead.
+    """
+    start = type_node.start_byte
+    parts: list[str] = []
+    for comment in _php_comments(type_node):
+        parts.append(source[start:comment.start_byte].decode("utf-8", "replace"))
+        parts.append(" ")
+        start = comment.end_byte
+    parts.append(source[start:type_node.end_byte].decode("utf-8", "replace"))
+    return "".join(parts)
+
+
+def _php_comments(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """The ``comment`` nodes inside ``node``, in source order."""
+    found: list["tree_sitter.Node"] = []
+    for child in node.children:
+        if child.type == "comment":
+            found.append(child)
+        else:
+            found.extend(_php_comments(child))
+    return found
+
+
 def _php_parameter_text(param: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """One parameter as ``[type ][&][...]$name``, or None if it names nothing.
 
@@ -551,7 +582,7 @@ def _php_parameter_text(param: "tree_sitter.Node", source: bytes) -> Optional[st
     type_node = param.child_by_field_name("type")
     if type_node is None:
         return name
-    return f"{node_text(type_node, source)} {name}"
+    return f"{_php_type_text(type_node, source)} {name}"
 
 
 def _extract_php_signature(
@@ -591,7 +622,7 @@ def _extract_php_signature(
 
     return_node = node.child_by_field_name("return_type")
     if return_node is not None:
-        return_type = node_text(return_node, source)
+        return_type = _php_type_text(return_node, source)
         if return_type != "void":
             signature += f": {return_type}"
 
