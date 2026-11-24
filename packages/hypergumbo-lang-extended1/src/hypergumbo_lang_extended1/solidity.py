@@ -740,6 +740,16 @@ def _solidity_import_bindings(tree: "tree_sitter.Tree", source: bytes) -> Iterat
                 yield node_text(child, source), f"{module}.{named}" if named else module
 
 
+#: The elementary-type aliases the Solidity documentation names, each alias ->
+#: the type it names, the spelling it is hashed by (WI-juzom, scheme v19):
+#: ``uint`` / ``int`` (``uint256`` / ``int256``), ``ufixed`` / ``fixed``
+#: (``ufixed128x18`` / ``fixed128x18``) and ``byte`` (``bytes1``, removed in
+#: 0.8.0). Each is a keyword, so no file declares a type of that name.
+_SOLIDITY_TYPE_ALIASES: dict[str, str] = {
+    "uint": "uint256", "int": "int256", "ufixed": "ufixed128x18",
+    "fixed": "fixed128x18", "byte": "bytes1",
+}
+
 #: The nodes a Solidity file declares a type name with.
 _SOLIDITY_TYPE_DECLARATIONS = frozenset({
     "contract_declaration", "interface_declaration", "library_declaration",
@@ -754,7 +764,10 @@ def _solidity_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNam
     Bound: :func:`_solidity_import_bindings`, so ``T`` under ``import {T} from
     "./Lib.sol"`` and ``L.T`` under ``import "./Lib.sol" as L`` are one type.
     Declared: every contract, interface, library, struct, enum and
-    user-defined value type the file declares, which keeps its name.
+    user-defined value type the file declares, which keeps its name. Also
+    bound: each elementary-type alias to the type it names
+    (:data:`_SOLIDITY_TYPE_ALIASES`; WI-juzom), so ``uint`` and ``uint256``
+    hash alike.
     """
     declared = set()
     for node in iter_tree(tree.root_node):
@@ -762,7 +775,9 @@ def _solidity_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNam
             name = node.child_by_field_name("name")
             if name is not None:
                 declared.add(node_text(name, source))
-    return file_type_names(_solidity_import_bindings(tree, source), declared=declared)
+    return file_type_names(
+        [*_SOLIDITY_TYPE_ALIASES.items(), *_solidity_import_bindings(tree, source)],
+        declared=declared)
 
 
 def _extract_visibility_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
