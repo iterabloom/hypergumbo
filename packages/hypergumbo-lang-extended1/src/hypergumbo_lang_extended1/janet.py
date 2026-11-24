@@ -19,6 +19,10 @@ Key constructs extracted:
   as kind ``function``
 - (def name value) - variable definitions
 - (name args) - function calls (tuples)
+
+Identity (WI-lilab, stable-id scheme v19): the stable id hashes the kind the
+Symbol reports (``function``, ``variable``), the word the node id's kind
+slot carries; it hashed the role words ``fn`` and ``var`` before.
 """
 
 from __future__ import annotations
@@ -176,7 +180,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                 sym = Symbol(
                     id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
                     stable_id=self.compute_stable_id(
-                        node, kind="fn", name=name,
+                        node, kind="function", name=name,
                         file_stable_id=file_stable_id,
                     ),
                     name=name,
@@ -211,7 +215,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                 sym = Symbol(
                     id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "variable"),
                     stable_id=self.compute_stable_id(
-                        node, kind="var", name=name,
+                        node, kind="variable", name=name,
                         file_stable_id=file_stable_id,
                     ),
                     name=name,
