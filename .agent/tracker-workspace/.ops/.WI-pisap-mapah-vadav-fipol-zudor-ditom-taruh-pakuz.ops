@@ -1,0 +1,24 @@
+- op: create  # 07f4
+  at: '2026-11-24T10:18:45Z'  # 07f4
+  by: agent  # 07f4
+  actor: jgstern_agent  # 07f4
+  clock: 1  # 07f4
+  nonce: 07f4  # 07f4
+  data:  # 07f4
+    kind: work_item  # 07f4
+    title: "axum: get(a).post(b) on one path loses methods; key-value-store example yields no route"  # 07f4
+    status: todo_soft  # 07f4
+    priority: 3  # 07f4
+    parent:  # 07f4
+    tags:  # 07f4
+    - rust  # 07f4
+    - frameworks  # 07f4
+    - analysis_quality  # 07f4
+    - outside_review_10_0_0  # 07f4
+    - reported_not_rerun  # 07f4
+    isbefore: []  # 07f4
+    duplicate_of: []  # 07f4
+    not_duplicate_of: []  # 07f4
+    pr_ref:  # 07f4
+    description: "WHAT (as reported)\naxum (the axum repository's examples/): 74 routes found in 44 of 55 example files, with handler names. Two gaps:\n1. A method chain on one path loses methods: in todos, .route(\"/todos\", get(todos_index).post(todos_create)) was missed while PATCH and DELETE on another path were found.\n2. key-value-store: nothing found, not even .route(\"/keys\", get(list_keys)).\n\nRelated, distinct: WI-basid (tower/hyper impl Service).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 07f4
+    fields: {}  # 07f4

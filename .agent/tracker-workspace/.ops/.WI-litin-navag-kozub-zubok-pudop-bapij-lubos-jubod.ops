@@ -1,0 +1,24 @@
+- op: create  # b931
+  at: '2026-11-24T10:18:38Z'  # b931
+  by: agent  # b931
+  actor: jgstern_agent  # b931
+  clock: 1  # b931
+  nonce: b931  # b931
+  data:  # b931
+    kind: work_item  # b931
+    title: "express: 7 of about 54 example routes found, no handler names, and an undeclared ALL / route at lib/application.js line 1"  # b931
+    status: todo_soft  # b931
+    priority: 3  # b931
+    parent:  # b931
+    tags:  # b931
+    - javascript  # b931
+    - frameworks  # b931
+    - analysis_quality  # b931
+    - outside_review_10_0_0  # b931
+    - reported_not_rerun  # b931
+    isbefore: []  # b931
+    duplicate_of: []  # b931
+    not_duplicate_of: []  # b931
+    pr_ref:  # b931
+    description: "WHAT (as reported)\nExpress (the express repository's examples/): 7 of about 54 app.get / app.post / ... calls were reported as routes, without handler names, and a route \"ALL /\" was reported at line 1 of lib/application.js that the code does not declare.\n\nNOT CHECKED\nWhich call shapes the 47 misses have (router objects, chained .route(), handlers passed as arrays). The unreleased changelog adds Express middleware entry points; whether it changes route counts is not known.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # b931
+    fields: {}  # b931
