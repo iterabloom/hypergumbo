@@ -66,10 +66,22 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      file prefers the free function the CALLER's own module declares, since
      the one-symbol-per-name map keeps whichever same-named item came last
      (INV-lopus: a root ``now()`` bound to ``mod helpers``' ``now``).
+   - A method or ``Type::`` call that reaches the short-name fallback (2)
+     takes this file's one-symbol-per-name entry only when the file
+     declares the name once, or twice for one type (``#[cfg]``
+     alternatives). Two unrelated owners are a tie, which the list
+     resolver refuses. A trait and its implementations are one method:
+     the call binds the trait's declaration when nothing else in the tree
+     has the name (INV-hupis; before it, the entry was whichever
+     same-named method the file declared last).
    - Local types (strategies 1.8/1.9) come from a file-scoped var-type
      map: parameters, ``let`` annotations, constructor / struct-literal
-     initializers, enum-variant destructuring patterns, and
-     ``let x = recv.method()`` chained through the return-type registry.
+     initializers, enum-variant destructuring patterns,
+     ``let x = recv.method()`` chained through the return-type registry,
+     and ``let x = function()`` (also ``function().method()``) through
+     the declared return type of the one function the name reaches from
+     this file. The map is per FILE, first writer wins: a variable name
+     typed in one function types the same name in the others.
    - Generic trait methods (``into``, ``clone``, ...; the shared
      ``SUPPRESSED_METHOD_NAMES`` set) are barred from short-name
      resolution, and a bare call that matches a *different* impl's method
@@ -153,7 +165,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyzer_disclosure import SUPPRESSED_METHOD_NAMES
 from hypergumbo_core.ir import (
@@ -591,6 +603,7 @@ def _extract_var_types_rust(
     root_node: "tree_sitter.Node",
     source: bytes,
     method_return_type_registry: dict[str, str] | None,
+    free_fn_return_type: "Callable[[str], str | None] | None" = None,
 ) -> dict[str, str]:
     """Build a file-scoped ``var_name -> type_name`` map for Rust.
 
@@ -618,6 +631,9 @@ def _extract_var_types_rust(
        bound in ``var_types`` and the registry knows
        ``ReceiverType::method``'s return type, ``x`` adopts that return
        type. Without the registry, this returns no binding (fail-open).
+    6. ``let x = function(...)`` — the declared return type of the one
+       function the name reaches from this file (``free_fn_return_type``;
+       see ``_infer_type_from_rust_rhs``).
 
     Returns an empty dict when no patterns match; never raises.
     """
@@ -675,7 +691,7 @@ def _extract_var_types_rust(
             if value_node is None:
                 continue
             inferred = _infer_type_from_rust_rhs(
-                value_node, source, var_types, registry,
+                value_node, source, var_types, registry, free_fn_return_type,
             )
             if inferred:
                 var_types[var_name] = inferred
@@ -820,6 +836,7 @@ def _infer_type_from_rust_rhs(
     source: bytes,
     var_types: dict[str, str],
     method_return_type_registry: dict[str, str],
+    free_fn_return_type: "Callable[[str], str | None] | None" = None,
 ) -> str | None:
     """Try to infer the type a Rust let-binding RHS would yield.
 
@@ -827,6 +844,13 @@ def _infer_type_from_rust_rhs(
     rules in ``_extract_var_types_rust``. Returns the bare type name or
     ``None`` (fail-open). Pulled out as a helper so the same logic can
     be reused at edge-extraction time if needed.
+
+    ``free_fn_return_type`` answers for a plain function call
+    (``get_db()``): the declared return type of the ONE function the name
+    reaches from this file, or ``None`` (``_rust_free_fn_return_types``).
+    It is a callable and not the registry because the registry is keyed by
+    bare name across the whole tree, first writer wins, and two modules may
+    each declare a ``get_db`` (INV-hupis).
     """
     # Strip the wrappers that project `Result<T, E>` / `Option<T>` to `T`,
     # because none of them changes WHICH type the receiver is (WI-papar).
@@ -869,6 +893,10 @@ def _infer_type_from_rust_rhs(
         func_node = _find_child_by_field(value_node, "function")
         if func_node is None:
             return None  # pragma: no cover - call_expression always has a function field
+        if func_node.type == "identifier":
+            if free_fn_return_type is None:
+                return None
+            return free_fn_return_type(node_text(func_node, source))
         if func_node.type == "scoped_identifier":
             path_node = _find_child_by_field(func_node, "path")
             if path_node is not None:
@@ -2934,6 +2962,20 @@ class _InTreeCrates:
         elif head in self.by_name:
             crate_dir, rest = self.by_name[head], segments[1:]
             module_dir = crate_dir / "src"
+        elif own_crate is not None and inline_depth == 0:
+            # ``use util::helper;`` beside ``mod util;``: since the 2018
+            # edition a path may start at a child module of the module it is
+            # written in. Positive evidence only -- the child module has a
+            # file -- so ``use serde::Serialize`` still resolves to nothing
+            # (INV-hupis).
+            crate_dir, rest = own_crate, segments
+            here = Path(rel)
+            module_dir = (
+                here.parent if here.name in ("lib.rs", "main.rs", "mod.rs")
+                else here.parent / here.stem
+            )
+            if self._module_file(module_dir / head, crate_dir) is None:
+                return None
         else:
             return None
         best = self._module_file(module_dir, crate_dir)
@@ -3254,6 +3296,35 @@ def _rust_type_is_external(
     return imported is not None and "::" in imported and outside(imported)
 
 
+def _rust_declaring_owner(
+    node: "tree_sitter.Node", source: bytes,
+) -> "tuple[str, str] | None":
+    """Who declares the method ``node``: ``("trait", T)`` or ``("type", X)``.
+
+    ``("trait", T)`` for a method in ``trait T { .. }`` or in
+    ``impl T for X { .. }``; ``("type", X)`` for one in ``impl X { .. }``;
+    ``None`` for a free function. A trait's method and its implementations
+    share an owner: they are one method, declared once and implemented
+    several times. Two different owners are two unrelated methods that happen
+    to share a spelling (INV-hupis).
+    """
+    parent = node.parent
+    while parent is not None and parent.type not in ("impl_item", "trait_item", "function_item"):
+        parent = parent.parent
+    if parent is None or parent.type == "function_item":
+        return None
+    if parent.type == "trait_item":
+        name_node = _find_child_by_field(parent, "name")
+        return ("trait", node_text(name_node, source)) if name_node is not None else None
+    trait_node = _find_child_by_field(parent, "trait")
+    type_node = _find_child_by_field(parent, "type")
+    if trait_node is not None:
+        return ("trait", _normalize_rust_type_to_bare_name(node_text(trait_node, source)) or "")
+    if type_node is not None:
+        return ("type", _normalize_rust_type_to_bare_name(node_text(type_node, source)) or "")
+    return None  # pragma: no cover - an impl always names a type
+
+
 def _rust_use_path_function(
     path: "str | None",
     file_path: str,
@@ -3284,6 +3355,49 @@ def _rust_use_path_function(
     return hit[0] if hit is not None else None
 
 
+def _rust_free_fn_return_types(
+    file_path: str,
+    file_functions: "list[Symbol]",
+    use_aliases: dict[str, str],
+    candidates_by_name: "dict[str, list[Symbol]]",
+    crates: "_InTreeCrates | None",
+) -> "Callable[[str], str | None]":
+    """What a plain call ``name(..)`` in ``file_path`` returns, by declared type (INV-hupis).
+
+    ``let db = get_db(); db.execute()`` and ``get_db().execute()`` type their
+    receiver from ``get_db``'s signature. The function is the one the name
+    reaches, on evidence, in this order: the single free function of that
+    name declared in this file; the function the file's ``use`` path names
+    (``_rust_use_path_function``); the single free function of that name in
+    the whole tree. Two candidates at any step with nothing to choose between
+    them answer ``None``: an untyped receiver is unresolved, a wrongly typed
+    one is a false edge. A tuple-struct constructor, a closure variable or an
+    external function has no function symbol and answers ``None`` too.
+    """
+    own: dict[str, list[Symbol]] = {}
+    for sym in file_functions:
+        if sym.kind == "function":
+            own.setdefault(sym.name, []).append(sym)
+
+    def return_type(name: str) -> "str | None":
+        here = own.get(name, [])
+        if len(here) > 1:
+            return None
+        target = here[0] if here else _rust_use_path_function(
+            use_aliases.get(name), file_path, candidates_by_name, crates,
+        )
+        if target is None and name not in use_aliases:
+            everywhere = [
+                c for c in candidates_by_name.get(name, ()) if c.kind == "function"
+            ]
+            target = everywhere[0] if len(everywhere) == 1 else None
+        if target is None:
+            return None
+        return _extract_rust_return_type_name(target.signature)
+
+    return return_type
+
+
 def _rust_use_path_of_call(full_scoped_name: str, use_aliases: dict[str, str]) -> "str | None":
     """The absolute path a SCOPED call names through the file's ``use``
     bindings: ``m::h()`` after ``use a::m``, or a path written from ``crate`` /
@@ -3312,6 +3426,7 @@ def _extract_edges_from_file(
     var_types: dict[str, str] | None = None,
     var_type_paths: dict[str, str] | None = None,
     file_functions: list[Symbol] | None = None,
+    free_fn_return_type: "Callable[[str], str | None] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -3371,6 +3486,16 @@ def _extract_edges_from_file(
         s.qualified_name: s for s in (file_functions or ())
         if s.kind == "function" and s.qualified_name
     }
+    # This file's methods by short name. ``local_symbols`` keeps one symbol
+    # per short name, the last one declared, so with two of a name its entry
+    # is a pick by declaration order (INV-hupis).
+    _file_methods: dict[str, list[Symbol]] = {}
+    for _fs in file_functions or ():
+        if _fs.kind == "method":
+            _file_methods.setdefault(_fs.name.rsplit("::", 1)[-1], []).append(_fs)
+    _method_owner: dict[str, tuple[str, str]] = (
+        getattr(analyzer, "_method_owner", None) or {}
+    )
 
     for node in iter_tree(tree.root_node):
         # Detect trait implementations: impl Trait for Struct → implements edge
@@ -3898,6 +4023,7 @@ def _extract_edges_from_file(
                                         analyzer,
                                         "_method_return_type_registry", None,
                                     ) or {},
+                                    free_fn_return_type,
                                 )
                                 if recv_type:
                                     # The inferred receiver type is a concrete
@@ -3948,6 +4074,56 @@ def _extract_edges_from_file(
                             _local = local_symbols.get(callee_name)
                             if _receiver_is_external:
                                 _local = None
+                            if (
+                                _local is not None
+                                and inner.type != "identifier"
+                                and _local.kind == "method"
+                            ):
+                                # ``x.execute()`` / ``T::execute()`` that no
+                                # typed strategy answered. The table's entry
+                                # is the last ``execute`` declared in the
+                                # file, whoever declares it (INV-hupis).
+                                _here = _file_methods.get(callee_name, [])
+                                _owners_here = {_method_owner.get(m.id) for m in _here}
+                                _owner = next(iter(_owners_here)) if len(_owners_here) == 1 else None
+                                if len(_owners_here) > 1:
+                                    # Unrelated owners in this file: the list
+                                    # resolver below sees them all and refuses
+                                    # the tie.
+                                    _local = None
+                                elif len(_here) > 1 and _owner is not None:
+                                    _everywhere = [
+                                        c for c in (
+                                            method_resolver.registry.get(callee_name, [])
+                                            if method_resolver is not None else _here
+                                        ) if c.kind == "method"
+                                    ]
+                                    if is_method_call and _owner[0] == "trait" and all(
+                                        _method_owner.get(c.id) == _owner for c in _everywhere
+                                    ):
+                                        # One trait and its implementations,
+                                        # and nothing else in the tree is
+                                        # named so: one method, declared
+                                        # once. ``recv.m()`` is a call to the
+                                        # trait's method, the one symbol that
+                                        # does not depend on which ``impl``
+                                        # comes last. A path call names its
+                                        # owner itself (``<X as Other>::m``),
+                                        # and this file's trait may not be it.
+                                        _declared = (kind_index or {}).get(
+                                            f"{_owner[1]}::{callee_name}", [],
+                                        )
+                                        _local = _declared[0] if len(_declared) == 1 else None
+                                    elif _owner[0] == "trait":
+                                        # Another type declares the name too
+                                        # (``args.mode.update()`` in a file of
+                                        # ``impl Flag for X``), so the receiver
+                                        # may be that type; or the call is a
+                                        # path call.
+                                        _local = None
+                                    # ``("type", X)``: two ``impl X`` blocks
+                                    # declare it (``#[cfg]`` alternatives) --
+                                    # one method of one type; the entry stays.
                             if (
                                 _local is not None
                                 and inner.type != "identifier"
@@ -4399,6 +4575,7 @@ def _extract_edges_from_file(
                                                     "_method_return_type_registry",
                                                     None,
                                                 ) or {},
+                                                free_fn_return_type,
                                             )
                                             if _cr is not None
                                             and _cr.type in (
@@ -4873,6 +5050,9 @@ class RustAnalyzer(TreeSitterAnalyzer):
     # them for ``use`` resolution.
     _seen_files: "tuple[str, dict[str, Path]] | None" = None
     _crates: "_InTreeCrates | None" = None
+    # INV-hupis: who declares each method seen this run (``_rust_declaring_owner``),
+    # by symbol id; reset with ``_seen_files``.
+    _method_owner: "dict[str, tuple[str, str]] | None" = None
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -4882,8 +5062,21 @@ class RustAnalyzer(TreeSitterAnalyzer):
         if self._seen_files is None or self._seen_files[0] != run.execution_id:
             self._seen_files = (run.execution_id, {})
             self._crates = None
+            self._method_owner = {}
         self._seen_files[1][rel_path] = file_path
-        return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        owners = self._method_owner if self._method_owner is not None else {}
+        self._method_owner = owners
+        analysis = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        # Who declares each method, for the short-name fallback of the edge
+        # pass: it must tell a trait and its implementations (one method)
+        # from two types that share a spelling, across files (INV-hupis).
+        for symbol in analysis.symbols:
+            declaration = analysis.node_for_symbol.get(symbol.id)
+            if symbol.kind == "method" and declaration is not None:
+                owner = _rust_declaring_owner(declaration, source)
+                if owner is not None:
+                    owners[symbol.id] = owner
+        return analysis
 
     def in_tree_crates(self) -> _InTreeCrates:
         """This run's crate layout, built on first use in the edge pass, when
@@ -5003,8 +5196,12 @@ class RustAnalyzer(TreeSitterAnalyzer):
         method_return_type_registry = getattr(
             self, "_method_return_type_registry", {},
         )
+        free_fn_return_type = _rust_free_fn_return_types(
+            rel_path, file_syms, import_aliases, kind_index, self.in_tree_crates(),
+        )
         var_types = _extract_var_types_rust(
             tree.root_node, source, method_return_type_registry,
+            free_fn_return_type,
         )
         var_type_paths = _extract_qualified_var_type_paths(
             tree.root_node, source,
@@ -5022,6 +5219,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
             var_types=var_types,
             var_type_paths=var_type_paths,
             file_functions=file_syms,
+            free_fn_return_type=free_fn_return_type,
         )
 
     def extract_usage_contexts_from_file(

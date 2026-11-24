@@ -81,8 +81,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
             "order:decoy/right"),
     "python": ("right", "right", "right", "right", "unresolved", "unresolved", "right"),
     "ruby": ("unresolved", "unresolved", "right", "no_edge", "no_edge", "no_edge", "order:decoy/right"),
-    "rust": ("order:decoy/right", "order:decoy/right", "right", "order:decoy/right", "picked", "n/a",
-             "order:decoy/right"),
+    "rust": ("right", "right", "right", "unresolved", "unresolved", "n/a", "right"),
     "scala": ("right", "right", "right", "right", "unresolved", "n/a", "unresolved"),
     "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right"),
     "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right"),
@@ -91,7 +90,6 @@ MATRIX: dict[str, tuple[str, ...]] = {
 #: Every guess in ``MATRIX`` and the open item that owns it. INV-jutog states
 #: the invariant all of them break.
 GUESSES: dict[tuple[str, str], str] = {
-    **{("rust", shape): "INV-hupis" for shape in ("var", "chain", "inherited", "amb_ext", "import")},
     **{("groovy", shape): "WI-tiluh" for shape in ("var", "inherited", "amb_ext", "amb_param", "import")},
     **{("objc", shape): "WI-mokul" for shape in ("var", "chain", "ctor", "inherited", "amb_ext", "amb_param")},
     **{("csharp", shape): "WI-dovoz" for shape in ("inherited", "amb_ext", "import")},
