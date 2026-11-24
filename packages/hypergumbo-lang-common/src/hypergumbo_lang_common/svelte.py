@@ -38,7 +38,9 @@ Identity
 Every symbol mints ``make_doc_symbol_ids`` from its own name, so the
 id's name slot is the sanitized name (ADR-0036 Ruling 1), and with the chain
 of elements and control-flow blocks around it (``div/if:x``; the element by its tag name, the
-block by the name its own symbol hashes), so ``{#if x}`` in a ``<div>`` and
+block by its type and expression as its own name is, but with the expression
+in canonical spacing, ``layout_free``, since scheme v19; the block's own name
+keeps the expression as written), so ``{#if x}`` in a ``<div>`` and
 the same block in a ``<section>`` are two identities and deleting the first
 moves nothing (they tied, and the per-file split pass numbered them, before
 INV-punig; ADR-0035 §1, scheme v9). Two identical blocks in one chain are a
@@ -64,6 +66,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     ancestor_labels,
     html_element_tag,
+    layout_free,
     make_doc_symbol_ids,
     make_file_id,
     make_module_import_dst,
@@ -175,10 +178,16 @@ def _block_expression(node: "tree_sitter.Node") -> str:
 
 def _scope_label(node: "tree_sitter.Node") -> Optional[str]:
     """The scope an ancestor opens (see the module docstring): an element its
-    tag name, a control-flow block the name its own symbol hashes."""
+    tag name, a control-flow block its type and the first 20 characters of
+    its expression in canonical spacing (``if:count > 0``; WI-radim).
+
+    The expression is code, so its layout is not an id input of what the
+    block holds: ``{#if count  >\n 0}`` labels as ``{#if count > 0}`` does.
+    (The block's own name keeps its expression as written: whether a doc
+    symbol's name is hashed layout-free is open.)"""
     block_type = _BLOCK_TYPES.get(node.type)
     if block_type is not None:
-        return f"{block_type}:{_block_expression(node)[:20]}"
+        return f"{block_type}:{layout_free(_block_expression(node))[:20]}"
     return html_element_tag(node)
 
 

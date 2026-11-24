@@ -47,8 +47,11 @@ Identity
 Every symbol mints ``make_doc_symbol_ids`` from its own name, so the
 id's name slot is the sanitized name (ADR-0036 Ruling 1). A directive and a
 slot hash the chain of elements around their element (``template/div``), and a directive
-also the expression it binds, so ``<p v-if="loading">`` and ``<p
-v-if="error">`` under one ``div`` are two identities and deleting the first
+also the expression it binds, in canonical spacing (``layout_free``: the
+expression is code, so ``tab  ===  'a'`` is ``tab === 'a'``, a string
+keeping its spaces; until scheme v19 it was hashed as written), so ``<p
+v-if="loading">`` and ``<p v-if="error">`` under one ``div`` are two
+identities and deleting the first
 moves nothing (they tied, and the per-file split pass numbered them, before the
 WI-tusad scheme bump); a ``<style>`` block hashes its attributes (``scoped``,
 ``module``, ``lang``), so a global and a scoped block do not tie. Two identical
@@ -77,6 +80,7 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     distinguish_same_line_ids,
     html_element_tag,
+    layout_free,
     make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
@@ -192,6 +196,26 @@ def _attribute_value(attribute: "tree_sitter.Node") -> str:
         if child.type == "quoted_attribute_value":
             return _get_node_text(child)[1:-1]
     return ""
+
+
+def _split_directive_attribute(text: str, value: str) -> list[tuple[str, str]]:
+    """The directives one ``directive_attribute`` node holds, each as
+    ``(its text, its bound value)``.
+
+    tree-sitter-vue does not know Vue 3.4's valueless same-name shorthand
+    (``:album`` for ``:album="album"``): it reads it and the attributes after
+    it as ONE node, ``:album\n    :layout="x"``, whose text the analyzer took
+    for one directive named ``v-bind:album\n    :layout`` (WI-radim: koel
+    had 13 such names, newline included). Each whitespace-separated name
+    before the ``=`` is its own directive; only the last has the value. A
+    directive name holds no whitespace, so a node with one name is returned
+    as it is.
+    """
+    head = text.split("=", 1)[0]
+    names = head.split()
+    if len(names) <= 1:
+        return [(text, value)]
+    return [(name, "") for name in names[:-1]] + [(names[-1] + text[len(head):], value)]
 
 
 def _enclosing_elements(tag: "tree_sitter.Node") -> list[str]:
@@ -568,27 +592,28 @@ class VueAnalyzer(TreeSitterAnalyzer):
             if child.type == "tag_name":
                 tag_name = _get_node_text(child)
             elif child.type == "directive_attribute":
-                directive_text = _get_node_text(child)
-                value = _attribute_value(child)
-                if directive_text.startswith("@"):
-                    directives.append(f"v-on:{directive_text[1:].split('=')[0]}")
-                    directive_values.append(value)
-                    handler_expressions.append(
-                        _extract_handler_name(directive_text)
-                    )
-                elif directive_text.startswith(":"):
-                    directives.append(f"v-bind:{directive_text[1:].split('=')[0]}")
-                    directive_values.append(value)
-                    handler_expressions.append("")
-                elif directive_text.startswith("v-"):
-                    directives.append(directive_text.split("=")[0])
-                    directive_values.append(value)
-                    if directive_text.startswith("v-on"):
+                for directive_text, value in _split_directive_attribute(
+                    _get_node_text(child), _attribute_value(child),
+                ):
+                    if directive_text.startswith("@"):
+                        directives.append(f"v-on:{directive_text[1:].split('=')[0]}")
+                        directive_values.append(value)
                         handler_expressions.append(
                             _extract_handler_name(directive_text)
                         )
-                    else:
+                    elif directive_text.startswith(":"):
+                        directives.append(f"v-bind:{directive_text[1:].split('=')[0]}")
+                        directive_values.append(value)
                         handler_expressions.append("")
+                    elif directive_text.startswith("v-"):
+                        directives.append(directive_text.split("=")[0])
+                        directive_values.append(value)
+                        if directive_text.startswith("v-on"):
+                            handler_expressions.append(
+                                _extract_handler_name(directive_text)
+                            )
+                        else:
+                            handler_expressions.append("")
             elif child.type == "attribute":
                 attr_name = ""
                 for attr_child in child.children:
@@ -676,6 +701,8 @@ class VueAnalyzer(TreeSitterAnalyzer):
             # make_doc_symbol_ids helper (INV-dulah).
             # The bound expression tells two same directives on sibling
             # elements apart (``<p v-if="loading">`` / ``<p v-if="error">``).
+            # It is code, so it is hashed in canonical spacing (WI-radim):
+            # ``tab  ===  'a'`` is ``tab === 'a'``; a string keeps its spaces.
             # The name is the string both ids are minted from: the element
             # and the directive (``button:v-on:click``). The id's name slot
             # is then the sanitized name (ADR-0036 Ruling 1), and neither id
@@ -685,7 +712,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
             symbol_id, stable_id = make_doc_symbol_ids(
                 "vue", rel_path, "directive", directive_symbol_name,
                 span.start_line, span.end_line,
-                scope=[*enclosing, f"={bound}"] if bound else enclosing,
+                scope=[*enclosing, f"={layout_free(bound)}"] if bound else enclosing,
             )
 
             meta: dict[str, str | bool] = {
