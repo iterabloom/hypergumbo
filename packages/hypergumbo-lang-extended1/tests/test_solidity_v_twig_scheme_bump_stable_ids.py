@@ -119,7 +119,7 @@ def test_v_plain_function_id_is_unchanged(tmp_path: Path) -> None:
     node = next(n for n in tree.root_node.children
                 if n.type == "function_declaration" and b"helper" in n.text)
     assert helper.stable_id == analyzer.compute_stable_id(
-        node, kind="fn", name="helper",
+        node, kind="function", name="helper",
         file_stable_id=make_file_stable_id("v", "src/demo.v"),
     )
 

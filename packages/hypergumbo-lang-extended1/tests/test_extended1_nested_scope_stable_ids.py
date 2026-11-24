@@ -182,9 +182,9 @@ def test_lean_and_agda_name_table_kinds_by_their_scope(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(("text", "expected"), [
-    ("module m\n\nstruct A {}\n", [("class", "A", {"is_public": False, "field_count": 0})]),
+    ("module m\n\nstruct A {}\n", [("struct", "A", {"is_public": False, "field_count": 0})]),
     ("module m\n\npub struct A {\n\tx int\n\ty string\n}\n",
-     [("class", "A", {"is_public": True, "field_count": 2})]),
+     [("struct", "A", {"is_public": True, "field_count": 2})]),
     ("module m\n\nenum E {\n\ta\n\tb\n}\n", [("enum", "E", {"is_public": False, "variant_count": 2})]),
     ("module m\n\ninterface I {\n}\n", [("interface", "I", {"is_public": False})]),
 ])

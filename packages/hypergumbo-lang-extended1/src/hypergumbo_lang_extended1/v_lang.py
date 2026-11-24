@@ -11,8 +11,8 @@ Implementation approach:
 - Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for V grammar
 - Handles V-specific constructs: pub visibility (meta ``is_public``), structs
-  (kind ``class``), enums and interfaces; ``module`` declarations are not
-  handled
+  (kind ``struct``), unions (kind ``union``), enums and interfaces; ``module``
+  declarations are not handled
 
 Identity (WI-tusad): a plain function mints ``compute_stable_id``. A method
 ``fn (b B) run(x int)`` has no name of its own beyond ``run``, and its first
@@ -31,11 +31,21 @@ A method's ``signature`` shows its receiver TYPE and declared parameters
 
 Key constructs extracted:
 - function_declaration: fn name(params) return_type { body }
-- struct_declaration: struct Name { fields } (kind ``class``)
+- struct_declaration: struct Name { fields } (kind ``struct``), or
+  union Name { fields } (kind ``union``)
 - enum_declaration: enum Name { variants }
 - interface_declaration: interface Name { methods }
 - import_declaration: import module
 - call_expression: func(args)
+
+Kinds and identity (WI-lilab, stable-id scheme v19): a struct is kind
+``struct`` and a union kind ``union``, the registered kinds (ADR-0027) for
+these constructs (Go, Rust, C, Zig and Odin report ``struct``; Zig, F# and
+Odin report ``union``); both were
+``class`` before v19, and the stable id hashed ``struct`` for both. Every
+stable id hashes the Symbol's kind: a function or method hashed the role
+word ``fn``, a union ``struct``; a struct's stable id did not move (its node
+id did).
 """
 
 from __future__ import annotations
@@ -187,13 +197,10 @@ def _extract_return_type(node: "tree_sitter.Node") -> Optional[str]:
     return None
 
 
-#: Declaration keywords whose single-letter name the grammar misreads, with the
-#: kind word the stable id hashes and the emitted kind (as the regular branches
-#: below). The node id's kind slot is the emitted kind (ADR-0036 Ruling 2).
-_V_TYPE_KEYWORDS: dict[str, tuple[str, str]] = {
-    "struct": ("struct", "class"), "enum": ("enum", "enum"),
-    "interface": ("interface", "interface"),
-}
+#: Declaration keywords whose single-letter name the grammar misreads. Each
+#: keyword is the emitted kind, which the node id's kind slot (ADR-0036 Ruling 2)
+#: and the stable id both carry, as in the regular branches below.
+_V_TYPE_KEYWORDS: frozenset[str] = frozenset({"struct", "enum", "interface"})
 
 
 def _recover_single_letter_type(
@@ -338,14 +345,14 @@ class VAnalyzer(TreeSitterAnalyzer):
                 }
                 if receiver is None:
                     stable_id = self.compute_stable_id(
-                        node, kind="fn", name=name, file_stable_id=file_stable_id,
+                        node, kind="function", name=name, file_stable_id=file_stable_id,
                     )
                 else:
                     # A method: the receiver type scopes it, and its arity is
                     # the declared parameter list, not the receiver list
                     # compute_stable_id would read (WI-tusad scheme bump).
                     stable_id = node_declared_arity_stable_id(
-                        self, node, kind="fn", name=name, meta=meta,
+                        self, node, kind="function", name=name, meta=meta,
                         file_stable_id=file_stable_id,
                         qualified_name=nested_qualified_name(
                             [_receiver_type(receiver)], name,
@@ -381,11 +388,14 @@ class VAnalyzer(TreeSitterAnalyzer):
             if name:
                 field_count = _count_struct_fields(node)
                 is_pub = _is_public(node)
+                # The grammar parses ``union U {...}`` as a struct_declaration
+                # whose keyword child is ``union``.
+                kind = "union" if any(c.type == "union" for c in node.children) else "struct"
                 sym = Symbol(
-                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
-                    stable_id=self.compute_stable_id(node, kind="struct", name=name, file_stable_id=file_stable_id),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, kind),
+                    stable_id=self.compute_stable_id(node, kind=kind, name=name, file_stable_id=file_stable_id),
                     name=name,
-                    kind="class",
+                    kind=kind,
                     language="v",
                     path=rel_path,
                     span=Span(
@@ -452,7 +462,7 @@ class VAnalyzer(TreeSitterAnalyzer):
 
         elif node.type == "ERROR" and (recovered := _recover_single_letter_type(node)):
             keyword, name, body, is_pub = recovered
-            id_kind, kind = _V_TYPE_KEYWORDS[keyword]
+            kind = keyword
             rec_meta: dict[str, object] = {"is_public": is_pub}
             if keyword == "struct":
                 rec_meta["field_count"] = _body_member_lines(body)
@@ -460,7 +470,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                 rec_meta["variant_count"] = _body_member_lines(body)
             sym = Symbol(
                 id=make_symbol_id("v", rel_path, node.start_point[0] + 1, body.end_point[0] + 1, name, kind),
-                stable_id=self.compute_stable_id(node, kind=id_kind, name=name, file_stable_id=file_stable_id),
+                stable_id=self.compute_stable_id(node, kind=kind, name=name, file_stable_id=file_stable_id),
                 name=name,
                 kind=kind,
                 language="v",

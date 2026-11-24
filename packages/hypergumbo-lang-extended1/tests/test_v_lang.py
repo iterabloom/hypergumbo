@@ -159,11 +159,13 @@ class TestAnalyzeV:
         """Should extract struct declarations."""
         result = analyze_v(v_repo)
 
-        structs = [s for s in result.symbols if s.kind == "class"]
+        # A struct is kind ``struct`` (WI-lilab: it was ``class``).
+        structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = {s.name for s in structs}
 
         assert "User" in struct_names
         assert "Point" in struct_names
+        assert not [s for s in result.symbols if s.kind == "class"]
 
     def test_extracts_enums(self, v_repo: Path) -> None:
         """Should extract enum declarations."""
@@ -453,13 +455,13 @@ def _kind_slot_result(tmp_path: Path):
 def test_the_v_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
     result = _kind_slot_result(tmp_path)
     got = sorted((s.kind, s.name) for s in result.symbols)
-    assert got == [('class', 'Point'), ('class', 'T'), ('enum', 'Color'), ('function', 'helper'), ('function', 'main'), ('function', 'sum'), ('interface', 'Shape')], got
+    assert got == [('enum', 'Color'), ('function', 'helper'), ('function', 'main'), ('function', 'sum'), ('interface', 'Shape'), ('struct', 'Point'), ('struct', 'T')], got
 
 
 def test_every_v_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
     """ADR-0036 Ruling 2: the last slot of a node id IS ``Symbol.kind``.
     The ids said ``fn`` on a function and ``struct`` on the ``class`` a struct
-    is emitted as. ``struct T`` is the single-letter name the grammar cannot
+    was emitted as (the kind is ``struct`` since WI-lilab). ``struct T`` is the single-letter name the grammar cannot
     parse: that recovery site took its id word from a table, so only a run
     shows it."""
     result = _kind_slot_result(tmp_path)
@@ -477,3 +479,14 @@ def test_a_v_calls_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
     assert edges
     assert [e.src for e in edges if e.src not in ids] == []
     assert any(e.dst in ids for e in edges)
+
+
+def test_a_v_union_is_kind_union_and_a_struct_kind_struct(tmp_path: Path) -> None:
+    """The grammar parses ``union U {...}`` as a ``struct_declaration`` whose
+    keyword child is ``union``; both were emitted as ``class`` with a stable id
+    hashing ``struct`` (WI-lilab). The struct beside it is the control."""
+    (tmp_path / "types.v").write_text(
+        "union Num {\n\ti int\n\tf f32\n}\n\npub struct Point {\n\tx int\n}\n"
+    )
+    got = sorted((s.kind, s.name) for s in analyze_v(tmp_path).symbols)
+    assert got == [("struct", "Point"), ("union", "Num")], got
