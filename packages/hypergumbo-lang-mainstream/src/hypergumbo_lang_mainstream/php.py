@@ -2,7 +2,11 @@
 """PHP analysis pass using tree-sitter-php.
 
 This analyzer uses tree-sitter-php to parse PHP files and extract:
-- Function declarations (symbols)
+- Function declarations (symbols). A function declared inside another
+  function or a method is the namespace's function (``qualified_name``),
+  and its stable_id hashes its holders too (``App\\A::f::h``,
+  ``_php_holders``), so the ``h`` of two holders do not tie (they did until
+  scheme v19, WI-finam)
 - Class declarations (symbols)
 - Interface, trait and enum declarations (container symbols, so in-file
   interfaces take part in dispatch instead of surfacing as placeholders)
@@ -99,6 +103,7 @@ from hypergumbo_core.analyze.base import (
     record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     defer_unresolved_tie,
     iter_tree,
@@ -317,6 +322,30 @@ _PHP_CONTAINER_KINDS: dict[str, str] = {
     "trait_declaration": "trait",
     "enum_declaration": "enum",
 }
+
+
+def _php_holders(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of the type declarations, methods and functions enclosing
+    ``node``, outermost first: what a nested function's stable_id hashes
+    beside the namespace (WI-finam).
+
+    PHP declares ``function h() {}`` written inside a function or a method
+    in the global (namespace) scope when its holder runs, so its
+    ``qualified_name`` is the namespace's ``h`` whatever holds it, and its id
+    hashed that name alone: the ``h`` of ``A::f``, of ``A::g`` and of
+    ``B::f`` were one id. A closure has no name and adds nothing. PHP has no
+    overloading, so a name tells a holder from its siblings.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _PHP_HOLDER_NODES:
+            return None
+        name_node = n.child_by_field_name("name")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+#: The declarations whose name labels a nested function's holder chain.
+_PHP_HOLDER_NODES = frozenset({*_PHP_CONTAINER_KINDS, "function_definition", "method_declaration"})
 
 
 def _enclosing_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1231,12 +1260,16 @@ def _extract_symbols(
                 signature = _extract_php_signature(node, source)
                 modifiers = _extract_modifiers_php(node)
 
-                # Typed stable_id (spec §6 typed tier)
+                # Typed stable_id (spec §6 typed tier). A function nested
+                # in another or in a method hashes its holders
+                # (``App\\A::f::h``, WI-finam); a top-level one, none.
                 norm_sig = normalize_php_signature(signature)
+                holders = _php_holders(node, source)
                 stable_id = make_typed_stable_id(
                     "function", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
-                    qualified_name=_make_php_qualified_name(namespace_name, None, name),
+                    qualified_name=_make_php_qualified_name(
+                        namespace_name, "::".join(holders) or None, name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 

@@ -38,7 +38,12 @@ over the owner-qualified name (``Mod.Mod.named``). Before, they computed none
 and rode the backstop floor key (kind, file, name). A function declared by a
 bare ``function_signature`` (top level, or local to another function's body)
 hashes its full scope chain (``_dart_scope``; INV-fabih), so a local function
-in two functions no longer ties; the top-level ones keep their values.
+in two functions no longer ties; the top-level ones keep their values. A
+constructor's body labels that chain by the constructor's whole name
+(``C.a``), a setter's by ``p=`` and an operator's by ``operator +``
+(``_dart_member_label``), so the locals of two named constructors, of a
+getter and its setter, or of two operators do not tie (they did until
+scheme v19, WI-finam).
 
 The hashed signature text writes every type. A function's return type is its
 source text, whatever node kind spells it (``List<int>``, ``int?``,
@@ -128,7 +133,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterable, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -137,6 +142,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     ancestor_labels,
+    layout_free,
     defer_bare_method_call,
     defer_unresolved_tie,
     find_child_by_type,
@@ -674,19 +680,60 @@ def _dart_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     enclosing function is read off the ``function_body`` ancestor's preceding
     signature. A top-level function or a method of a top-level class keeps
     its value: there the chain is its owner-qualified name.
+
+    A body is labelled by the name that tells its member from the others
+    (:func:`_dart_member_label`): a constructor by its whole name (``C.a``),
+    a setter by ``p=``, an operator by ``operator +``. Until scheme v19 it
+    was the signature's first identifier, which every constructor of ``C``
+    shares and a getter shares with its setter, and an operator has none, so
+    the locals of two named constructors, of a getter and its setter, or of
+    two operators tied (WI-finam).
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type in ("class_definition", "mixin_declaration", "extension_declaration"):
             name_node = find_child_by_type(n, "identifier")
-        elif n.type == "function_body" and n.prev_named_sibling is not None:
+            return node_text(name_node, source) if name_node is not None else None
+        if n.type == "function_body" and n.prev_named_sibling is not None:
             sig = n.prev_named_sibling
             if sig.type == "method_signature":
                 sig = next((c for c in sig.named_children), sig)
-            name_node = find_child_by_type(sig, "identifier")
-        else:
-            return None
-        return node_text(name_node, source) if name_node is not None else None
+            return _dart_member_label(sig, source)
+        return None
     return ancestor_labels(node, label)
+
+
+#: Signatures whose whole dotted name names a constructor (``C.named``).
+_DART_CONSTRUCTOR_SIGNATURES: Final = frozenset({
+    "constructor_signature", "factory_constructor_signature",
+    "redirecting_factory_constructor_signature",
+})
+
+
+def _dart_member_label(sig: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The scope label of the body after signature ``sig``
+    (:func:`_dart_scope`): its name, which Dart keeps unique among a type's
+    members once a constructor is read whole (``C``, ``C.a``), a setter as
+    ``p=`` (the name Dart gives it beside its getter ``p``) and an operator
+    as ``operator`` and its token (``operator +``). Dart has no overloading,
+    so the name is the whole discriminant."""
+    if sig.type in _DART_CONSTRUCTOR_SIGNATURES:
+        names = [node_text(c, source) for c in sig.children if c.type == "identifier"]
+        return ".".join(names) if names else None
+    if sig.type == "operator_signature":
+        # The text between ``operator`` and the parameter list, whatever
+        # nodes the grammar makes of it (``+``, ``==``, ``[]``, ``[]=``, ``~``).
+        keyword = next((c for c in sig.children if c.type == "operator"), None)
+        params = find_child_by_type(sig, "formal_parameter_list")
+        if keyword is None or params is None:  # pragma: no cover - grammar shape
+            return None
+        token = source[keyword.end_byte:params.start_byte].decode("utf-8", "replace")
+        return f"operator {layout_free(token)}"
+    name_node = find_child_by_type(sig, "identifier")
+    if name_node is None:  # pragma: no cover - every other signature names itself
+        return None
+    name = node_text(name_node, source)
+    return f"{name}=" if sig.type == "setter_signature" else name
+
 
 
 # WI-jusus (emission-parity): value-declaration list nodes and the contexts that
