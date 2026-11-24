@@ -1,0 +1,25 @@
+- op: create  # 0722
+  at: '2026-11-24T10:16:05Z'  # 0722
+  by: agent  # 0722
+  actor: jgstern_agent  # 0722
+  clock: 1  # 0722
+  nonce: '0722'  # 0722
+  data:  # 0722
+    kind: work_item  # 0722
+    title: "flask: the request object (request.form / args / json) is not a taint source"  # 0722
+    status: todo_soft  # 0722
+    priority: 3  # 0722
+    parent:  # 0722
+    tags:  # 0722
+    - taint  # 0722
+    - python  # 0722
+    - flask  # 0722
+    - catalogue  # 0722
+    - outside_review_10_0_0  # 0722
+    - reported_not_rerun  # 0722
+    isbefore: []  # 0722
+    duplicate_of: []  # 0722
+    not_duplicate_of: []  # 0722
+    pr_ref:  # 0722
+    description: "WHAT (as reported)\nFlask's request object (request.form, request.args, request.json, request.files) is not a taint source. On flaskr the verdict text says the 8 request handlers \"receive network data that no taint source represents\", so \"form input reaches the database\" cannot be found whatever the call graph resolves. The 10.0.0 changelog added the equivalent source for Express req, Go *http.Request and Java servlets.\n\nNOT CHECKED\nThe taint catalogues on dev (python.yaml, python-web-and-orm.yaml were not read for a flask.request row). Django's request, FastAPI/Starlette parameters, aiohttp: not checked by the reviewer or here.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 0722
+    fields: {}  # 0722

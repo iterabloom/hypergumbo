@@ -1,0 +1,21 @@
+- op: create  # fe6b
+  at: '2026-11-24T10:14:51Z'  # fe6b
+  by: agent  # fe6b
+  actor: jgstern_agent  # fe6b
+  clock: 1  # fe6b
+  nonce: fe6b  # fe6b
+  data:  # fe6b
+    kind: work_item  # fe6b
+    title: "ADR bookkeeping: 0004-0006 dated 2025, ADR-0006 still prefers false positives, ADR-0035 titled v6"  # fe6b
+    status: todo_soft  # fe6b
+    priority: 4  # fe6b
+    parent:  # fe6b
+    tags:  # fe6b
+    - docs  # fe6b
+    - adr  # fe6b
+    isbefore: []  # fe6b
+    duplicate_of: []  # fe6b
+    not_duplicate_of: []  # fe6b
+    pr_ref:  # fe6b
+    description: "WHAT\nThree bookkeeping defects in docs/adr/, each read on dev fc8c8cb19:\n1. ADR-0004, ADR-0005 and ADR-0006 carry Date: 2025-01-14, 2025-01-15, 2025-01-21. The project's first release is December 2025; the year is wrong.\n2. ADR-0006 (Accepted, updated 2026-04-07) still states at line 104 \"False positives (extra edges) are preferable to false negatives (missing edges)\". The 10.0.0 direction is the opposite for an ambiguous call (it stays unresolved). Neither document names the other.\n3. ADR-0035's file name and title still say \"stable-id v6\" while the scheme is v19.\n\nREPRO\ngrep -n \"^Date\" docs/adr/0004*.md docs/adr/0005*.md docs/adr/0006*.md; sed -n 104p docs/adr/0006-variable-type-inference.md; ls docs/adr | grep 0035.\n\nNOT CHECKED\n- Whether line 104 is still the rule anywhere (for example for external targets) or is superseded outright: that is a decision for the owner, not a typo.\n- The reviewer's other count (\"about a third of the records have no status line in a consistent format\"): not re-counted. Its claim that the index omits 0025 and 0026 is wrong: docs/adr/README.md line 74 accounts for both.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # fe6b
+    fields: {}  # fe6b

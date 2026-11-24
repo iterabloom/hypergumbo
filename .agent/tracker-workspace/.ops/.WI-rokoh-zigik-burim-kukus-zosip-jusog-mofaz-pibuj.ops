@@ -1,0 +1,24 @@
+- op: create  # 12c6
+  at: '2026-11-24T10:16:14Z'  # 12c6
+  by: agent  # 12c6
+  actor: jgstern_agent  # 12c6
+  clock: 1  # 12c6
+  nonce: 12c6  # 12c6
+  data:  # 12c6
+    kind: work_item  # 12c6
+    title: "Test code and boundary claims: verify-claims counts it, io-boundaries does not; sketch -x and scip-python ignore the exclusion in the saved survey"  # 12c6
+    status: todo_soft  # 12c6
+    priority: 3  # 12c6
+    parent:  # 12c6
+    tags:  # 12c6
+    - verify_claims  # 12c6
+    - io_boundary  # 12c6
+    - cli  # 12c6
+    - outside_review_10_0_0  # 12c6
+    - reported_not_rerun  # 12c6
+    isbefore: []  # 12c6
+    duplicate_of: []  # 12c6
+    not_duplicate_of: []  # 12c6
+    pr_ref:  # 12c6
+    description: "WHAT (as reported)\nCommands disagree on test code for boundary claims, against the 10.0.0 statement that every command agrees on what is test code.\n1. verify-claims counts a boundary claim's evidence in test code: on flaskr \"never writes to the filesystem\" reported 3 writes, 2 of them in tests; io-boundaries on the same survey shows 1. verify-claims has no test option for boundary claims (--include-non-production-sources applies to taint claims).\n2. sketch -x leaves tests out of the summary only: the survey it saves still holds the test symbols (33 on flaskr).\n3. With survey -e tests, the scip-python backend still added an edge from tests/test_db.py.\nWorkaround the reviewer found: survey . -e tests, then verify-claims --input; a path pattern does not catch tests that sit beside the code.\n\nNOT CHECKED\nWhether verify-claims' count including tests is deliberate (a test's write is a write the repository performs).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 12c6
+    fields: {}  # 12c6
