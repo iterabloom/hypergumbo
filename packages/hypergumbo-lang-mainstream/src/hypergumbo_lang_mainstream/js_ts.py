@@ -26,15 +26,20 @@ extract:
 - The typed stable_id leaves a function or constructor type's parameter
   names out of every type it hashes (``_jsts_without_function_type_names``:
   ``(x: number) => void`` reads ``(number) => void``; a rest keeps ``...``,
-  an optional ``?``, a ``this:`` parameter stays; a default value is hashed
-  as written). Through scheme v16 a function type was hashed as written, so
-  renaming a callback's inner parameter moved the id
+  an optional ``?``, a ``this:`` parameter stays). Through scheme v16 a
+  function type was hashed as written, so renaming a callback's inner
+  parameter moved the id
+- A parameter's default value is hashed as ``...``, at any depth of the
+  parameter (``_jsts_hashed_text``; stable-id v19, owner ruling 2026-11-23):
+  ``f(x: number = 5)`` and ``f(x: number = 6)`` are one function, and
+  ``f(x: number)`` another. Through v18 a TypeScript default was hashed as
+  written
 - The typed stable_id reads its texts from the syntax tree
   (``_jsts_hashed_text``), where ``layout_free`` (language-blind) cannot tell
   layout from code: the ``&`` or ``|`` that opens an intersection or union
   written one member per line is left out (``x:\\n  & A\\n  & B`` hashes as
   ``A & B``, ``() =>\\n  | A\\n  | B`` as ``() => A | B``), and a
-  regex default value writes the whitespace of its pattern as escapes
+  hashed regex (a decorator argument) writes the whitespace of its pattern as escapes
   (``/a b/`` hashes as ``/a\\x20b/``, so ``/a  b/`` stays apart), and a
   comment is left out. The displayed signature keeps all three
 - A static class member hashes ``static`` in the typed stable_id's
@@ -1625,12 +1630,32 @@ def _regex_pattern_hashed(pattern: str) -> str:
 #: A type node whose first child is this operator opens with it, the one a
 #: formatter writes when it puts one member per line (see :func:`_jsts_hashed_text`).
 _LEADING_OPERATOR_TYPES = {"intersection_type": "&", "union_type": "|"}
+#: A node that can hold a parameter's default value, and the field holding it:
+#: a TypeScript parameter (``x: number = 5``), a JavaScript one or an element
+#: of a destructuring pattern (``x = 5``, ``[a = 1]``), a property of an object
+#: pattern (``{ a = 1 }``).
+_DEFAULT_VALUE_FIELDS = {
+    "required_parameter": "value",
+    "optional_parameter": "value",
+    "assignment_pattern": "right",
+    "object_assignment_pattern": "right",
+}
+#: What a default value is hashed as (:func:`_jsts_hashed_text`).
+_DEFAULT_VALUE_HASHED = "..."
 
 
 def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
     """``node``'s text as the typed stable id hashes it: the displayed text
-    but for what ``layout_free`` (core, language-blind) cannot tell from
-    layout and the syntax tree can.
+    but for what is not an identity input (a default value) and for what
+    ``layout_free`` (core, language-blind) cannot tell from layout and the
+    syntax tree can.
+
+    - A parameter's default value is written ``...``, at any depth of the
+      parameter (``x: number = 5`` -> ``x: number = ...``, ``{ a = 1 } = {}``
+      -> ``{ a = ... } = ...``): owner ruling 2026-11-23, stable-id v19. A
+      caller calls ``f(x = 5)`` and ``f(x = 6)`` alike, so they are one
+      function; that the parameter HAS a default stays hashed, as Python
+      hashes ``=…``. Through v18 a TypeScript default was hashed as written.
 
     - The ``&`` that opens an intersection written one member per line
       (``x:\\n  & A\\n  & B``, an ``intersection_type`` whose first child is the
@@ -1639,7 +1664,8 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       reference. Likewise the ``|`` that opens a union (``union_type``):
       ``layout_free`` drops it only after ``( < [ { , : =``, and prettier also
       writes one after a function type's ``=>`` and a conditional type's ``?``.
-    - Whitespace inside a regex literal (a default value) is meaning, and
+    - Whitespace inside a regex literal (a decorator's argument on an
+      untyped parameter, the one place a regex is still hashed) is meaning, and
       ``layout_free`` reads ``/`` as punctuation, so each whitespace character
       of the pattern is written as its escape (:func:`_regex_pattern_hashed`):
       ``/a b/`` and ``/a  b/`` stay apart, in any layout of the signature. A
@@ -1648,14 +1674,20 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       ``/*`` or ``//`` in a regex reads as a comment.
     - A comment is not code: each ``comment`` node is written as one space.
 
-    None occurs in a text that had no leading ``&`` or ``|``, no comment and
-    no whitespace or ``/`` in a regex, so every other hashed text is the
-    displayed one, byte for byte.
+    None occurs in a text that had no default value, no leading ``&`` or
+    ``|``, no comment and no whitespace or ``/`` in a regex, so every other
+    hashed text is the displayed one, byte for byte.
     """
     edits: list[tuple[int, int, str]] = []
     pending = [node]
     while pending:
         current = pending.pop()
+        default_field = _DEFAULT_VALUE_FIELDS.get(current.type)
+        default = current.child_by_field_name(default_field) if default_field else None
+        if default is not None:
+            edits.append((default.start_byte, default.end_byte, _DEFAULT_VALUE_HASHED))
+            pending.extend(c for c in current.children if c.id != default.id)
+            continue
         if current.type == "comment":
             edits.append((current.start_byte, current.end_byte, " "))
             continue
@@ -1819,37 +1851,14 @@ def _ts_split_parameters(inner: str) -> list[str]:
     return parts
 
 
-def _ts_default_value_at(parameter: str) -> int:
-    """Where a declared parameter's default value starts (its top-level
-    ``=``), or the parameter's length when it has none. ``=>`` (a function
-    type's arrow) and a comparison are not one."""
-    depth = 0
-    index = 0
-    while index < len(parameter):
-        ch = parameter[index]
-        if ch in "\"'`":
-            close = parameter.find(ch, index + 1)
-            index = len(parameter) if close < 0 else close + 1
-            continue
-        if ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth -= 1
-        elif (ch == "=" and depth == 0 and parameter[index + 1:index + 2] not in ("=", ">")
-              and parameter[index - 1:index] not in ("=", "!", "<", ">")):
-            return index
-        index += 1
-    return len(parameter)
-
-
 def _jsts_without_function_type_names(text: str, *, declaration: bool = False) -> str:
     """``text`` (a TypeScript type, or a signature when ``declaration``) with
     each function or constructor type's parameter names left out:
     ``(x: number) => void`` reads ``(number) => void``, at any depth
     (stable-id v17; :func:`_ts_function_parameter_type`,
     :func:`~hypergumbo_core.analyze.base.drop_function_type_parameter_names`).
-    A declaration's default value is written as it was: an arrow function
-    there (``cb = (x: number) => x``) is a value, not a type."""
+    A declaration's default value reaches here as ``...``
+    (:func:`_jsts_hashed_text`), so no value is read as a type."""
     from hypergumbo_core.analyze.base import (
         drop_arrow_function_type_parameter_names,
         find_matching_paren,
@@ -1867,8 +1876,7 @@ def _jsts_without_function_type_names(text: str, *, declaration: bool = False) -
     pos = 0
     for parameter in _ts_split_parameters(inner):
         start = inner.find(parameter, pos)
-        cut = _ts_default_value_at(parameter)
-        out += [inner[pos:start], drop(parameter[:cut]), parameter[cut:]]
+        out += [inner[pos:start], drop(parameter)]
         pos = start + len(parameter)
     out.append(inner[pos:])
     return f"({''.join(out)})" + drop(text[close + 1:])
