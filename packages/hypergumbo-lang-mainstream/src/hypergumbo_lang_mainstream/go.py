@@ -39,8 +39,10 @@ This analyzer uses tree-sitter to parse Go files and extract:
   ``usage:`` row could match the name AT that position
   (``usage_row_names_call``), so the
   rows, not this module, list the names; not for an inline ``func``
-  literal (no symbol), and not without a ``go.mod`` (library and
-  repository packages are then indistinguishable)
+  literal (no symbol). The two library-type forms need a ``go.mod``
+  (without one, library and repository packages are indistinguishable);
+  the call-argument form does not, since its test is that the call's own
+  edge resolves to nothing in the repository
 - The module's dependency manifest, parsed from ``go.mod``
 - Web framework routes (Gin, Echo, Fiber, Gorilla mux, Chi, Macaron,
   go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)

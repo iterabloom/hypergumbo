@@ -3,12 +3,15 @@
 did not show.
 
 The recorder plugin (``scripts/pytest_plugins/pytest_source_reads.py``) writes
-every process a test starts as ``<audit event>:<program>``: the event alone
-when it names no program (``os.fork``), and ``git-elsewhere`` for a ``git``
-whose directory, arguments and ``GIT_*`` variables all point outside the
-repository. Nothing a child does is seen by the recorder or by coverage, so
-two rules ask, of the same record, two DIFFERENT questions, and a program can
-answer them differently:
+a process a test starts through ``subprocess.Popen`` as
+``subprocess.Popen:<program>``, with ``git-elsewhere`` as the program for a
+``git`` whose directory, arguments and ``GIT_*`` variables all point outside
+the repository. Every other spawn event (``os.system``, ``os.exec``,
+``os.posix_spawn``, ``os.fork`` and the rest) is written as the event alone,
+even when its arguments name a program, so it matches no list entry below and
+counts as able to read the repository and to run Python. Nothing a child does
+is seen by the recorder or by coverage, so two rules ask, of the same record,
+two DIFFERENT questions, and a program can answer them differently:
 
 * the prose-only rule (:mod:`hypergumbo_core.prose_only`) asks whether the
   child could have READ A FILE OF THE REPOSITORY as data. ``gitleaks`` can:

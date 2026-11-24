@@ -133,7 +133,7 @@ def install_declaration(declaration: Optional[Declaration]) -> Optional[Declarat
     """Make ``declaration`` the active one and return the one it replaces.
 
     The caller restores the returned value when its unit of work ends; see
-    the module docstring for the three callers.
+    the module docstring for the four installers.
     """
     global _active
     previous = _active
@@ -278,7 +278,8 @@ def format_declared_disclosure(summary: Optional[Mapping[str, Any]]) -> Optional
     """The one-line disclosure, or ``None`` when nothing is declared.
 
     ``Classified as test input because .hypergumbo.toml declares it
-    (test_input_dirs): internal/e2e/ (12 files), recorded/ (3 files) (ADR-0004).``
+    (test_input_dirs), 15 files: internal/e2e/ (12 files), recorded/ (3 files)
+    (ADR-0004).``
     -- naming at most three directories, like the lines beside it. The count
     is of files only the declaration classifies.
     """

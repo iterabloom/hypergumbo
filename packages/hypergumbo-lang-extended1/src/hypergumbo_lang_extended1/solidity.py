@@ -85,9 +85,11 @@ member, each contract's ``is`` list and each state variable's declared type
   declaration. A type that is no contract in the tree (``address``, a struct,
   an interface from an unanalysed dependency) has no member to bind; the
   caller's own same-named function is not the callee.
-- A receiver of unknown type (a call result, an index, a chain): the member
-  is bound, at confidence 0.60, only when exactly one contract in the file
-  declares it.
+- A receiver of unknown type (a call result, an index, a chain): after an
+  attached library (below), the member is bound, at confidence 0.60, when
+  exactly one contract in the file declares it. When no contract in the
+  file declares it, a free function of that name is bound instead, from
+  this file or another, even with no ``using`` directive attaching it.
 - ``using L for T`` attaches ``L``'s functions to a receiver wherever the
   receiver's own type gave no answer. A library function is a member of the
   type of its first parameter, so with the receiver's type known, the

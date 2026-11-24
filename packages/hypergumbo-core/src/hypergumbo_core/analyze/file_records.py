@@ -8,12 +8,12 @@ Symbol whose id is ``make_file_id(lang, path)`` (ADR-0036 Ruling 3's
 audit-findings 0005) has another id shape and is not one.
 
 WHY IT NEEDS A PASS. ``make_file_id`` takes a language, and every producer
-that names a file picks that language itself: the JavaScript analyzer reads
-the ``<script>`` block of a Svelte or Vue component and mints
-``typescript:src/App.vue`` for it; the Vue analyzer anchors the same file's
-template edges on ``vue:src/App.vue``, which the orchestrator then
-synthesizes; the PHP analyzer mints ``php:x.blade.php`` and the Blade
-analyzer anchors on ``blade:x.blade.php``. Id-equality dedup sees two
+that names a file picks that language itself: the PHP analyzer mints
+``php:x.blade.php`` and the Blade analyzer anchors the same file's edges on
+``blade:x.blade.php``. The JavaScript analyzer once did the same to a Vue or
+Svelte component, minting ``typescript:src/App.vue`` for its ``<script>``
+block beside the Vue analyzer's ``vue:src/App.vue``; it now mints the
+component's own slot (see the last paragraph). Id-equality dedup sees two
 different ids, so both nodes persist and the file's edges are split between
 them: a consumer walking from either node sees part of the file. No producer
 is wrong about the file existing, so the reconciliation is here, in one

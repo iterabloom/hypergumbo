@@ -15,8 +15,9 @@ extract:
 - TypeScript-only declarations as their own kinds: ``interface``, ``type``,
   ``enum``, and the members of interfaces and enums
 - stable_ids over the FULL scope chain (``_jsts_scope``: classes, TypeScript
-  namespaces/modules, named functions and methods, the variable a function or
-  object literal is bound to; INV-fabih), so two ``class Inner`` in two
+  namespaces/modules, named functions and methods, every variable declarator
+  that binds a single identifier, and the identifier property key that holds
+  an object literal or a callable; INV-fabih), so two ``class Inner`` in two
   namespaces or functions get distinct ids and deleting the first does not
   move the second. A callable labels the chain by its name and hashed
   signature (``_jsts_callable_label``; since v19), so the locals of a getter
@@ -47,7 +48,8 @@ extract:
 - A static class member hashes ``static`` in the typed stable_id's
   ``decorators`` slot (``_jsts_member_decorators``; methods, accessors and
   fields, TypeScript and JavaScript), and a static method labels the scope
-  chain ``static <name>``; an instance member hashes ``""``, so its id is the
+  chain with ``static`` before its callable label (``static run(x)``); an
+  instance member hashes ``""``, so its id is the
   one it had. Through scheme v16 ``static error(m)`` and ``error(m)`` (and the
   callbacks inside them) tied and were split only by occurrence order
 - ``field`` symbols for class properties and ``variable`` for module-level
@@ -279,7 +281,9 @@ Why This Design
   RecursionError on deeply nested code; a few narrow helpers
   (``_collect_type_identifiers``, ``_extract_route_objects``,
   ``_extract_component_from_jsx``, ``_get_receiver_name``,
-  ``_ts_value_to_python``, ``_pattern_binding_names``) still recurse
+  ``_ts_value_to_python``, ``_pattern_binding_names``,
+  ``_registration_receiver``, and ``_registration_handlers``, which stops two
+  levels down) still recurse
 
 IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
 stable id hashes is written through the file's named, namespace and default imports
@@ -4555,8 +4559,9 @@ def _jsts_bound_value_label(
 def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """The labels of every scope enclosing ``node``, outermost first: classes,
     TypeScript ``namespace`` / ``module`` blocks, named functions and methods,
-    the variable a function or object literal is bound to, and the property
-    key an object literal or a callable is bound to (INV-fabih).
+    every variable a declarator binds as a single identifier, whatever its
+    value, and the property key an object literal or a callable is bound to
+    (INV-fabih).
 
     What every JS/TS stable_id hashes beside the symbol's own name. The
     emitted ``qualified_name`` carries classes and namespaces but no

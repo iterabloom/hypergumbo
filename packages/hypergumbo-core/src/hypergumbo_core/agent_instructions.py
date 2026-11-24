@@ -11,7 +11,9 @@ model's context as instructions. Quoting such a file hands its instructions
 to whatever model reads the sketch. So the sketch names each one, with the
 tools that read it, and prints none of its text (``sketch`` calls
 :func:`find_instruction_files` once per sketch and holds the paths back in
-every section that prints file text).
+every section that prints file text). ``explain`` holds the same files back
+from the source it prints, and ``survey``'s precomputed sketch configuration
+from the configuration it extracts.
 
 RECOGNITION IS DATA. Which file names a tool reads is a fact about that
 tool, and tools come and go, so the names live in a catalogue keyed by the

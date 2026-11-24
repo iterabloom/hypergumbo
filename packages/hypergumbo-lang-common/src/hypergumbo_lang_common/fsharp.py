@@ -172,8 +172,11 @@ Usage contexts
 --------------
 giraffe.yaml (Giraffe, and Saturn through the ``saturn`` alias) is all
 ``usage:`` rows keyed on the name called: ``application { ... }`` makes a
-hosted application, ``route``/``routef`` a route, ``choose`` and ``router {
-... }`` a router. Until these were recorded no row of it could fire. Each
+hosted application, ``choose`` and ``router { ... }`` a router, a binding
+that applies ``>=>`` a handler. Its ``route``/``routef`` and ``GET``/``POST``
+rows cannot fire: they need a context whose ``symbol_ref`` is the route's
+handler (position ``args[last]``), and this module records only the caller.
+Until these calls were recorded no row of it could fire. Each
 call is one record, ``context_name`` the name as written: an application
 (``f x``, ``M.f x``, ``f<T> x``, ``(>=>) a b``), a computation expression
 (``application { ... }``, named after its builder), the function a pipe
@@ -183,8 +186,7 @@ declaration a call edge from the site is credited to, so the row's concept
 lands on ``let app = application { ... }``'s ``app``. A qualified name keeps
 its qualifier (``List.choose`` is no ``choose``), so ``Giraffe.Core.text``
 matches no row either. Not recorded: a value composed without being applied
-(``GET >=> ...``, ``clearResponse >=> ...``; the rows naming ``GET`` and
-``clearResponse`` match only a direct application of them), a member of an
+(``GET >=> ...``, ``clearResponse >=> ...``), a member of an
 expression's result (``x.M(1).N y``), a lambda or parenthesised function,
 and the operands of ``>>`` / ``<<``. A call in no declaration (a script's
 top level) is recorded with no ``symbol_ref``.
@@ -201,8 +203,9 @@ name; a function's ``()`` argument counts as one parameter.
 
 Not emitted: a member of an object expression (``{ new IFoo with member
 ... }``; its calls stay with the enclosing function), a class-level ``let``
-value, enum, delegate, exception and abbreviation types, and a binding with
-an optional ``?x`` argument, which the grammar parses as a value pattern. The
+value, enum, delegate, exception and abbreviation types. A ``let`` with an
+optional ``?x`` argument (F# allows one only on a member) is parsed as a value
+pattern and emitted as a ``variable``, not a ``function``. The
 bundled grammar does not parse ``.fsi`` signature members, nor the last
 declaration of a file that ends without a newline; a type it rejects is an
 ERROR node and emits nothing.

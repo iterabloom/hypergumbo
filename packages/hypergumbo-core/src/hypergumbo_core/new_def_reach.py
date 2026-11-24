@@ -25,8 +25,10 @@ file as it is on disk: the files the class statement's bases lead to through
 the import statements, and nothing else. No whole-repository analysis.
 
 HOW A BASE IS FOLLOWED TO SOURCE. A base is written as a name, a dotted name,
-or either subscripted (``Base[T]``). Its first part is looked up in the class's
-own file: a class defined at module level there, or a name an import
+or either subscripted (``Base[T]``). Its first part is looked up first, for a
+nested class, in the body of the class it is nested in (a class defined
+there), then in the class's own file: a class defined at module level there,
+or a name an import
 statement binds (``from .a import A``, ``from p.a import A``, ``import p.a``,
 ``import p.a as pa``, ``from p import a``), followed into the imported module's
 file, through re-exports, to the ``class`` statement. An absolute import is

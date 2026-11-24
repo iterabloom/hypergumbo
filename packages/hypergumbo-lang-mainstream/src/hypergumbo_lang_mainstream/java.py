@@ -18,8 +18,8 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   (``_java_hash_scope``): a local class in two methods, or an anonymous
   class's members in two methods, share one emitted dotted name, so hashing
   the method chain too keeps their ids distinct and keeps them from moving
-  when the other method is deleted. Outside a method body or an initializer
-  the two chains are equal. A ``record`` (no table kind) mints the producer
+  when the other method is deleted. Outside a method body, an initializer
+  or an enum constant's body the two chains are equal. A ``record`` (no table kind) mints the producer
   formula over that chain (``_java_type_stable_id``; INV-fabih). Since scheme
   v17 a method or constructor labels the chain by name and hashed signature
   (``_java_callable_label``; overloads differ), and the field or variable an
@@ -159,7 +159,8 @@ How It Works
    are typed from constructors, return types, parameters, fields, declared
    locals (including ``catch``, for-each, try-with-resources and typed lambda
    parameters), record components and a ``new X().m()`` receiver; the
-   ``_ParsedFile`` docstring lists the sources and their scoping
+   ``_ParsedFile`` docstring lists the variable-binding sources and their
+   scoping, and a record component binds file-wide as a field does
 5. Stamp ``io_target_kind`` on stream reads from the receiver's binding, and
    annotate edges with dataflow access modes (ADR-0015). ``System.in`` reads
    are ``std_stream``, a file or buffer constructor at the root of a
@@ -384,8 +385,9 @@ def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
 def java_callable_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The symbol name of a method or constructor: ``Outer.Inner.m``.
 
-    None for a callable with no enclosing class, interface or enum (a method of
-    an anonymous class, for example), which the analyzer emits no symbol for.
+    None for a callable with no enclosing class, interface, enum or record,
+    which the analyzer emits no symbol for; a method of an anonymous class
+    takes the name of the named type around it.
     Shared with ``java_def_use``'s DDG spec (WI-gotun) so the ids the DDG mints
     are the ids this analyzer emitted; two copies of the rule could drift.
     """
@@ -1652,8 +1654,8 @@ def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     and ``b`` -- or an anonymous class's ``run`` in two methods -- share
     ``N.Inner`` with their members; hashing the method chain keeps them from
     tying, and keeps deleting one method from moving the other's ids. For
-    every symbol not inside a method body or an initializer the two chains
-    are equal.
+    every symbol not inside a method body, an initializer or an enum
+    constant's body the two chains are equal.
 
     Labels (WI-hamuk): a type by its name; a method or constructor by
     :func:`_java_callable_label` (name and hashed signature, so two overloads

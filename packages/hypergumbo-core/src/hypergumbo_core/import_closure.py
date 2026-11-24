@@ -25,7 +25,7 @@ or ``if`` there, and in a decorator or a parameter default of a ``def``.
 
 An import inside a function BODY counts in a file outside the source roots
 (a test, a ``conftest.py``, a test helper), and in a source module ONLY WHEN
-THE FUNCTION RUNS AT IMPORT. ``haskell.py`` has ``_GATED =
+THE FUNCTION RUNS AT IMPORT. ``haskell.py`` has ``HASKELL_GATED_NAMES =
 _derive_haskell_gated_names()`` in its module body, and that function imports
 ``io_boundary`` and calls ``load_catalog``: loading ``haskell.py`` runs
 ``io_boundary``'s code, with no import statement at module level to say so.

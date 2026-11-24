@@ -195,7 +195,9 @@ How It Works
    returning a ``ClaimVerdict``; both thin wrappers stamp
    ``coverage.analysis_fidelity`` onto the verdict. The taint arm counts only
    production-sourced flows by default: flows sourced in test, mock,
-   fixture, benchmark, test-support or migration code are left out of
+   fixture, benchmark, test-support or migration code, or in a directory
+   the analysed repository's ``.hypergumbo.toml`` declares as test input
+   (``test_input_dirs``), are left out of
    ``evidence_count`` and counted per rule in ``excluded_flows`` (restored by
    ``include_non_production``). Four further exclusions are disclosed the
    same way: ``sanitized_flows`` (a sanitizer lies on every route),
@@ -222,11 +224,14 @@ How It Works
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in (WI-rusil).
-   Straight after the gate, a taint claim over one of ``taint_sinks/``'s
-   non-boundary zones (ADR-0060) passes through ``_apply_sink_zone_gap``:
-   a present language with no sink in the zone withholds a clean verdict, and
-   declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
-   (INV-pivam). Next, a clean taint verdict whose label a source value
+   Straight after the gate, a taint claim over any built-in sink zone
+   (``taint.builtin_sink_zones``: the I/O-derived zones such as
+   ``database`` and ``subprocess``, plus ``taint_sinks/``'s non-boundary
+   zones, ADR-0060) passes through ``_apply_sink_zone_gap``: a present
+   language with no sink in the zone, or with only community rows there
+   (ADR-0061 ruling 2), withholds a clean verdict, and declared unreached
+   shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES`` (INV-pivam). A
+   zone only a project catalogue declares is not judged. Next, a clean taint verdict whose label a source value
    was seen leaving through an ``unfollowed_construct`` call site
    (``taint.find_unfollowed_escapes``) is withheld by
    ``_withhold_for_unfollowed_escapes`` (INV-nohob), so when both fire the

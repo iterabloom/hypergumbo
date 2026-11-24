@@ -16,8 +16,10 @@ assignment is also an EXPRESSION and turns up inside conditions and arguments
 -- ``while ((n = read(fd, b, 8)) > 0)`` defines ``n`` although the CFG hands
 the walker only the loop condition. Binding forms:
 
-- ``char *k = e, buf[8];``        declaration / init_declarator; the name is
-  found through the declarator chain (pointer, array, parenthesized)
+- ``char *k = e, buf[8] = {0};``  declaration / init_declarator; the name is
+  found through the declarator chain (pointer, array, parenthesized). A
+  declarator with no value (``int n;``, ``char buf[n];``) defines nothing;
+  only an array size in it is read
 - ``x = e`` / ``x += e``          assignment_expression, anywhere
 - ``s->f = e`` / ``s.f = e``      mutation of the root ``s``
 - ``*p = e``                      mutation of the root ``p``
@@ -25,10 +27,15 @@ the walker only the loop condition. Binding forms:
 - ``i++`` / ``--i``               update_expression
 
 What is not a use: the member of a field access (``s->len`` uses ``s``), type
-positions (casts, ``sizeof(T)``, declaration types), literals, and the callee
-NAME of a call -- ``send(fd, k)`` uses ``fd`` and ``k``. A C callee is a plain
-identifier, and counting it a use would link a local that shadows a function
-name to every call of it.
+positions (casts, ``sizeof(int)``, ``sizeof(struct s)``, ``sizeof(T *)``,
+declaration types), literals, and the callee NAME of a call -- ``send(fd, k)``
+uses ``fd`` and ``k``. A C callee is a plain identifier, and counting it a use
+would link a local that shadows a function name to every call of it. One type
+position is a use: tree-sitter-c does not track typedefs, so ``sizeof(T)``
+with a bare typedef name parses as the size of a parenthesized expression and
+records ``T`` as a use. It reaches a
+definition only when a local of that name shadows the typedef, which is then
+the right reading.
 
 Scope, stated rather than implied
 ---------------------------------

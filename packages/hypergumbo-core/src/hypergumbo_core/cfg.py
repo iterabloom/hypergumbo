@@ -17,7 +17,9 @@ How It Works
    ``store_target`` /
    ``address_of`` / ``capture_scope`` / ``receiver_address_of`` (the in-place
    store, address-of, late-evaluation and pointer-receiver selector forms,
-   read only by ``exposed_definitions``).
+   read by ``exposed_definitions`` and, for ``receiver_address_of``, also by
+   ``address_taking_members``, which ``ddg_build`` runs over every file
+   first; the CFG builder reads none of the four).
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same

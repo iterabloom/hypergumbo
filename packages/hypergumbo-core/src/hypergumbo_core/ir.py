@@ -14,7 +14,9 @@ Key IR Classes
   provenance group is four fields, not two: ``config_fingerprint`` and
   ``pass_version`` sit alongside the run identifiers and participate in the
   same cache-key question. It also carries per-pass productivity counters
-  (``nodes_emitted`` / ``edges_emitted``) and, for a pass that emitted
+  (``nodes_emitted`` / ``edges_emitted``), ``non_id_edge_endpoints`` (how
+  many of the pass's edge endpoints are not node ids; ``None`` when nobody
+  checked) and, for a pass that emitted
   nothing, ``silence_reason`` (``unreported`` when the pass did not say why;
   empty when it emitted output). Its timing is two fields: ``duration_ms``
   is WALL time, which overlaps and inflates with contention because passes
@@ -88,7 +90,8 @@ Helpers
   edges onto the canonical boundary ids, collapsing edges that now coincide
   while unioning their ``referring_paths`` and ``call_lines`` and applying
   the same per-call-site fold.
-- **Other helpers**: ``callee_name_of``, ``stated_module_of``,
+- **Other helpers**: ``new_execution_id`` (the one place a run id is
+  minted), ``callee_name_of``, ``stated_module_of``,
   ``is_external_boundary``, ``sanitize_id_name_segment``,
   ``format_legacy_dst``, ``make_pass_id`` / ``compute_pass_version`` /
   ``compute_config_fingerprint``, and the ``VALID_ACCESS_MODES`` /
@@ -108,7 +111,13 @@ Provenance Fields
 ``run_signature``, ``config_fingerprint`` and ``pass_version`` keep the
 ``sha256:`` prefix: each is a content digest of its inputs, named by its field,
 with no scheme of its own (ADR-0035 §"Value labels"). Identity values carry a
-scheme label instead (``StableId`` below).
+scheme label instead (``StableId`` below). ``StableId``, ``ShapeId``,
+``RepoFingerprint`` and ``NodeId`` are ``NewType``s over ``str``: they have no
+effect at run time, but mypy refuses a plain ``str`` in their slots, so each
+is wrapped only where it is minted. ``NodeId`` types ``Symbol.id`` and
+``Edge.src`` (``Edge.dst`` stays ``str``); ``read_node_id`` is the one
+boundary that turns a ``str`` already holding a node id into one, and
+``relativize_node_id`` is finalize's one sanctioned rewrite of one.
 """
 import functools
 import hashlib
@@ -1443,12 +1452,20 @@ _CALL_LINES_CAP = 50
 def mint_edge_id(src: str, dst: str, edge_type: str, line: int) -> str:
     """The edge id, derived from the four facts that locate a relationship.
 
-    ADR-0036: an id derives from attributes, so anything that changes one of
-    these four must re-mint rather than carry the old id forward. ``line`` is
-    in the hash and ``edge_key`` is not, which is what lets two call sites of
-    one relationship be distinct edges before ``deduplicate_edges`` collapses
+    ADR-0036: an id derives from attributes. ``line`` is in the hash and
+    ``edge_key`` is not, which is what lets two call sites of one
+    relationship be distinct edges before ``deduplicate_edges`` collapses
     them. Extracted so the merge pass's §15 fold, which rebuilds ``dst`` from
     the stated ``ExternalRef``, re-mints by the same rule the producer used.
+
+    Not every later rewrite of the four re-mints. The boundary remap
+    (:func:`apply_external_id_remap`) and finalize's path relativize rewrite
+    ``src`` / ``dst`` and keep the id on purpose: a linker cites a stub edge
+    by its id in ``derived_from`` (cgo, lua_ffi), and finalize looks those
+    stubs up by ``edge.id`` after the remap, so a re-mint there would orphan
+    the citation. A published edge's id is therefore not always recomputable
+    from its published fields; it stays unique, because ids that were
+    distinct before a rewrite stay distinct.
     """
     digest = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
     return f"edge:sha256:{digest}"

@@ -15,7 +15,7 @@ each run in as it happens closes that: the moment you run the new test, the
 index learns the new blocks. This is the same reason pytest-testmon maintains
 its database per-run instead of from a profiling pass.
 
-THE FIVE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
+THE EIGHT SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
 
 1. **Replace, do not union, per test, inside what the run measured.**
    Re-indexing a test REPLACES its edges. Union would keep an edge to a block
@@ -254,10 +254,14 @@ pairs. ``PRAGMA user_version`` holds :data:`FORMAT`. :func:`open_index` converts
 a file of the earlier, spelled-out format (:func:`convert_format_1`) and refuses
 a format it does not know (:class:`IndexFormatError`), because a file read with
 the wrong schema looks like an EMPTY index, and to narrowing an empty index
-says "no test runs this code". Callers read and write through the functions
-here (:func:`store_edges`, :func:`touching_tests`, :func:`measured_tests`,
-:func:`statement_records`, :func:`statement_records_at`, :func:`tests_of_line`),
-never through the tables.
+says "no test runs this code". Callers write only through the functions here
+(:func:`store_edges`, :func:`update_from_run`) and read mostly through them
+(:func:`touching_tests`, :func:`measured_tests`, :func:`statement_records`,
+:func:`statement_records_at`, :func:`tests_of_line`). A few readers query the
+tables directly -- :mod:`hypergumbo_core.budget_report`,
+:mod:`hypergumbo_core.statement_narrow`, :mod:`hypergumbo_core.statement_select`,
+``scripts/coverage-select`` and ``scripts/measure-narrowing-headroom.py`` -- so
+a schema change has to be carried into them too.
 """
 from __future__ import annotations
 

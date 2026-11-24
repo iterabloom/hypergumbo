@@ -233,13 +233,14 @@ ID Schemes
 - **stable_id**: sha256 over the v6 tuple, anchored on the file-anchored
   ``containing_stable_id`` (ADR-0035 §1). Functions and methods with a normalizable
   signature use the typed tier (``make_typed_stable_id``: kind, normalized signature,
-  visibility, decorators, ``name``, ``qualified_name``); the untyped fallback hashes
-  kind, param count, arity flags, decorators, ``name``, ``qualified_name`` and
-  ``occurrence_index``. Both tiers are chosen in one place,
+  visibility, decorators, ``name``, ``qualified_name``, plus an ``:async`` marker
+  for an ``async def``); the untyped fallback hashes kind, param count, arity
+  flags, decorators, ``name``, ``qualified_name``, ``occurrence_index`` and the
+  same ``:async`` marker. Both tiers are chosen in one place,
   ``python_callable_stable_id``, which ``jupyter.py`` also calls for a notebook's
   functions. The ``qualified_name`` hashed is the chain of enclosing classes and
-  functions, each ``def`` labelled by its name, hashed signature and decorators
-  (``python_scope_labels``), so the locals of a ``@property`` getter and its
+  functions, each ``def`` labelled by its name, hashed signature, decorators and
+  ``async`` (``python_scope_labels``), so the locals of a ``@property`` getter and its
   setter, or of two redefinitions of ``def f``, do not tie (they did until
   scheme v19, WI-finam). It does NOT survive a rename or a move (ADR-0035 §2): both the name and
   the containing file feed the hash. Use ``fingerprint`` to join a symbol across a

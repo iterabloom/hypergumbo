@@ -67,7 +67,9 @@ Shared Components
   moves no id. Their shared helpers (``strip_fqn_prefix``,
   ``split_params_top_level``, ``find_matching_paren``) keep distinct types
   distinct: a type is cut only at a qualifier, and a parameter list is split
-  only at commas outside every bracket pair and string literal. Since scheme
+  only at commas outside every bracket pair and string literal, except that
+  a brace opening a parameter (Dart's ``{int a, int b}`` named-parameter
+  group) is not treated as a pair, so its commas still split. Since scheme
   v17 a type name is written through the file's imports before it is hashed
   (``FileTypeNames``, set per file by ``resolving_type_names``), so an imported
   and a qualified spelling of one type hash alike.
@@ -111,9 +113,11 @@ Shared helpers
 - **Call-site annotation.** ``emit_module_attribute_refs`` emits
   ``module_attr_ref`` edges for attribute reads on imported modules
   (``process.env.PATH``) that are not themselves callees;
-  ``stamp_io_mode_from_call`` records a literal mode (``fopen(p, "w")``) or
-  a flag expression (``os.O_WRONLY|os.O_CREATE``) as ``meta["io_mode"]`` on
-  a call's edges, and stamps nothing otherwise; ``constructed_from_callee``
+  ``stamp_io_mode_from_call`` records a literal mode (``fopen(p, "w")``) as
+  ``meta["io_mode"]`` on a call's edges, reduces a flag expression
+  (``os.O_WRONLY|os.O_CREATE``) to ``"w"`` when any flag writes and ``"r"``
+  otherwise, and stamps nothing for a variable or other non-literal
+  argument; ``constructed_from_callee``
   renders an initializer's callee for ``Symbol.meta["constructed_from"]``.
 - **Stable-id constructors.** Beyond the layer above:
   ``make_site_stable_id`` (SITE-axis identity for ``call_site`` stand-ins,

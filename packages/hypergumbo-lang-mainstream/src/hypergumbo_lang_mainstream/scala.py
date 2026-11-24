@@ -141,7 +141,12 @@ kind, one parenthesised group per parameter clause with its ``implicit`` /
 type of a ``def`` with no parameter clause; before, a type of a kind the
 renderer had no branch for was dropped, so two ``def``s differing only there
 shared an id. Parameter names, default values, ``inline`` and parameter
-annotations are not hashed, nor are type-parameter clauses and their bounds.
+annotations are not hashed. A ``def``'s own type-parameter clause is: each
+type parameter is written as its position and the clause, bounds included,
+goes in front of the signature (``normalize_with_type_parameters``;
+``def f[T <: Number](x: T): Int`` hashes ``[$0 <: Number]($0)Int``), so two
+overloads that differ only in a bound hash apart and renaming a type
+parameter moves no id.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction

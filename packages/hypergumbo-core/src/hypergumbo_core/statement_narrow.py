@@ -39,8 +39,10 @@ the selector did not select, coverage can speak for, and whose file is
 INFORMED about the change (:func:`selection_index.informed_test_files`: its
 latest run here measured every changed source as part of a complete run).
 A test the index does not hold (added since its last run) is not named, so it
-runs. Files in ``whole`` (changed tests, the prose rule's, the fixture rule's,
-the scripts map's) run every test.
+runs. Files in ``whole`` run every test: smart-test puts there every run-set
+file that neither the import graph nor the coverage union added, plus the
+files its other rules name (changed tests, the fixture, conftest, prose,
+gate and scripts-map rules) whatever else added them.
 
 THE COVERAGE GATE STAYS MEASURED. smart-test gates the changed files at 100%
 over the tests it ran. Tests that ran no changed statement still covered the

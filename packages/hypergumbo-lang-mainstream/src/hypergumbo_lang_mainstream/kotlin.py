@@ -171,10 +171,13 @@ whatever node kind it is (``_KT_TYPE_SLOT_NODES``: a parenthesized type,
 ``dynamic`` and a definitely-non-null ``T & Any`` included) and a vararg
 parameter written ``vararg name: Type``. ``normalize_kotlin_signature`` hashes
 that text through the shared names-first normalizer (names dropped, FQN
-prefixes stripped; Kotlin passes no type parameters, so generic names are
-hashed as written) with two Kotlin additions: ``vararg`` is kept in front of
+prefixes stripped) with two Kotlin additions: ``vararg`` is kept in front of
 the parameter's type, and an extension function's receiver is written in
-front, ``String.()Int``. A function type's parameter names are left out of
+front, ``String.()Int``. The function's own type-parameter clause is hashed
+too (``normalize_with_type_parameters``, through ``_kotlin_callable_hashed``):
+each type parameter is written as its position and the clause, bounds
+included, goes in front, so ``fun <T : Number> f(x: T): T`` hashes
+``<$0 : Number>($0)$0`` and renaming ``T`` moves no id. A function type's parameter names are left out of
 every type hashed, a property's and a receiver's too
 (``_kt_without_function_type_names``: ``(x: Int) -> Unit`` reads ``(Int) ->
 Unit``; until scheme v17 renaming one moved the id). ``suspend`` is not in the text; it is the

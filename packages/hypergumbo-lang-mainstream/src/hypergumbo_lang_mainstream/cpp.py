@@ -31,8 +31,10 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Include directives
 - Object instantiation (new expressions, ``std::make_unique<T>`` /
   ``make_shared<T>``, stack construction, and compound literals). Each lands
-  on the class, or on the constructor its argument count chooses; a stack or
-  brace construction the count chooses for also gets an edge to that
+  on the class, or on the constructor its argument count chooses; a
+  construction that lands on the class (a stack or brace construction, and a
+  ``new`` or ``make_unique`` / ``make_shared`` whose name resolved to the
+  class) and whose count chooses one constructor also gets an edge to that
   constructor at the same line, so a walk reaches it and not every one
   (``construction``), and several taking the count land on the class
 - Dispatch table edges (function pointers in array initializers, static or

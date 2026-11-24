@@ -19,7 +19,10 @@ Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa
 Every kind has one ROLE in the entrypoint-kind registry
 (``entrypoint_kinds``, ADR-0063); each set of kinds this module reads is a
 role query (``REQUEST_INGRESS_KINDS``, ``PROGRAM_START_KINDS``,
-``APPLICATION_KINDS``), never a hand-written list.
+``APPLICATION_KINDS``), with one exception: the two route kinds
+(``HTTP_ROUTE``, ``WEBSOCKET_HANDLER``) are named directly where the
+route-marker pass skips a symbol already filed as a route and where the
+route-label dedup collapses duplicates by label.
 
 Two detectors do not read YAML concepts: the route-marker pass (symbols an
 analyzer or ``materialize_route_symbols`` minted with ``framework_role ==
@@ -69,7 +72,7 @@ conventions (test functions, serialization callbacks, script modules) and C
 ``cmd_<name>`` commands; 0.75 library exports; 0.70 other naming
 heuristics; 0.50 connectivity fallback; 0.05 route-looking handlers in
 frontend files. A convention ``main`` takes its language's measured value
-(``MAIN_FUNCTION_CONFIDENCE``: 0.95, 0.90 or 0.50; 0.80 where the language
+(``MAIN_FUNCTION_CONFIDENCE``: 0.95 or 0.90; 0.80 where the language
 was not measured).
 
 Connectivity Boost (concept-based only):
@@ -97,8 +100,9 @@ Connectivity Boost (concept-based only):
   formula, not this order. Confidence was the first tie key until the owner
   ruling of 2026-11-19: it measures how sure detection is, and with it
   first every convention main sorted after every framework route among
-  the entries saturated at 1.0. The route-label dedup and the connectivity
-  fallback choose by the same order.
+  the entries saturated at 1.0. The route-label dedup chooses by this same
+  order; the connectivity fallback has its own (out-degree, then the same
+  path, start line, name and symbol id).
 - CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
   double-counting; TEST_FUNCTION entries, symbols in test files and
   ``boost_suppressed_ids`` (build wrappers, and demoted library exports that
@@ -106,9 +110,14 @@ Connectivity Boost (concept-based only):
   undo their demotion
 
 Connectivity-Based Fallback:
-- When no concept-based entrypoints are found, the system falls back to
-  selecting the most-connected callable symbols (functions, methods, constructors)
-- Base confidence: 0.50 (below all concept-based entrypoints)
+- When no detected entry would stay at or above the rank floor
+  (``MIN_ENTRYPOINT_CONFIDENCE``) -- none was found, or, as in a library
+  whose only detected entries are its tests, every one was penalised under
+  it -- the system falls back to selecting the most-connected callable
+  symbols (functions, methods, constructors); the picks take the path
+  penalties and no boost
+- Base confidence: 0.50 (below every concept-based tier except the 0.05
+  given to route-looking handlers in frontend files)
 - At most 5 fallback entrypoints are selected, ranked by out-degree, equal
   out-degrees by path, start line, name and symbol id
 - This ensures --entry auto never hard-fails, even for repos with no
@@ -146,9 +155,11 @@ Ranking Penalties (``rank_score`` only, applied before the boost):
 
 One Entrypoint Per Symbol (INV-liraj):
 - When several detectors classify the same symbol (e.g. a function that is
-  both main() and a CLI command), the most CONFIDENT entry is kept, ties
-  going to the earlier detector, so the chosen kind does not depend on
-  detector or concept order. Separately, framework_patterns drops the
+  both main() and a CLI command), the most CONFIDENT entry is kept, so a
+  less confident detector cannot take a symbol by running first; between
+  entries of equal confidence the earlier one is kept (the earlier
+  detector, and within the concept pass the concept listed first), so
+  there the kind does follow that order. Separately, framework_patterns drops the
   library_export concept from route markers upstream, so a route marker is
   never filed as a library export (INV-liraj).
 - Three further dedups follow: when several entries share a symbol NAME,
