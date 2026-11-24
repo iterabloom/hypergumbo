@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A Hack ``async function`` gets a different stable_id from the same
-function without ``async`` (ADR-0035 §1); the non-async id is pinned to the
-previous scheme's value."""
+function without ``async`` (ADR-0035 §1); the non-async id is pinned. Its
+value moved once, with stable-id scheme v19, when a function's hashed kind
+became ``function`` instead of the role word ``fn`` (WI-lilab)."""
 
 from __future__ import annotations
 
@@ -25,5 +26,5 @@ def _stable_id(tmp: Path, src: str) -> str:
 
 def test_async_changes_the_stable_id(tmp_path: Path) -> None:
     sync = _stable_id(tmp_path / "sync", SYNC)
-    assert sync == f"{STABLE_ID_PREFIX}8c0b3a905068840a"
+    assert sync == f"{STABLE_ID_PREFIX}f830b09c22ffb63d"
     assert _stable_id(tmp_path / "async", ASYNC) != sync

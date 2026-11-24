@@ -42,6 +42,11 @@ Edge Types
   ``Owner::member`` the owner goes in the path slot
   (``hack:<Owner>:0-0:<member>:unresolved``), since a colon in the name slot
   is no id.
+
+Identity (WI-lilab, stable-id scheme v19): every stable id hashes the kind
+its Symbol reports. A standalone function hashed the role word ``fn``; it
+hashes ``function`` now. Classes, interfaces, traits, methods and namespaces
+already hashed their own kind.
 """
 
 from __future__ import annotations
@@ -332,7 +337,7 @@ def _extract_symbols_recursive(
             sym = Symbol(
                 id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "function"),
                 stable_id=analyzer.compute_stable_id(
-                    node, kind="fn", name=qualified_name,
+                    node, kind="function", name=qualified_name,
                     file_stable_id=analyzer._file_anchor(rel_path),
                 ),
                 name=qualified_name,
