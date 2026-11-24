@@ -41,7 +41,10 @@ also hashes the namespaces, structs and functions it is declared in
 (``c_family_scope_chain(functions=True)`` through
 ``overload_arity.nested_qualified_name``, empty at top level; INV-punig): ``f``
 in ``namespace a`` and in ``namespace b``, or a local ``x`` in two functions,
-are two identities.
+are two identities. Since scheme v19 the preprocessor branches open at the
+declaration are in that chain too (``guards=True``, WI-sifar), so ``f`` under
+``#ifdef FAST`` and under its ``#else`` no longer tie; a whole-file include
+guard is not a branch.
 
 Why This Design
 ---------------
@@ -172,7 +175,7 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
             analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
             qualified_name=nested_qualified_name(
-                c_family_scope_chain(node, source, functions=True), name,
+                c_family_scope_chain(node, source, functions=True, guards=True), name,
             ),
         ),
         signature=signature,
