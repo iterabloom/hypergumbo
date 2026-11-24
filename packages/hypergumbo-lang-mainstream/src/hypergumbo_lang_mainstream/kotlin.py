@@ -13,7 +13,12 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
   ``class Inner`` in different outer classes do not share one bare-name table
   key and deleting one outer class does not move the other's ids (INV-fabih).
   For a top-level type and its members the chain adds nothing beyond the
-  name already hashed.
+  name already hashed. Every declaration that owns code labels the chain: a
+  ``fun`` and a secondary constructor by name and hashed signature, a
+  property, a setter, an ``init`` block and an enum entry each by what
+  tells it from its siblings, a companion member's label starting with
+  ``companion``, so the locals of two constructors, two overloads or two
+  getters do not tie (they did until scheme v19, WI-finam).
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
 - Annotations on classes, functions, methods, objects, and properties
@@ -216,6 +221,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
+    layout_free,
     file_anchor_symbol,
     emit_module_attribute_refs,
     enclosing_declared_symbol,
@@ -585,27 +591,148 @@ def _make_kotlin_qualified_name(
     return sep.join(parts)
 
 
-#: Declarations whose name opens a scope a Kotlin member is nested in (an
-#: anonymous ``object : T { }`` literal names none and is not listed).
-_KOTLIN_SCOPE_NODES: Final = frozenset({
-    "class_declaration", "object_declaration", "function_declaration",
-})
+#: Type declarations whose name labels a scope a Kotlin member is nested in
+#: (an anonymous ``object : T { }`` literal names none and is not listed).
+_KOTLIN_TYPE_SCOPE_NODES: Final = frozenset({"class_declaration", "object_declaration"})
+
+#: Scope labels of the code-owning declarations that have no name of their
+#: own. Neither can be a function's label: a name holds no ``{`` and never
+#: starts with ``<`` (a backquoted name keeps its backquotes), so ``init {}``
+#: is not ``fun init()`` and ``<init>(Int)`` is not ``fun constructor(a:
+#: Int)``. ``<init>`` is the JVM's name for a constructor.
+_KOTLIN_INIT_BLOCK_LABEL: Final = "init {}"
+_KOTLIN_CONSTRUCTOR_LABEL: Final = "<init>"
+
+
+def _kotlin_callable_hashed(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """What a ``fun``'s (or a secondary constructor's) typed stable_id hashes
+    beside its name and scope: its normalized signature, receiver in front
+    (``String.(Int)``), or ``None`` when the signature does not normalize.
+
+    The one reader for the function's own id and for its label in the scope
+    chain of what it declares (:func:`_kotlin_callable_label`), so the two
+    cannot disagree.
+    """
+    receiver_node = _kt_receiver_type_node(node)
+    return normalize_with_type_parameters(
+        normalize_kotlin_signature, _extract_kotlin_signature(node, source), node, source,
+        receiver=node_text(receiver_node, source) if receiver_node is not None else None,
+    )
+
+
+def _kotlin_callable_label(node: "tree_sitter.Node", source: bytes) -> str:
+    """A ``fun``'s or secondary constructor's label in the scope chain
+    (:func:`_kotlin_scope`): its name and what its own id hashes beside it
+    (:func:`_kotlin_callable_hashed`), canonically spaced (``layout_free``):
+    ``f(Int)``, ``f(vararg Int)``, ``ext String.(Int)``, ``<init>(String)``.
+
+    A name alone is shared by two overloads, by an extension function on
+    two receivers, and by a companion object's ``fun`` and its class's; the
+    declarations local to them tied (WI-finam, the defect WI-podor fixed for
+    Swift). A companion member's label starts with ``companion``
+    (:func:`_kotlin_companion_word`), as a Swift ``static`` one starts with
+    ``static``. A ``fun`` whose hashed text is ``()`` and that is no
+    companion member keeps its bare name, so what it declares hashes what it
+    did; a name followed by ``(`` or by a space is never a bare name, so the
+    spellings cannot meet. A constructor has no name of its own: it is
+    ``<init>`` followed by its hashed text, ``()`` included.
+    """
+    text = layout_free(_kotlin_callable_hashed(node, source) or "", separators=True)
+    if node.type == "secondary_constructor":
+        return _KOTLIN_CONSTRUCTOR_LABEL + (text or "()")
+    name_node = _find_child_by_field(node, "name")
+    name = node_text(name_node, source) if name_node is not None else ""
+    if text not in ("", "()"):
+        # A receiver's type starts with a word, which would run into the name.
+        name = name + text if text.startswith("(") else f"{name} {text}"
+    return _kotlin_companion_word(node) + name
+
+
+def _kotlin_companion_word(node: "tree_sitter.Node") -> str:
+    """``companion `` for a declaration in a companion object's body, else
+    ``""``: the word that tells a companion member's label from the label of
+    the same-named member of its class.
+
+    A word in the member's LABEL, not a label of the companion object itself:
+    so what a companion ``fun f()`` declares is not what the class's ``fun
+    f()`` declares, while the companion members' own ids hash what they did.
+    (A companion member and a same-named member of its class still tie with
+    each other: their chain is the class's in both; a label for the companion
+    object would split them and move every companion member's id.)
+    """
+    body = node.parent
+    if body is None or body.type != "class_body" or body.parent is None:
+        return ""
+    return "companion " if body.parent.type == "companion_object" else ""
+
+
+def _kotlin_property_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """A ``property_declaration``'s label in the scope chain: ``val p`` /
+    ``var p``, an extension property's receiver before its name (``val
+    String.p``, written as the property's own id writes it); ``None`` for a
+    destructuring declaration, which binds no single name.
+
+    A getter, a setter and an initialiser (a lambda, an ``object`` literal)
+    are code the property owns, so what they declare is scoped by it: two
+    getters' local ``fun g()`` tied, as did two lambdas bound to ``val a``
+    and ``val b``. The keyword makes a property's label two words, which no
+    function's label is; a companion member's starts with ``companion``.
+    """
+    var_decl = find_child_by_type(node, "variable_declaration")
+    name_node = find_child_by_type(var_decl, "identifier") if var_decl is not None else None
+    if name_node is None:
+        return None
+    keyword = next((c.type for c in node.children if c.type in ("val", "var")), "val")
+    receiver = _kt_receiver_type_node(node)
+    name = node_text(name_node, source)
+    if receiver is not None:
+        written = canonical_type_names(
+            _kt_without_function_type_names(node_text(receiver, source)))
+        name = f"{written}.{name}"
+    return layout_free(f"{_kotlin_companion_word(node)}{keyword} {name}")
 
 
 def _kotlin_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The names of the classes, objects and functions enclosing ``node``,
-    outermost first (INV-fabih).
+    """The labels of the declarations enclosing ``node``, outermost first:
+    what a member's and a nested type's stable_id hash beside its own name
+    (INV-fabih).
 
-    What a member's and a nested type's stable_id hash beside its own name.
     The emitted name keeps the nearest owner (``Inner.go``), which two nested
     ``class Inner`` in ``A`` and ``B`` share; the package is single per file,
     so the file anchor already identifies it and it is left out (a member of
     a top-level class hashes the same ``Class.member`` it emits).
+
+    Every declaration that owns code is a label, by what identifies it among
+    its siblings: a class or object by its name; an enum entry by its name;
+    a ``fun`` or secondary constructor by :func:`_kotlin_callable_label`; an
+    ``init`` block by ``init {}``; a property by
+    :func:`_kotlin_property_label`; a setter by ``set`` (a getter adds
+    nothing, like Swift's). Until scheme v19 only classes, objects and
+    ``fun`` names were labels, so a function local to a constructor, an
+    accessor, an ``init`` block or a property's lambda was scoped by its
+    class, and two same-named locals of two constructors, two overloads, two
+    getters, a getter and its setter, or a companion ``fun`` and its class's
+    tied (WI-finam); so did the members two enum entries override. A
+    lambda, an ``object`` literal and a block have no name and add nothing:
+    two same-named locals of two unbound lambdas, or of two ``init`` blocks,
+    still share a chain (split by occurrence order). A companion object is
+    no label (:func:`_kotlin_companion_word`).
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
-        if n.type not in _KOTLIN_SCOPE_NODES:
+        if n.type in ("function_declaration", "secondary_constructor"):
+            return _kotlin_callable_label(n, source)
+        if n.type == "property_declaration":
+            return _kotlin_property_label(n, source)
+        if n.type == "anonymous_initializer":
+            return _KOTLIN_INIT_BLOCK_LABEL
+        if n.type == "setter":
+            return "set"
+        if n.type == "enum_entry":
+            name_node = find_child_by_type(n, "identifier")
+        elif n.type in _KOTLIN_TYPE_SCOPE_NODES:
+            name_node = _find_child_by_field(n, "name")
+        else:
             return None
-        name_node = _find_child_by_field(n, "name")
         return node_text(name_node, source) if name_node is not None else None
     return ancestor_labels(node, label)
 
@@ -1492,14 +1619,7 @@ def _extract_parsed_symbols(
 
                 # Typed stable_id (spec §6 typed tier). An extension
                 # function's receiver is hashed in front of its parameters.
-                receiver_node = _kt_receiver_type_node(node)
-                norm_sig = normalize_with_type_parameters(
-                    normalize_kotlin_signature, signature, node, source,
-                    receiver=(
-                        node_text(receiver_node, source)
-                        if receiver_node is not None else None
-                    ),
-                )
+                norm_sig = _kotlin_callable_hashed(node, source)
                 # INV-fabih: the full class/object/function chain, not the
                 # nearest owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
