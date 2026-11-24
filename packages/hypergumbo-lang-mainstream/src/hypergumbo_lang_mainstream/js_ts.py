@@ -556,15 +556,19 @@ class _ParsedFile:
     module_objects: frozenset[str] = frozenset()
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> NodeId:
+def _make_symbol_id(
+    path: str, start_line: int, end_line: int, name: str, kind: str, lang: str,
+    *, column: Optional[int] = None,
+) -> NodeId:
     """Generate a location-based ID via the shared ADR-0036 minter.
 
     Delegates rather than re-implementing the grammar as an f-string: a private
     copy silently opts out of the minter's name-slot sanitization (WI-sikar).
     The argument order differs from ``make_symbol_id`` (``lang`` last) because
-    every call site in this module passes it that way.
+    every call site in this module passes it that way. ``column`` is the
+    minter's: the ``@<column>`` of an anonymous callback's id.
     """
-    return make_symbol_id(lang, path, start_line, end_line, name, kind)
+    return make_symbol_id(lang, path, start_line, end_line, name, kind, column=column)
 
 
 def _get_language_for_file(file_path: Path) -> str:
@@ -5889,12 +5893,13 @@ def _extract_tree_symbols(
                 symbols.append(Symbol(
                     id=_make_symbol_id(
                         str(file_path), span.start_line, span.end_line,
-                        # Fold start_col into the id name-slot so two same-callee
-                        # callbacks on ONE line (``p.then(a => a, e => e)``, two
-                        # ``_iife``s) get distinct ids; Symbol.name stays the
-                        # clean display name. The id round-trip validator only
-                        # requires the name-slot be non-empty + colon-free.
-                        f"{anon_name}@{span.start_col}", "function", lang,
+                        # The start column goes in the id's name slot as
+                        # ``@<column>`` so two same-callee callbacks on ONE
+                        # line (``p.then(a => a, e => e)``, two ``_iife``s) get
+                        # distinct ids; Symbol.name stays the clean display
+                        # name. ADR-0036 Ruling 1 (amended 2026-11-23) allows
+                        # the suffix; the validator checks it IS the column.
+                        anon_name, "function", lang, column=span.start_col,
                     ),
                     name=anon_name,
                     kind="function",
