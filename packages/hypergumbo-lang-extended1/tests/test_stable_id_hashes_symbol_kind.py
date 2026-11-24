@@ -3,6 +3,7 @@
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/gleam.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/hack.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/haxe.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/janet.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -106,6 +107,11 @@ class Demo {
 }
 """
 
+_JANET = """\
+(defn add [a b] (+ a b))
+(def limit 10)
+"""
+
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -119,6 +125,8 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
              frozenset({"function", "method", "class", "interface", "trait", "namespace"})),
     "haxe": ("haxe", "analyze_haxe", "Demo.hx", _HAXE,
              frozenset({"function", "class", "interface"})),
+    "janet": ("janet", "analyze_janet", "demo.janet", _JANET,
+              frozenset({"function", "variable"})),
 }
 
 
