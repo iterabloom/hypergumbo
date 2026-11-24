@@ -1769,14 +1769,19 @@ def _extract_jsts_signature(
             # JavaScript: just the name
             param_strs.append(_node_text(child, source))
         elif child.type == "assignment_pattern":
-            # Default parameter: x = 5
-            pattern_text = text(child, source)
-            # Simplify to show ... for default value
-            if "=" in pattern_text:
-                parts = pattern_text.split("=", 1)
-                param_strs.append(f"{parts[0].strip()} = ...")
+            # Default parameter: x = 5, {a = 1} = {}. The pattern is the left
+            # field, read whole (until v19 the text was cut at its first "=",
+            # so {a = 1, b = 2} = {} read "{a = ..."). The default shows as
+            # "..."; the hashed text writes every default value so.
+            left = child.child_by_field_name("left")
+            if hashed or left is None:
+                param_strs.append(text(child, source))
             else:
-                param_strs.append(pattern_text)  # pragma: no cover
+                param_strs.append(f"{_node_text(left, source)} = {_DEFAULT_VALUE_HASHED}")
+        elif child.type in ("object_pattern", "array_pattern"):
+            # A JavaScript destructured parameter: {a, b}, [c, d] (until v19
+            # it was dropped, and {a, b} and {a, b, e} hashed alike).
+            param_strs.append(text(child, source))
         elif child.type == "rest_pattern":
             # Rest parameter: ...args
             param_strs.append(text(child, source))
@@ -1809,6 +1814,30 @@ _TS_AFTER_PATTERN_RE = re.compile(r"\s*(?P<optional>\?)?\s*:\s*")
 _TS_PATTERN_CLOSERS = {"{": "}", "[": "]"}
 
 
+def _ts_pattern_end(part: str) -> int:
+    """The index of the bracket closing the destructuring pattern ``part``
+    starts with (``{ a, b }: O``, ``[a = ...]``), or -1 when ``part`` starts
+    with none. A string (a quoted key) is skipped."""
+    if part[:1] not in _TS_PATTERN_CLOSERS:
+        return -1
+    depth = 0
+    index = 0
+    while index < len(part):
+        ch = part[index]
+        if ch in "\"'`":
+            close = part.find(ch, index + 1)
+            index = len(part) if close < 0 else close + 1
+            continue
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return -1  # pragma: no cover - an unclosed pattern does not parse
+
+
 def _ts_function_parameter_type(part: str) -> str:
     """One parameter of a function type without its name: ``x: number`` ->
     ``number``, ``...xs: number[]`` -> ``...number[]``, ``x?: number`` ->
@@ -1820,18 +1849,65 @@ def _ts_function_parameter_type(part: str) -> str:
         if match.group("name") == "this":
             return part
         return (match.group("rest") or "") + (match.group("optional") or "") + part[match.end():]
-    if part[:1] not in _TS_PATTERN_CLOSERS:
-        return part
-    depth = 0
-    for index, ch in enumerate(part):
-        if ch in "{[":
-            depth += 1
-        elif ch in "}]":
-            depth -= 1
-            if depth == 0:
-                after = _TS_AFTER_PATTERN_RE.match(part, index + 1)
-                return (after.group("optional") or "") + part[after.end():] if after else part
-    return part  # pragma: no cover - an unclosed pattern does not parse as a type
+    end = _ts_pattern_end(part)
+    after = _TS_AFTER_PATTERN_RE.match(part, end + 1) if end >= 0 else None
+    return (after.group("optional") or "") + part[after.end():] if after else part
+
+
+#: Stands for an untyped destructuring pattern in a declaration's parameter
+#: list while the shared names-first normalizer splits the list at commas and
+#: a parameter at its first ``:`` (:func:`_jsts_parameter_patterns`): it holds
+#: neither, nor a bracket, a quote or a character a source text can hold.
+_TS_PATTERN_STAND_IN = "\x00{}\x00"
+
+
+def _jsts_parameter_patterns(signature: str) -> tuple[str, list[str]]:
+    """``signature`` with each destructured parameter of its own list made
+    safe for :func:`~hypergumbo_core.analyze.base.normalize_signature_names_first`,
+    and the untyped patterns it stood in for (stable-id v19).
+
+    The shared normalizer splits a parameter list at its commas (a ``{`` that
+    opens a parameter is a Dart group there, whose commas split) and takes a
+    parameter's text after its first ``:`` as its type: ``{a: x}`` hashed
+    ``x}`` (losing the key a caller writes) and a typed ``{a, b}: O`` hashed
+    ``{ a`` and ``O`` (its first bound names in, its last out).
+
+    Each pattern is replaced by a stand-in (``_TS_PATTERN_STAND_IN``) that
+    the normalizer reads as a parameter's name, and the caller puts the
+    pattern back. So:
+
+    - a TYPED pattern (``{ a, b }: O``, ``[a]?: T``, ``...[a]: T[]``) hashes
+      its type alone (the text after the stand-in's ``:``): a typed parameter
+      hashes its type, not the names it binds, as a typed parameter's name is
+      left out and as a pattern in a function type is
+      (:func:`_ts_function_parameter_type`);
+    - an UNTYPED pattern (``{ a: x, b = ... }``, ``[c, d] = ...``) is the
+      parameter's only description, as an untyped parameter's name is, and
+      is hashed whole: keys, bound names and nesting, each default ``...``.
+    """
+    from hypergumbo_core.analyze.base import find_matching_paren
+
+    close = find_matching_paren(signature, 0)
+    if close < 0:
+        return signature, []  # pragma: no cover - a hashed signature opens its list
+    inner = signature[1:close]
+    patterns: list[str] = []
+    out: list[str] = []
+    pos = 0
+    for parameter in _ts_split_parameters(inner):
+        start = inner.find(parameter, pos)
+        out.append(inner[pos:start])
+        pos = start + len(parameter)
+        rest = "..." if parameter.startswith("...") else ""
+        body = parameter[len(rest):].lstrip()
+        end = _ts_pattern_end(body)
+        if end < 0:
+            out.append(parameter)
+        else:
+            out.append(rest + _TS_PATTERN_STAND_IN.format(len(patterns)) + body[end + 1:])
+            patterns.append(body[:end + 1])
+    out.append(inner[pos:])
+    return f"({''.join(out)}){signature[close + 1:]}", patterns
 
 
 def _ts_split_parameters(inner: str) -> list[str]:
@@ -1889,11 +1965,20 @@ def normalize_jsts_signature(
     """Normalize a JS/TS signature for typed stable_id (spec §6 typed tier).
 
     A function type's parameter names are left out of every type in it
-    (:func:`_jsts_without_function_type_names`; stable-id v17)."""
+    (:func:`_jsts_without_function_type_names`; stable-id v17). A
+    destructured parameter is hashed as its type when it has one, else whole
+    (:func:`_jsts_parameter_patterns`; stable-id v19)."""
     from hypergumbo_core.analyze.base import normalize_signature_names_first
+    patterns: list[str] = []
     if signature:
         signature = _jsts_without_function_type_names(signature, declaration=True)
-    return normalize_signature_names_first(signature, type_params, return_sep=":")
+        signature, patterns = _jsts_parameter_patterns(signature)
+    normalized = normalize_signature_names_first(signature, type_params, return_sep=":")
+    if normalized is None:
+        return None  # pragma: no cover - a list _jsts_parameter_patterns read is one the normalizer reads
+    for index, pattern in enumerate(patterns):
+        normalized = normalized.replace(_TS_PATTERN_STAND_IN.format(index), pattern)
+    return normalized
 
 
 def _extract_jsts_return_type_name(signature: str | None) -> str | None:
