@@ -1,0 +1,20 @@
+Original commit body from 0c3cb754a790a1d428ef5fc9403a8f1e61315f6c:
+
+Docstring staleness audit of 2026-11-24, first bundle: wrong references, false claims and minor drift (severities A, B, D). Documentation only; no code changes apart from re-pinned line numbers in two citation registries.
+
+POOL (70 files)
+- 9 flagged by scripts/check-docstring-drift
+- 30 from --rolling 30 (27 never reviewed before)
+- 30 with the most code churn since the last audit (a3763b76a, 928 commits ago)
+- scip/index.py, from the tracker-ref scan (it called a won't-do item "open")
+Each file read by a reviewer; each finding checked by a default-REJECT verifier that read the code itself; a seeded blind re-review of five first-pass "matches".
+
+WHAT THIS CHANGES
+- 36 source files: module docstrings corrected where they named things that do not exist, described behaviour the code no longer has, or carried stale lists and counts.
+- Seven function docstrings and one comment the verifiers confirmed stale (mint_edge_id's re-mint rule, _compute_simhash's hash, _java_hash_scope, java_callable_name, _jsts_scope, _warn_embeddings_unavailable, in_tree_file_id, two in declared_test_inputs).
+- Line pins moved by the edits: module_key_axis (5) and signature_axis (5). All 20 pins re-checked.
+- .ci/docstring-review-ledger.json: the 70 files recorded as reviewed.
+
+NOT IN THIS PR
+- Omissions (severity C), in a second PR.
+- Code defects the reviews found: filed in the tracker after this merges.
