@@ -1,0 +1,21 @@
+- op: create  # aa4a
+  at: '2026-11-24T13:00:06Z'  # aa4a
+  by: agent  # aa4a
+  actor: jgstern_agent  # aa4a
+  clock: 1  # aa4a
+  nonce: aa4a  # aa4a
+  data:  # aa4a
+    kind: work_item  # aa4a
+    title: "hlsl: struct member functions and initialised locals are not emitted"  # aa4a
+    status: todo_soft  # aa4a
+    priority: 4  # aa4a
+    parent:  # aa4a
+    tags:  # aa4a
+    - v20_residual  # aa4a
+    - analysis_quality  # aa4a
+    isbefore: []  # aa4a
+    duplicate_of: []  # aa4a
+    not_duplicate_of: []  # aa4a
+    pr_ref:  # aa4a
+    description: "WHAT\nHLSL: a struct's member functions are not emitted, and a local with an initialiser (float y = a;) is not emitted.\n\nREPRO\n~/hypergumbo_lab_notebook/v20_11242026/cfamily/RESULTS.md, \"Not fixed\" 5 (cfamily agent). Because no member is emitted, PR #2370's cv- and ref-qualifier hashing could not be exercised on HLSL.\n\nNOT CHECKED\nGLSL struct members (GLSL has no member functions); a corpus count.\n\nFound 2026-11-24 while building PR #2370 (stable-id v20). Detail: ~/hypergumbo_lab_notebook/v20_11242026/STATUS.md and the package RESULTS.md named above."  # aa4a
+    fields: {}  # aa4a
