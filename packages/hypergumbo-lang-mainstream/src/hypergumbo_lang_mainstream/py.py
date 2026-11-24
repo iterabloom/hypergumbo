@@ -237,7 +237,11 @@ ID Schemes
   kind, param count, arity flags, decorators, ``name``, ``qualified_name`` and
   ``occurrence_index``. Both tiers are chosen in one place,
   ``python_callable_stable_id``, which ``jupyter.py`` also calls for a notebook's
-  functions. It does NOT survive a rename or a move (ADR-0035 §2): both the name and
+  functions. The ``qualified_name`` hashed is the chain of enclosing classes and
+  functions, each ``def`` labelled by its name, hashed signature and decorators
+  (``python_scope_labels``), so the locals of a ``@property`` getter and its
+  setter, or of two redefinitions of ``def f``, do not tie (they did until
+  scheme v19, WI-finam). It does NOT survive a rename or a move (ADR-0035 §2): both the name and
   the containing file feed the hash. Use ``fingerprint`` to join a symbol across a
   rename (INV-zudob).
 - **shape_id**: sha256 of AST structure (control flow, nesting).
@@ -302,7 +306,7 @@ import warnings
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, Sequence, TypeVar
+from typing import TYPE_CHECKING, Callable, Iterator, Mapping, NamedTuple, Sequence, TypeVar
 
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
@@ -317,6 +321,7 @@ from hypergumbo_core.analyze.base import (
     mint_shape_id,
     make_route_symbol,
     make_typed_stable_id,
+    layout_free,
     visibility_from_modifiers,
     FileTypeNames,
     file_type_names,
@@ -2716,12 +2721,7 @@ def _compute_stable_id(
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         # isinstance (not the is_function bool) so mypy narrows node to the
         # function types that actually carry .args (ClassDef does not).
-        args = node.args
-        param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
-        has_defaults = len(args.defaults) > 0 or len(args.kw_defaults) > 0
-        has_varargs = args.vararg is not None
-        has_kwargs = args.kwarg is not None
-        arity_flags = f"{has_defaults},{has_varargs},{has_kwargs}"
+        param_count, arity_flags = _python_untyped_arity(node)
     else:
         # Classes don't carry parameters in the same way.
         param_count = 0
@@ -2739,6 +2739,19 @@ def _compute_stable_id(
         occurrence_index,
         is_async=isinstance(node, ast.AsyncFunctionDef),
     )
+
+
+def _python_untyped_arity(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[int, str]:
+    """``(parameter count, arity flags)`` of a ``def``: what its untyped-tier
+    stable_id hashes (:func:`_compute_stable_id`) and, for a ``def`` whose
+    signature does not normalize, its label in the scope chain
+    (:func:`python_callable_label`)."""
+    args = node.args
+    param_count = len(args.args) + len(args.posonlyargs) + len(args.kwonlyargs)
+    has_defaults = len(args.defaults) > 0 or len(args.kw_defaults) > 0
+    has_varargs = args.vararg is not None
+    has_kwargs = args.kwarg is not None
+    return param_count, f"{has_defaults},{has_varargs},{has_kwargs}"
 
 
 def _py_import_bindings(tree: ast.AST) -> list[tuple[str, str]]:
@@ -2805,11 +2818,11 @@ def python_callable_stable_id(
     functions and methods, and the code cells of a notebook (``jupyter.py``),
     so a notebook's functions take the same formula as a module's.
     """
-    norm_sig = normalize_python_signature(_format_function_signature(node))
+    norm_sig, decorators = _python_callable_hashed(node)
     if norm_sig:
         return make_typed_stable_id(
             kind, norm_sig, visibility_from_modifiers(modifiers),
-            containing_stable_id, _extract_py_decorator_names(node),
+            containing_stable_id, decorators,
             name=name, qualified_name=qualified_name,
             is_async=isinstance(node, ast.AsyncFunctionDef),
         )
@@ -2817,6 +2830,77 @@ def python_callable_stable_id(
         node, containing_stable_id=containing_stable_id,
         name=name, qualified_name=qualified_name,
     )
+
+
+def _python_callable_hashed(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[str | None, str]:
+    """What a ``def``'s typed stable_id hashes beside its name and scope: its
+    normalized signature (``None`` when the signature does not normalize) and
+    its decorator names. The one reader for the ``def``'s own id
+    (:func:`python_callable_stable_id`) and for its label in the scope chain of
+    what it declares (:func:`python_callable_label`), so the two cannot
+    disagree."""
+    return (
+        normalize_python_signature(_format_function_signature(node)),
+        _extract_py_decorator_names(node),
+    )
+
+
+def python_callable_label(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """A ``def``'s label in the scope chain (:func:`python_scope_labels`): its
+    name and what its own id hashes beside it (:func:`_python_callable_hashed`),
+    canonically spaced (``layout_free``), its decorator names and ``async``
+    first: ``f(int)``, ``f(x,y)``, ``property p``, ``setter p(v)``,
+    ``staticmethod f``, ``async f``. A ``def`` whose signature does not
+    normalize is labelled by what its untyped id hashes instead
+    (:func:`_python_untyped_arity`): ``f 3:False,False,False``.
+
+    A name alone is shared by a ``@property`` getter and its ``@p.setter``, by
+    a ``@staticmethod`` and a method of one name, and by two redefinitions of
+    ``def f``; the declarations local to them tied (WI-finam, the defect
+    WI-podor fixed for Swift). A ``def`` whose hashed text is ``()`` with no
+    decorator and no ``async`` keeps its bare name, so what it declares hashes
+    what it did; a name followed by ``(`` or a space is never a bare name, so
+    the spellings cannot meet. Two redefinitions with the same signature and
+    decorators get one label: nothing they declare tells them apart.
+    """
+    norm_sig, decorators = _python_callable_hashed(node)
+    if norm_sig is None:
+        count, flags = _python_untyped_arity(node)
+        label = f"{node.name} {count}:{flags}"
+    else:
+        text = layout_free(norm_sig, separators=True)
+        label = node.name if text in ("", "()") else node.name + text
+    words = [decorators] if decorators else []
+    if isinstance(node, ast.AsyncFunctionDef):
+        words.append("async")
+    return " ".join((*words, label))
+
+
+def python_scope_labels(node: ast.AST, parent_of: Mapping[int, ast.AST]) -> list[str]:
+    """The labels of the classes and functions enclosing ``node``, outermost
+    first: the chain a Python stable_id hashes beside the symbol's own name
+    (ADR-0035 §1, WI-gitun). ``parent_of`` maps ``id(child)`` to its parent.
+
+    A class is labelled by its name, a ``def`` by :func:`python_callable_label`
+    (its name, hashed signature, decorators, ``async``). Until scheme v19 a
+    ``def`` was its bare name, so two same-named locals of a getter and its
+    setter, or of two redefinitions of ``def f``, tied (WI-finam). Only the
+    identity chain: the in-module name a Symbol's ``qualified_name`` field
+    and the name registries carry is unchanged. Used by ``py.py`` and
+    ``jupyter.py``.
+    """
+    chain: list[str] = []
+    current = parent_of.get(id(node))
+    while current is not None:
+        if isinstance(current, ast.ClassDef):
+            chain.append(current.name)
+        elif isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            chain.append(python_callable_label(current))
+        current = parent_of.get(id(current))
+    chain.reverse()
+    return chain
 
 
 def _ast_structure(node: ast.AST) -> str:
@@ -4137,9 +4221,13 @@ def _analyze_parsed_file(
                 language="python",
                 path=str(py_file),
                 span=span,
+                # WI-finam: the IDENTITY chain labels each enclosing ``def``
+                # by its signature and decorators (python_scope_labels); the
+                # field keeps the in-module names.
                 stable_id=_compute_stable_id(
                     node, containing_stable_id=file_containing_id,
-                    name=node.name, qualified_name=class_scoped_name,
+                    name=node.name,
+                    qualified_name=".".join(python_scope_labels(node, parent_map) + [node.name]),
                 ),
                 shape_id=_compute_shape_id(node, "class"),
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
@@ -4412,7 +4500,9 @@ def _analyze_parsed_file(
             # chain (classes + functions) so a function nested in a method of distinct classes
             # (``A.t.helper`` vs ``B.t.helper``) gets distinct ids; the function-only
             # ``qualified_name`` above is left untouched (display/lookup, not identity).
-            scoped_id_name = ".".join(_enclosing_scope_chain(node) + [node.name])
+            # WI-finam: each enclosing ``def`` is labelled by its signature and
+            # decorators, so the locals of a getter and its setter differ.
+            scoped_id_name = ".".join(python_scope_labels(node, parent_map) + [node.name])
 
             if True:
                 # Track as processed
