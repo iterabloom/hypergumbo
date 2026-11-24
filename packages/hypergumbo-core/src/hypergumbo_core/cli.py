@@ -45,7 +45,13 @@ this order:
    ``supply_chain_summary.installed_deps_skipped``; generated output
    recognised by the tool that writes it (``target/`` beside ``Cargo.toml``,
    ``site/`` beside ``mkdocs.yml``, ...) is always skipped and disclosed the
-   same way, in ``generated_output_skipped``. ``main`` installs the
+   same way, in ``generated_output_skipped``, as are files the VCS ignores
+   and HEAD does not track, in ``vcs_ignored_skipped``. Before the walk the
+   test-input directories the repository's own ``.hypergumbo.toml``
+   declares (``test_input_dirs``) are installed for the run, so the test
+   predicates classify their files as test input; when that file exists the
+   declaration is disclosed on stderr and in
+   ``supply_chain_summary.declared_test_inputs``. ``main`` installs the
    per-command ``--trace-deps`` override (``set_trace_deps_override``) and
    clears it on every exit path.
 1. **Analyzers** run independently across 100+ languages
@@ -165,7 +171,10 @@ Why This Design
 - Default sketch mode optimizes for the common "quick overview" use case
 - run_survey() is separate from cmd_run() for testability
 - Read commands (slice, search, explain, ...) work from a persisted survey:
-  they reload it via ``survey_io.load_substrate`` and, where they need IR
+  they reload it via ``survey_io.load_substrate`` (through
+  ``_load_command_substrate``, which also puts the map's declared test
+  inputs into effect for the rest of the command; ``_restores_declaration``
+  takes them out again on exit) and, where they need IR
   objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
   (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs a
   survey first on a cache miss. There are two exceptions to the rehydration.

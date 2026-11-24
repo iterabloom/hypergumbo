@@ -32,6 +32,12 @@ Also provides:
   concept path (``_combine_route_paths``), and JAX-RS subresource-locator paths
   are chained through the locator methods that return a resource class
   (``_apply_subresource_locator_paths``).
+- ``usage_row_names_call``: whether any ``usage:`` row, shipped or the
+  user's, its framework detected or not, names a call in a language. An
+  analyzer records a call-site UsageContext for a call handing over a local
+  callable only when some row could match it, so the rows are the only list
+  of call names worth recording and a new row needs no analyzer change
+  (INV-rolul).
 - Pipeline passes run outside ``enrich_symbols``:
   ``resolve_deferred_symbol_refs`` (resolves UsageContext handler references
   against the full symbol table once every analyzer has run),
@@ -49,6 +55,10 @@ Pattern Types
   method's parent class bases (parent_base_class + method_name)
 - Annotation patterns: Match Java annotations (e.g., @RequestMapping)
 - Parameter type patterns: Match function parameter types (e.g., Depends)
+- Adopts patterns: Match the modules a type adopts without inheriting from
+  them (``adopts``, against ``meta["adopted_modules"]`` /
+  ``meta["included_modules"]``: Elixir ``use``, Ruby ``include`` /
+  ``extend``), e.g. ``use Phoenix.LiveView``, ``include Sidekiq::Worker``
 - Further fields: symbol_name, symbol_kind, language, framework_role,
   meta_match, modifiers/modifiers_exclude, symbol_path and qualified_name
   (plus an is_test_file policy flag)

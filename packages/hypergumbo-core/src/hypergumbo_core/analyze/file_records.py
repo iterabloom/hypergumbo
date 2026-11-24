@@ -41,6 +41,13 @@ relative import against the importing file's directory and, when the file is
 in the tree, returns its file id, so the edge ends on the file's node and not
 on an ``external_symbol`` stand-in for a file that sits in the repository.
 
+:func:`name_file_pseudo_symbols_by_path` runs right after the unification
+and names every file pseudo-symbol by its repo-relative path, as the
+orchestrator's anchors and most analyzers already do. Some analyzers and
+linkers named it by basename or stem, so two files sharing a basename shared
+a name. The name is not a stable-id input of a file node, so no identity
+moves.
+
 TWO RECORDS, ONE ID. Two producers can also mint the SAME id for a path and
 still leave two records: an analyzer builds its file id from the absolute
 path, a manifest's ``defines_target`` edge names the repo-relative one, the

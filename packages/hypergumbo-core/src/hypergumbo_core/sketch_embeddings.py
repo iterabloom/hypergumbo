@@ -31,6 +31,17 @@ whole process unless the variable already holds a value huggingface_hub reads
 as offline; ``0`` or ``false`` is overridden. It does this whether or not the
 models are cached, despite its name (INV-dasig, INV-gujus).
 
+The probe texts the scoring compares against (``README_DESCRIPTION_PROBES``,
+``ANSWER_PATTERNS``, ``BIG_PICTURE_QUESTIONS``, ``NEGATIVE_PATTERNS``) live
+here and nowhere else, named in ``PROBE_SETS``.
+``scripts/compute_probe_embeddings.py`` embeds them once, and the arrays ship
+in ``_embedding_data``. ``probe_embeddings`` uses a shipped array only when
+``_embedding_data.PROBE_DIGESTS`` holds the digest (``probe_digest``) of
+``_EMBEDDING_MODEL`` and today's probe texts, and the array is as wide as
+what the model produced for the caller's own texts; otherwise the model
+encodes the probes. A probe list edited without re-running the script thus
+costs time on every sketch, not a wrong answer.
+
 The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
 ``_get_xdg_cache_base``): the analysis-results cache

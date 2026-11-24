@@ -64,6 +64,16 @@ the tree and checks every producer is the usual case. smart-test adds the test
 files recorded reading a changed file to the manifest. That step only adds, so
 it uses whatever the record holds, current or not.
 
+THE SAME FILES SAY WHICH SHARED WORK EACH TEST USED
+(:func:`shared_work_used`, read before :func:`fold_run` removes them): the
+module, class and session fixtures and the cached functions a test used,
+followed through the shared work built inside them, since pytest lists only
+the outer one once it is built. :func:`unwrapped_caches` names the cached
+functions the recorder could not wrap. ``scripts/coverage-select`` passes
+both to :func:`hypergumbo_core.selection_index.update_from_run`, which gives
+a shared context's coverage rows to the tests that used it and marks the
+rest, and every unwrapped cache, as code run under no test.
+
 LIMITS, stated because they are where this would bite:
 
 * The evidence is as old as the last run that recorded each test. A code

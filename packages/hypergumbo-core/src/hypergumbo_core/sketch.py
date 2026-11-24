@@ -29,6 +29,11 @@ Sections in emission order:
 2.  Overview — language breakdown and LOC estimate, plus the
     installed-dependency-source disclosure line when deps were skipped,
     the generated-output disclosure line when generated output was pruned,
+    the VCS-ignored disclosure line (``format_vcs_ignored_disclosure``)
+    when files the VCS ignores and does not track were left out, the
+    declared test-input line (``format_declared_disclosure``) when the
+    map records test-input directories the repository's
+    ``.hypergumbo.toml`` declares (below),
     the vendored-code disclosure line (``format_vendored_disclosure``)
     when vendored code was analysed but left out of the language line, and
     the agent instruction files line (below) when the repository has any
@@ -90,6 +95,20 @@ tools that read it (``format_instruction_files_disclosure``). Text written to
 be obeyed by a model is the one kind of quoted text the sketch withholds
 rather than only labels. One exception (owner ruling 2026-11-20): a README
 such a file imports still gives the short description under the notice.
+
+Ignored files and declared test input
+-------------------------------------
+A file the VCS ignores and does not track is not part of the repository the
+sketch describes (ADR-0004 point 9). Discovery already leaves it out of the
+file index, and every section that finds a file by name or by glob past
+discovery (among them root manifests, config files, the README and what
+it links to, licence and build files, the Structure fallback tree and
+Additional Files) asks ``_described`` before it lists or reads one.
+``generate_sketch`` also installs, for the whole call (``declared``), the
+test-input directories the map records, or the project config declares
+when there is no map (ADR-0004 point 10).
+Their files count as test files, but the Tests section does not sample them
+for test frameworks: they belong to a project the tests read.
 
 Data source
 -----------

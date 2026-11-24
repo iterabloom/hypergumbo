@@ -142,6 +142,15 @@ anchor symbol. A bare ``helper()`` call whose name 3 or more project methods sha
 is dropped with no edge (the AMB-METHOD guard,
 ``ListNameResolver(..., ambiguity_threshold=3)``). The guard runs before the
 same-file lookup, so a same-file function of that name is dropped too.
+A bare call that passes the guard prefers its enclosing type's own member
+(``Enclosing.callee``). A hit on ANOTHER type's method that rests on the
+short name alone, same-file or from the resolver, is withheld
+(``defer_bare_method_call``, INV-fahub) and emitted as an unresolved edge
+stamped with ``enclosing_class``, which the ``inherited_calls`` linker
+resolves when the method is inherited; an import naming the callee still
+binds. The cost: a bare call inside a scope function
+(``other.apply { helper() }``) that really is ``Other.helper`` stays
+unresolved, since its receiver is not typed there.
 
 Extension functions (WI-fuhav / WI-lodij). ``fun Receiver.name()`` records
 ``meta.extension_receiver``. A call ``recv.name()`` on a receiver of that

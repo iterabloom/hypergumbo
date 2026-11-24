@@ -8,7 +8,12 @@ sound only if every such function either marks its fill (``with
 kept_work.filling(...)``) or keeps nothing another test could be handed. The
 second is a claim about the code, so it is written down here, per function,
 with the reason; this module reads the syntax tree of the repository's
-Python and fails on a state-writing function that is in neither set.
+Python and fails on a state-writing function that is in neither set. It
+also fails on one that marks a fill but never marks a use
+(``kept_work.used(...)``), since a test handed the kept value then records
+nothing; on a function both marked and exempted (one of the two is wrong);
+and on an exemption that names no state-writing function any more (renamed,
+moved or fixed). ``Verdict`` holds the four lists.
 
 WHAT COUNTS AS WRITING STATE (one function at a time, nested functions
 judged on their own):
