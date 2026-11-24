@@ -5,6 +5,7 @@
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/haxe.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/janet.py
 # covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/odin.py
+# covers: packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/prisma.py
 """A stable id hashes the kind its Symbol reports (WI-lilab).
 
 Nine analyzers minted the node id from ``Symbol.kind`` (ADR-0036 Ruling 2)
@@ -134,6 +135,24 @@ add :: proc(a: int, b: int) -> int {
 }
 """
 
+_PRISMA = """\
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id Int @id
+}
+
+enum Role {
+  USER
+}
+"""
+
 
 #: language -> (analyzer module, entry point, file name, source, the kinds the
 #: source must reach). The reach set holds every kind whose hashed word was a
@@ -151,6 +170,8 @@ CASES: dict[str, tuple[str, str, str, str, frozenset[str]]] = {
               frozenset({"function", "variable"})),
     "odin": ("odin", "analyze_odin", "demo.odin", _ODIN,
              frozenset({"function", "struct", "union", "enum"})),
+    "prisma": ("prisma", "analyze_prisma", "schema.prisma", _PRISMA,
+               frozenset({"class", "block", "enum"})),
 }
 
 
