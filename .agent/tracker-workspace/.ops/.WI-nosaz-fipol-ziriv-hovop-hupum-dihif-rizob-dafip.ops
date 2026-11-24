@@ -1,0 +1,24 @@
+- op: create  # 712f
+  at: '2026-11-24T10:15:56Z'  # 712f
+  by: agent  # 712f
+  actor: jgstern_agent  # 712f
+  clock: 1  # 712f
+  nonce: 712f  # 712f
+  data:  # 712f
+    kind: work_item  # 712f
+    title: "verify-claims: tracing a library's source counts I/O the app never reaches against the app's claims (flaskr: 4 true claims violated)"  # 712f
+    status: todo_soft  # 712f
+    priority: 3  # 712f
+    parent:  # 712f
+    tags:  # 712f
+    - verify_claims  # 712f
+    - io_boundary  # 712f
+    - needs_decision  # 712f
+    - outside_review_10_0_0  # 712f
+    - reported_not_rerun  # 712f
+    isbefore: []  # 712f
+    duplicate_of: []  # 712f
+    not_duplicate_of: []  # 712f
+    pr_ref:  # 712f
+    description: "WHAT (as reported)\nWith a dependency's source traced (the remedy the inconclusive verdicts themselves suggest), verify-claims counts I/O anywhere in the traced library against a claim about the application. On Flask's tutorial app (flaskr, about 345 lines) four TRUE claims (no network calls, no subprocesses, form input never reaches a subprocess, form input never reaches the network) turned \"violated\" once Flask, Werkzeug and Click were traced. The evidence was JavaScript in Werkzeug's debugger page, Click's terminal pager, and Werkzeug's proxy middleware; flaskr calls none of them, and the subprocess paths start from no entry point at all. A claim has no way to say \"only what my code's entry points can reach\".\n\nASKED\nA decision first (owner): what a claim covers when library source is in the survey. Then the mechanism.\n\nNOT CHECKED\nWhether an existing claim field already scopes a claim to paths or entry points; ADR-0016, ADR-0047 and ADR-0061 were not re-read for it.\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # 712f
+    fields: {}  # 712f
