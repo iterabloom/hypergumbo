@@ -1,0 +1,23 @@
+- op: create  # 5016
+  at: '2026-11-24T22:08:47Z'  # 5016
+  by: agent  # 5016
+  actor: jgstern_agent  # 5016
+  clock: 1  # 5016
+  nonce: '5016'  # 5016
+  data:  # 5016
+    kind: work_item  # 5016
+    title: "rust: a call through a use path that names an outside crate binds an in-tree function of the same name"  # 5016
+    status: todo_hard  # 5016
+    priority: 3  # 5016
+    parent:  # 5016
+    tags:  # 5016
+    - rust  # 5016
+    - call_graph  # 5016
+    - analysis_quality  # 5016
+    - call_matrix  # 5016
+    isbefore: []  # 5016
+    duplicate_of: []  # 5016
+    not_duplicate_of: []  # 5016
+    pr_ref:  # 5016
+    description: "WHAT\n  mod util;                       // util.rs declares helper()\n  use serde::helper;              // the file says which helper it calls: serde's\n  pub fn via_import() { helper(); }\nThe call is an edge to util.rs's helper. The `use` path names a crate that is not in the tree, the name lookup finds one in-tree function of that name, and binds it.\nSEEN ON A REAL REPOSITORY (base dev 81d89b52c, zellij): zellij-client/src/web_client/unit/web_client_tests.rs:1316, `timeout(..)` (tokio's, imported) is an edge to WebCli::timeout in zellij-utils/src/cli.rs, a method of another crate's type.\nA first version of the INV-hupis fix refused such a call when the path's module resolved to no file of the tree. It was taken out: without the crate's edition (in 2015 a bare path is crate-root-relative), the file's own `mod` declarations, names re-bound by another `use`, and crate roots outside src/ (tests/, examples/, benches/, src/bin/), \"resolves to no file\" is not yet evidence that the path is external.\nEXPECTED: a call through a `use` path that names a dependency or std binds nothing in the tree.\nNOT DONE: no count on the corpus."  # 5016
+    fields: {}  # 5016
