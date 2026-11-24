@@ -1,0 +1,37 @@
+Original commit body from 3269081cf03f2f2acb5dcd25ffe3293901eb6d40:
+
+One bump of the stable-id scheme (v18 to v19, owner-approved 2026-11-23) carrying the fixes of thirteen tracker items on what a node id and a stable id are made of. One commit per fix, tested together; the last source commit is the bump. Every stable id's label changes (hgstableid19:); the figures below count the ids whose hashed input changed.
+
+WHAT CHANGES
+
+Node ids
+- A node id's name slot may end @<start column> (ADR-0036 Ruling 1, amended). Same-line twins in Swift, Nix and Vue get separate ids; the JavaScript callback suffix is now ruled grammar, and the validator's last declared name-slot hole is gone. An empty name slot is an error; the wasm language slot is accepted (ADR-0034, amended).
+- Corrected kinds: Gleam custom type = type, alias = type_alias; Odin and V struct / union; a V function with a receiver = method.
+- A Vue or Svelte component's file node is vue: / svelte: also when only its script was read.
+
+Stable ids (what the analyzers hand the two unchanged formulas)
+- Fennel, Gleam, Hack, Haxe, Janet, Odin, Prisma, Tcl and V hash the kind the node reports.
+- Vue and Svelte script functions, methods and fields anchor on the component's file.
+- JS/TS: a default value is out of the id; a destructured parameter is hashed whole; interface-member, object-type and type-predicate parameter names are not hashed (Go interface literals too).
+- Preprocessor alternatives enter the scope chain in C, C++, CUDA, HLSL, GLSL and Objective-C (include guards do not). Rust reads an inner #![cfg] and cfg_attr, and sorts the arguments of any() / all(). Nothing is evaluated.
+- Built-in spellings of one type hash alike: C#, Swift, Go, Solidity, Rust. Julia and Solidity imported types hash by import path.
+- Same-named locals of different functions no longer tie: Kotlin, Python, Scala, Dart, PHP, JS/TS, C++, HLSL.
+- Layout is not hashed in an Elixir module name, a Vue or Svelte bound expression, or a PHP # comment inside a type.
+
+Also in this PR
+- SCIP reader: several records under one moniker each take their own definition. This is the fix for the red scheduled run (self-tree-validation, 29 node-id-uniqueness errors at 05ed6f5f); its commit carries the Fixes-scheduled-run trailer. Checked locally with the SCIP backend on the branch: violation matrix empty, 0 shared ids, test-only reachability passes.
+- Scala: a type's qualified_name carries names, not hash labels (found by the whole-branch comparison below).
+
+MEASURED (49 trees, dev 05ed6f5fe against branch commit 2d6fa7b70: before the SCIP, Scala and bump commits)
+- 21,174 of 289,399 declared symbols get a new hashed input: TypeScript 10,825 of 69,221, JavaScript 3,062 of 23,540, Scala 1,703 of 7,219, C++ 1,418 of 13,858, C 1,047 of 4,826, Kotlin 709 of 10,612, Tcl 651 of 656; twelve more languages under 320 each. Stand-ins moved: 0.
+- Declared symbols removed 29, added 67 (Vue 26 / 64, C 3 / 3).
+- Node ids gone 295, new 333 (267 of each are component file nodes changing language slot). Edges gone 4,092, new 4,135: all in the four trees whose component file nodes change slot (koel has 50 more new than gone), except 8 Scala edges counted gone, which the later Scala commit restores, and 1 new in vapor.
+- Nodes sharing an id: 3 to 1 (the one left is a zstd C macro misparse). Name-slot mismatches: 37,229 to 0.
+- Whole test suite on the branch: 44,672 tests, 100% coverage, after one guard list was updated (the mint-site list for node ids).
+
+NOT IN THIS PR (each is filed after the merge, from the per-package reports)
+- JavaScript same-line NAMED twins still share an id (that analyzer is not routed through FileAnalysis.add_symbol yet).
+- A Rust file's own #![cfg], C# #if, the order of || and && operands, a Kotlin companion label, Julia Base.X.
+- Seven of the nine role-word languages (Fennel, Gleam, Hack, Haxe, Janet, Odin, V) were measured on fixtures only: no corpus tree has them.
+
+Addresses WI-hugir, WI-bafaz, WI-lilab, WI-vavag, WI-dozos, WI-finam, WI-sifar, WI-radim, WI-hizop, WI-hupad, WI-juzom, WI-rafis; WI-hodin points 1 to 3. Per-fix figures: the v18 to v19 row of the spec's version history.
