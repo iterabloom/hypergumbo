@@ -111,8 +111,13 @@ def _emit(
     that language's producer, so it mints the stable_id itself
     (``pass_minted_stable_id``, scoped by this pass and the target's entry
     path) instead of leaving it to the backstop floor (INV-fufij).
+
+    The id's language slot is that same language (ADR-0034: the factory gets
+    the symbol's language; ADR-0036 Ruling 2: the slot is ``discovery_language
+    or language``). It was the literal ``manifest``, which is no language on
+    the axis. The stable id never hashed the slot, so only the node id moved.
     """
-    sym_id = make_symbol_id("manifest", rel_path, line, line, name, kind)
+    sym_id = make_symbol_id(language, rel_path, line, line, name, kind)
     symbols.append(Symbol(
         id=sym_id,
         stable_id=pass_minted_stable_id(

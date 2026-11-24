@@ -211,12 +211,13 @@ class TestRealLanguagesStillWithhold:
         assert "tcl" in coverage.reason
 
     def test_the_manifest_pseudo_language_also_fails_closed(self) -> None:
-        """Documented, not desired: ``manifest`` is absent from the registry too.
+        """``manifest`` is absent from the registry, so it is not exempt.
 
-        A ``manifest`` call edge that the build-target linker did NOT mint is
-        not exempt, and this test says so out loud rather than leaving a
-        silent gap — edit it when the pseudo-language gets a home that is not
-        the file-type registry.
+        No producer mints a ``manifest`` slot any more: ``manifest_targets``
+        writes its target's language there (ADR-0034). The slot stays here as
+        an unregistered one: a ``manifest`` call edge that the build-target
+        linker did NOT mint is not exempt, and this test says so out loud
+        rather than leaving a silent gap.
         """
         coverage = _coverage(
             [_REAL_RUST_CALL, _edge("manifest:pom.xml:1-1:app:binary")], {"rust"},
