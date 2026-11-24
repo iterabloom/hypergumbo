@@ -19,3 +19,12 @@
     pr_ref:  # fe6b
     description: "WHAT\nThree bookkeeping defects in docs/adr/, each read on dev fc8c8cb19:\n1. ADR-0004, ADR-0005 and ADR-0006 carry Date: 2025-01-14, 2025-01-15, 2025-01-21. The project's first release is December 2025; the year is wrong.\n2. ADR-0006 (Accepted, updated 2026-04-07) still states at line 104 \"False positives (extra edges) are preferable to false negatives (missing edges)\". The 10.0.0 direction is the opposite for an ambiguous call (it stays unresolved). Neither document names the other.\n3. ADR-0035's file name and title still say \"stable-id v6\" while the scheme is v19.\n\nREPRO\ngrep -n \"^Date\" docs/adr/0004*.md docs/adr/0005*.md docs/adr/0006*.md; sed -n 104p docs/adr/0006-variable-type-inference.md; ls docs/adr | grep 0035.\n\nNOT CHECKED\n- Whether line 104 is still the rule anywhere (for example for external targets) or is superseded outright: that is a decision for the owner, not a typo.\n- The reviewer's other count (\"about a third of the records have no status line in a consistent format\"): not re-counted. Its claim that the index omits 0025 and 0026 is wrong: docs/adr/README.md line 74 accounts for both.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # fe6b
     fields: {}  # fe6b
+- op: update  # d7d2
+  at: '2026-11-24T10:22:09Z'  # d7d2
+  by: agent  # d7d2
+  actor: jgstern_agent  # d7d2
+  clock: 2  # d7d2
+  nonce: d7d2  # d7d2
+  set: {}  # d7d2
+  add:  # d7d2
+    tags: [outside_review_10_0_0]  # d7d2

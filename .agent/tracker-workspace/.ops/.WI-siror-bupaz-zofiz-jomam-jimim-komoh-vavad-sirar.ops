@@ -35,3 +35,18 @@
   nonce: 9af8  # 9af8
   set:  # 9af8
     status: todo_soft  # 9af8
+- op: update  # 61d7
+  at: '2026-11-24T12:56:43Z'  # 61d7
+  by: agent  # 61d7
+  actor: jgstern_agent  # 61d7
+  clock: 4  # 61d7
+  nonce: 61d7  # 61d7
+  set:  # 61d7
+    status: done  # 61d7
+- op: discuss  # ac85
+  at: '2026-11-24T12:56:43Z'  # ac85
+  by: agent  # ac85
+  actor: jgstern_agent  # ac85
+  clock: 5  # ac85
+  nonce: ac85  # ac85
+  message: "DONE. All thirteen points were ruled on 2026-11-24 (see the ruling above); point 3, the only one to build, shipped in PR #2370 (stable-id v20, merged, dev 1acbf00b2).\nBEHAVIOURAL EVIDENCE for point 3, re-run on merged dev (analyze_javascript run directly, one function f per directory at one path; closure/rerun_dev.txt):\n  f(x: number) 3d5ad247      f(x?: number) 0b7d5267      -> apart (they shared 9a3a...d247's digest when filed)\n  f(x: number[]) f9670d90    f(...x: number[]) 7bbfac66  -> apart\n  f( y ?: number ) 0b7d5267  -> equals f(x?: number): layout and the parameter's name are not hashed\n  f(x: number = 5) and = 6 share f4214bbf: a default VALUE stays out (WI-dozos rule 1)\n  a decorated constructor parameter property x?: Foo is apart from x: Foo\n51-tree comparison: TypeScript 2,174 of 69,221 declared symbols moved; every one is a callable with a typed optional or rest parameter or a symbol declared inside one; marked callables that did not move are interface members (hashed this way since v19) and marks inside a parameter's own function type.\nThe other twelve points build nothing. NOT asserted: a parameter whose decorator arguments contain a colon (filed, tag v20_residual).\n"  # ac85

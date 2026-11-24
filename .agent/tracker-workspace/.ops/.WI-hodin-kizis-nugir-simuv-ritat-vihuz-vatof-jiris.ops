@@ -48,3 +48,18 @@
   clock: 5  # 2760
   nonce: '2760'  # 2760
   message: "OWNER RULING 2026-11-24 (in session): \"v20 with pohom, hodin 4/7 and siror 3, rest as recommended\". A stable-id v20 bump is ruled; points 4 and 7 are to be built in it, as ruled on 2026-11-23. Proxy size put to the owner, from the 49 stored v19 maps: 1 heex template stand-in, 59 nodes in a manifest id slot, 629 package stand-ins with an empty path."  # 2760
+- op: update  # 1e79
+  at: '2026-11-24T12:56:43Z'  # 1e79
+  by: agent  # 1e79
+  actor: jgstern_agent  # 1e79
+  clock: 6  # 1e79
+  nonce: '1e79'  # 1e79
+  set:  # 1e79
+    status: done  # 1e79
+- op: discuss  # aa97
+  at: '2026-11-24T12:56:43Z'  # aa97
+  by: agent  # aa97
+  actor: jgstern_agent  # aa97
+  clock: 7  # aa97
+  nonce: aa97  # aa97
+  message: "DONE. Points 1-3 were built in PR #2354, 5 and 6 closed by ruling; points 4 and 7 shipped in PR #2370 (merged 2026-11-24, dev 1acbf00b2).\nBEHAVIOURAL EVIDENCE, full run of ~/whole_bunch_of_repos/livebook on merged dev (closure/rerun_dev.txt):\n- Point 4, manifest slot: 0 node ids start with manifest: (4 before); the 4 binary nodes sit in swift: (3) and elixir: (1). Fixture demo.cabal: haskell:demo.cabal:5-5:greet:binary.\n- Point 4, template labels: the heex template node's language is on the axis; axis_conformance violations 0 (1 before, that node); 4 heex and 10 eex files are file nodes.\n- Point 7: 56 of 56 js-module package stand-ins have path <external> (WI-hulup closed with its own fixture).\nTWO PREMISES OF THIS ITEM WERE WRONG, found by the build:\n- \"heex for every template\" is not what the linkers did: each labels from its own extension table; seven labels (eex, heex, leex, ftl, vm, jsp, jinja) were off the language axis. They are now LanguageSpec entries with their extensions, as erb / haml / slim are.\n- Neither point moves a stable id (the stable id never hashed the id slot or Symbol.path). The 2026-11-23 ruling's \"only if a bump happens\" was not needed. 51-tree comparison: 59 build-target node ids renamed, 629 package paths changed, 47 template file nodes new, 0 stand-in stable ids moved; edges identical once the renames are applied.\nPUT TO THE OWNER, kept as built: registering the extensions makes those files file nodes everywhere (an Ansible roles tree +301 for .j2). NOT asserted: a tree where a linker renders jinja, ftl, vm or jsp (the Spring linker never activates: filed, tag v20_residual).\n"  # aa97

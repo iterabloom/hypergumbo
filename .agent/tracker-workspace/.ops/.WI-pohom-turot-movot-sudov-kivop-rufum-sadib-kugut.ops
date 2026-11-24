@@ -27,3 +27,18 @@
   clock: 2  # 78ff
   nonce: 78ff  # 78ff
   message: "OWNER RULING 2026-11-24 (in session): \"v20 with pohom, hodin 4/7 and siror 3, rest as recommended\". BUILD BOTH PARTS in a stable-id v20 bump. What was put to the owner (measured 2026-11-24 on dev fc8c8cb19, analyzer run directly, pre-split):\n- Part 2 reproduces. Cause read in the code: hypergumbo_core.analyze.c_family.c_family_parameters takes the text before the declarator, and its docstring says the * / & / [2] are left out on purpose. It is shared by C++, CUDA, HLSL and GLSL.\n- Wider than filed (fixture): n(int&&) / n(int&), k(int**) / k(int*&), m(int a[]) / m(int a), p(int (*cb)(int)) / p(int cb) tie; in part 1, r() & / r() && and q() volatile / q() tie as well as the const twins.\n- Real ties whose displayed parameters differ: binaryen/src 15 groups of 11,691 callables (pass.h PassRunner, wasm-interpreter.h Flow, wasm.h Expression::operator=, ir/match.h x9, support/name.h Name, ...), rocksdb/db 1 (compaction.cc sstableKeyCompare); 0 in libzmq, zstd, sherpa-onnx/csrc, envoy/source/common/http.\n- Cost, a PROXY (share of callables whose displayed parameter text holds * & or [): libzmq 39.7%, zstd 65.0%, sherpa-onnx csrc 48.0%, binaryen 55.3%, rocksdb/db 41.5%, envoy http 37.5%, pytorch native/cuda 69.2%. Part 1's cost was not counted.\nInstrument: session scratchpad cppcost.py (not kept)."  # 78ff
+- op: update  # d490
+  at: '2026-11-24T12:56:42Z'  # d490
+  by: agent  # d490
+  actor: jgstern_agent  # d490
+  clock: 3  # d490
+  nonce: d490  # d490
+  set:  # d490
+    status: done  # d490
+- op: discuss  # e7d2
+  at: '2026-11-24T12:56:42Z'  # e7d2
+  by: agent  # e7d2
+  actor: jgstern_agent  # e7d2
+  clock: 4  # e7d2
+  nonce: e7d2  # e7d2
+  message: "DONE in PR #2370 (stable-id v20, merged 2026-11-24, dev 1acbf00b2). Both parts built.\nBEHAVIOURAL EVIDENCE, re-run on merged dev (analyze_cpp run directly, before the occurrence split; ~/hypergumbo_lab_notebook/v20_11242026/closure/rerun_dev.txt):\n- This item's probe residuals/probes/cpp_pointer_overload/a.cpp (f(int) / f(int*) with a local struct L, g(int) / g(int&)): 4 tie groups when filed, 0 now.\n- This item's fixture guards/finam_fixture/b.cpp (c() const / c() with a local L): 0 tie groups of 39 symbols.\n- A wider fixture (k(int**) / k(int*&), m(int a[]) / m(int a), n(int&&) / n(int&), p(int (*cb)(int)) / p(int cb), d() / d() const, r() & / r() &&, q() volatile / q(), a const pure virtual, an out-of-class const definition): 0 tie groups of 36 symbols; each UNMARKED twin keeps the id it had on fc8c8cb19.\nRoot cause: c_family_parameters stored the text before the declarator as the type and the hash read only that; nothing read a member's cv- or ref-qualifiers. Fix: each parameter entry carries \"declarator\" (marks as written, names removed, layout-free), hashed beside the type; qualifiers go into the decorators slot and the local-scope label. C++, CUDA, HLSL, GLSL share the reader.\nMeasured (package, pre-split tie groups): binaryen/src 50 -> 19, rocksdb/db 29 -> 24, libzmq 14 -> 12, zstd 3 -> 1. 51-tree comparison: C++ 18,484 of 48,253 declared symbols moved, CUDA 1,978 of 2,768, GLSL 28 of 498; nothing else differs.\nOPEN POINT put to the owner, not built: nothing is evaluated, so m(int*) and m(int a[]), or const int a and int a, hash apart though C++ treats each pair as one function.\nNOT asserted: HLSL on a real tree (one tree, 0 of 20 callables moved; HLSL emits no member functions); ties from forward declarations and explicit specialisations (WI-rosog). Residuals are filed with the tag v20_residual.\n"  # e7d2
