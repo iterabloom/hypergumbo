@@ -27,6 +27,8 @@ _FORGEJO_API_LOADED=1
 # single ``source forgejo-api.sh`` line is unchanged (this file is the
 # dispatcher).  Bash resolves function names at call time, so the two files may
 # reference each other's functions regardless of source order.
+# shellcheck source=scripts/lib/secret-args.sh
+source "${BASH_SOURCE[0]%/*}/secret-args.sh"
 # shellcheck source=scripts/lib/github-api.sh
 source "${BASH_SOURCE[0]%/*}/github-api.sh"
 
@@ -177,7 +179,6 @@ api_call() {
 		-o "$tmp_file"
 		-w "%{http_code}"
 		-X "$method"
-		-H "Authorization: token ${FORGE_TOKEN:-}"
 		-H "Content-Type: application/json"
 	)
 
@@ -193,7 +194,10 @@ api_call() {
 		curl_args+=(-d "$data")
 	fi
 
-	API_HTTP_CODE=$(curl "${curl_args[@]}" "$url" 2>/dev/null) || {
+	# The Authorization header goes to curl on standard input, never on its
+	# command line (secret-args.sh).
+	API_HTTP_CODE=$(curl_with_secret_headers "Authorization: token ${FORGE_TOKEN:-}" -- \
+		"${curl_args[@]}" "$url" 2>/dev/null) || {
 		API_RESPONSE=""
 		API_HTTP_CODE="000"
 		rm -f "$tmp_file"
@@ -502,7 +506,7 @@ _attempt_desync_resync_push() {
 	local push_remote="origin" push_user="${FORGEJO_USER:-}" push_token="${FORGEJO_TOKEN:-}"
 
 	echo "   🔁 WI-hubod: plain branch push to resync Codeberg DB, then retry merge..." >&2
-	if ! git -c credential.helper="!f() { echo username=$push_user; echo password=$push_token; }; f" \
+	if ! git_with_token "$push_user" "$push_token" \
 		push "$push_remote" "HEAD:refs/heads/$cur_branch" >&2; then
 		return 1
 	fi
@@ -1137,8 +1141,8 @@ fetch_job_log() {
 	# silently printed as if it were log content.
 	local tmp_log http_code
 	tmp_log=$(mktemp)
-	http_code=$(curl -sSL --http1.1 --max-time 60 \
-		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+	http_code=$(curl_with_secret_headers "Authorization: token ${FORGEJO_TOKEN:-}" -- \
+		-sSL --http1.1 --max-time 60 \
 		-o "$tmp_log" \
 		-w "%{http_code}" \
 		"$web_base/actions/runs/$run_number/jobs/$job_index/$log_path" \
@@ -1162,8 +1166,8 @@ fetch_job_log() {
 _find_run_number_via_runs() {
 	local head_sha="$1"
 	local runs_response
-	runs_response=$(curl -sS --http1.1 --max-time 15 \
-		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+	runs_response=$(curl_with_secret_headers "Authorization: token ${FORGEJO_TOKEN:-}" -- \
+		-sS --http1.1 --max-time 15 \
 		"$API_BASE/actions/runs?head_sha=$head_sha" 2>/dev/null) || return 1
 
 	echo "$runs_response" | python3 -c "
@@ -1191,8 +1195,8 @@ except Exception:
 _find_run_number_via_tasks() {
 	local head_sha="$1"
 	local tasks_response
-	tasks_response=$(curl -sS --http1.1 --max-time 15 \
-		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+	tasks_response=$(curl_with_secret_headers "Authorization: token ${FORGEJO_TOKEN:-}" -- \
+		-sS --http1.1 --max-time 15 \
 		"$API_BASE/actions/tasks?limit=100" 2>/dev/null) || return 1
 
 	echo "$tasks_response" | python3 -c "
@@ -1221,8 +1225,8 @@ except Exception:
 _find_job_from_html() {
 	local web_base="$1" run_number="$2" target_name="$3"
 	local page_html
-	page_html=$(curl -sSL --http1.1 --max-time 15 \
-		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+	page_html=$(curl_with_secret_headers "Authorization: token ${FORGEJO_TOKEN:-}" -- \
+		-sSL --http1.1 --max-time 15 \
 		"$web_base/actions/runs/$run_number/jobs/0" 2>/dev/null) || return 1
 
 	echo "$page_html" | python3 -c "
@@ -1280,8 +1284,8 @@ _find_job_from_log_probe() {
 		# set -o pipefail + SIGPIPE causes false failures.  Instead,
 		# capture a bounded chunk and extract the first line.
 		local raw_chunk="" first_line=""
-		raw_chunk=$(curl -sS --http1.1 --max-time 5 -r 0-1023 \
-			-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		raw_chunk=$(curl_with_secret_headers "Authorization: token ${FORGEJO_TOKEN:-}" -- \
+			-sS --http1.1 --max-time 5 -r 0-1023 \
 			"$web_base/actions/runs/$run_number/jobs/$idx/logs" 2>/dev/null) || true
 		first_line=$(echo "$raw_chunk" | head -1)
 

@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Security
+
+- **Auto-sync no longer puts the forge token on git's command line.**
+
 ## [0.12.0] - 2026-11-16
 
 ### Added

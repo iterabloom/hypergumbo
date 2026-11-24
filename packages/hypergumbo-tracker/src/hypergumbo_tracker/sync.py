@@ -491,6 +491,17 @@ def api_base_from_url(url: str) -> str:
     return ""
 
 
+#: The two environment variables a push's credential helper reads, and the
+#: helper itself. git runs a ``!``-helper through ``sh -c``; the shell expands
+#: the variables there, so no command line ever holds the token.
+_CRED_USER_VAR = "HG_GIT_CRED_USER"
+_CRED_TOKEN_VAR = "HG_GIT_CRED_TOKEN"  # nosec B105 - a variable NAME, not a value
+_CREDENTIAL_HELPER = (
+    f'!f() {{ echo "username=${_CRED_USER_VAR}"; '
+    f'echo "password=${_CRED_TOKEN_VAR}"; }}; f'
+)
+
+
 def _git(
     repo_root: Path,
     *args: str,
@@ -1693,10 +1704,17 @@ def do_sync(
                 "-o", "description=Automated tracker data sync",
             ]
         push_success = False
-        cred_helper = (
-            f"!f() {{ echo username={preflight.forgejo_user}; "
-            f"echo password={preflight.forgejo_token}; }}; f"
-        )
+        # The credential reaches git through the ENVIRONMENT of each push
+        # process; the helper on the command line names two variables and
+        # holds no value. A command line is readable by every local user
+        # (``ps``, ``/proc/<pid>/cmdline``) for as long as the push runs; an
+        # environment is readable by its owner only (WI-jizos; the shell
+        # scripts' twin is ``scripts/lib/secret-args.sh``).
+        cred_helper = _CREDENTIAL_HELPER
+        cred_env = {
+            _CRED_USER_VAR: preflight.forgejo_user,
+            _CRED_TOKEN_VAR: preflight.forgejo_token,
+        }
 
         for attempt in range(1, 4):
             push_result = _git(
@@ -1705,6 +1723,7 @@ def do_sync(
                 "push", preflight.push_remote, push_ref,
                 *push_opts,
                 check=False,
+                env=cred_env,
             )
             if push_result.returncode == 0:
                 push_success = True
@@ -1789,6 +1808,7 @@ def do_sync(
                 "push", preflight.push_remote, push_ref,
                 *push_opts,
                 check=False,
+                env=cred_env,
             )
             if push_result.returncode != 0:  # pragma: no cover
                 return SyncResult(
@@ -1900,6 +1920,7 @@ def do_sync(
                             "push", "--force",
                             preflight.push_remote, push_ref,
                             check=False,
+                            env=cred_env,
                         )
                         _log("rebased and force-pushed sync branch")
                         # Brief delay for the forge to process the push

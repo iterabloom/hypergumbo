@@ -121,8 +121,10 @@ check_branch_protection() {
     if [[ -n "${FORGEJO_TOKEN:-}" ]]; then
         REPO_URL=$(git config --get remote.origin.url | sed 's/.*codeberg.org[:/]\(.*\)\.git/\1/' | sed 's/.*codeberg.org[:/]\(.*\)/\1/')
         if [[ -n "$REPO_URL" ]]; then
-            PROTECTION=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" \
-                "https://codeberg.org/api/v1/repos/$REPO_URL/branch_protections" 2>/dev/null || echo "")
+            # The token goes to curl on standard input, not on its command line.
+            PROTECTION=$(curl -s -H @- \
+                "https://codeberg.org/api/v1/repos/$REPO_URL/branch_protections" 2>/dev/null \
+                <<<"Authorization: token $FORGEJO_TOKEN" || echo "")
             if echo "$PROTECTION" | grep -q '"branch_name":"main"'; then
                 return 0  # Protected
             fi

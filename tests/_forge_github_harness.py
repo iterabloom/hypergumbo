@@ -131,7 +131,13 @@ while i < len(args):
     if a == "-o":
         outfile = args[i + 1]; i += 2; continue
     if a == "-H":
-        headers.append(args[i + 1]); i += 2; continue
+        # ``-H @-``: the headers come on standard input, one per line. That is
+        # how the scripts pass a secret header (scripts/lib/secret-args.sh).
+        if args[i + 1] == "@-":
+            headers.extend(h for h in sys.stdin.read().splitlines() if h)
+        else:
+            headers.append(args[i + 1])
+        i += 2; continue
     if a == "-d":
         data = args[i + 1]; i += 2; continue
     if a == "-w":
@@ -149,7 +155,8 @@ log = os.environ.get("CURL_LOG")
 def record(u):
     if log:
         with open(log, "a") as fh:
-            fh.write(json.dumps({"method": method, "url": u, "headers": headers, "data": data}) + "\n")
+            fh.write(json.dumps({"method": method, "url": u, "headers": headers, "data": data,
+                                 "argv": args}) + "\n")
 
 def lookup(u):
     key = f"{method} {u or ''}"

@@ -153,11 +153,13 @@ _wp_have_credentials() {
 #   curl against the Woodpecker host with the Access + API headers attached.
 #   The ONE place those headers are spelled.
 _wp_curl() {
-	curl -sS --max-time 60 \
-		-H "Authorization: Bearer $WOODPECKER_TOKEN" \
-		-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
-		-H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-		"$@"
+	# All three go to curl on standard input, never on its command line
+	# (secret-args.sh, sourced by forgejo-api.sh before this file).
+	curl_with_secret_headers \
+		"Authorization: Bearer $WOODPECKER_TOKEN" \
+		"CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+		"CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+		-- -sS --max-time 60 "$@"
 }
 
 # _wp_pipeline_coords TARGET_URL

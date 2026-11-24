@@ -186,6 +186,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Checks, hooks and release
 
+- **Forge tokens no longer appear on git or curl command lines.**
 - **mypy rejects a hand-built node id**, and `check-id-construction` reads edge endpoints.
 - **`check-id-construction` follows endpoints through parameters, helpers and registries**; a site it cannot follow must be declared.
 - **Pre-commit checks line citations and entry-kind drift.**

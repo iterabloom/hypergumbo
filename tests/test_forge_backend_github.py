@@ -51,7 +51,13 @@ while i < len(args):
     if a == "-o":
         outfile = args[i + 1]; i += 2; continue
     if a == "-H":
-        headers.append(args[i + 1]); i += 2; continue
+        # ``-H @-``: the headers come on standard input, one per line. That is
+        # how the scripts pass a secret header (scripts/lib/secret-args.sh).
+        if args[i + 1] == "@-":
+            headers.extend(h for h in sys.stdin.read().splitlines() if h)
+        else:
+            headers.append(args[i + 1])
+        i += 2; continue
     if a == "-d":
         data = args[i + 1]; i += 2; continue
     if a == "-w":
@@ -61,7 +67,7 @@ while i < len(args):
     if a.startswith("-"):
         i += 1; continue
     url = a; i += 1
-rec = {"method": method, "url": url, "headers": headers, "data": data}
+rec = {"method": method, "url": url, "headers": headers, "data": data, "argv": args}
 log = os.environ.get("CURL_LOG")
 if log:
     with open(log, "a") as fh:

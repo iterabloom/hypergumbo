@@ -234,7 +234,7 @@ fi
 # ------------------------------------------------------------------
 echo "━━━ Pushing to Fork ━━━"
 
-git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+git_with_token "$USER" "$TOKEN" \
     push -u origin "$PUSH_BRANCH:$BRANCH" --force-with-lease
 
 echo -e "${GREEN}✓${NC} Pushed to $FORK_SLUG:$BRANCH"

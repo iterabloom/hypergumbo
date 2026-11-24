@@ -1054,7 +1054,7 @@ _autopr_branch_push_fallback() {
 		echo "   [test] simulated branch push FAILED"
 		;;
 	*)
-		if git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+		if git_with_token "$USER" "$TOKEN" \
 			push "$remote" "HEAD:refs/heads/$branch" 2>&1; then
 			pushed=true
 		fi
@@ -1147,7 +1147,7 @@ _autopr_github_push_create() {
 		;;
 	*)
 		local _push_out=""
-		if _push_out=$(git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+		if _push_out=$(git_with_token "$USER" "$FORGE_TOKEN" \
 			push "$remote" "HEAD:refs/heads/$branch" 2>&1); then
 			echo "$_push_out"
 			pushed=true
@@ -1159,7 +1159,7 @@ _autopr_github_push_create() {
 			# genuinely diverged (surface it; never queue a duplicate vPR).
 			if grep -qE "\[rejected\]|non-fast-forward" <<<"$_push_out"; then
 				local _remote_tip=""
-				_remote_tip=$(git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+				_remote_tip=$(git_with_token "$USER" "$FORGE_TOKEN" \
 					ls-remote "$remote" "refs/heads/$branch" 2>/dev/null | awk '{print $1}') || true
 				if [[ -n "$_remote_tip" && "$_remote_tip" == "$local_sha" ]]; then
 					echo "   ↩️  Remote branch already at ${local_sha:0:8} — push is already done"
@@ -1783,7 +1783,7 @@ Individual commits are preserved in the history."
 	else
 		while [[ $attempt -le $max_attempts ]]; do
 			# forge-egress: scrubbed
-			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+			PUSH_OUTPUT=$(git_with_token "$USER" "$TOKEN" \
 				push "$push_remote" "HEAD:refs/for/$base_branch/$tip_branch" \
 				-o title="$pr_title" \
 				-o description="$push_desc" \
@@ -2378,7 +2378,7 @@ do_pr() {
 	else
 		while [[ $attempt -le $max_attempts ]]; do
 			# forge-egress: scrubbed
-			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
+			PUSH_OUTPUT=$(git_with_token "$USER" "$TOKEN" \
 				push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
 				-o title="$TITLE" \
 				-o description="$PUSH_DESC" \
@@ -2690,7 +2690,7 @@ do_pr() {
 					# GitHub: plain force-push the rebased head (new SHA → Woodpecker
 					# reruns on it). No AGit refs/for.
 					resolve_forge_token
-					git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+					git_with_token "$USER" "$FORGE_TOKEN" \
 						push origin "HEAD:refs/heads/$BRANCH" --force-with-lease --quiet 2>/dev/null && _rebase_pushed=true
 				else
 					git push origin "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o force-push=true --quiet 2>/dev/null && _rebase_pushed=true
