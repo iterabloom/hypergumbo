@@ -26,3 +26,10 @@
   clock: 2  # 7ce5
   nonce: 7ce5  # 7ce5
   message: "2026-11-23, after PR #2347: this is now the ONLY declared name-slot hole. A name-slot mismatch is an id_format error for every other producer; KNOWN_NAME_SLOT_HOLES holds (javascript, function) alone and its test lets the table only shrink. Measured on dev 49bc5c6e4: knex 6,356 mismatches of 10,649 javascript nodes checked (as filed); 37,227 over 42 repositories, all of them these callbacks. The same question (two nodes with one name on one line) now has three more instances that have no @column: WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil. A ruling here decides both."  # 7ce5
+- op: discuss  # 0c5e
+  at: '2026-11-23T23:19:29Z'  # 0c5e
+  by: agent  # 0c5e
+  actor: jgstern_agent  # 0c5e
+  clock: 3  # 0c5e
+  nonce: 0c5e  # 0c5e
+  message: "OWNER RULING 2026-11-23 (in session): \"Bless the @<column> suffix.\" The suffix in the id's name slot stays; ADR-0036 Ruling 1 is to be amended to allow it, and the validator is to accept it as a legal form instead of a declared hole. No JavaScript id moves. Same ruling recorded on WI-hugir-kubuk-ripig-fotuv-viviv-komir-kusis-hovil."  # 0c5e
