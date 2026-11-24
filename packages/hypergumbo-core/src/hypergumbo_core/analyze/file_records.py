@@ -72,23 +72,26 @@ dropped here, and two edges that become identical are folded by the caller's
 ``deduplicate_edges``, which keeps every call site.
 
 WHAT A FOLD MUST NOT LOSE. ``deduplicate_edges`` keeps the first of two
-identical edges and the call sites of the second, nothing else. The rewiring
-here makes a component's two views of one import identical: the template
-analyzer's edge (``App.vue`` uses ``<Kid>``, with the tag's directives in its
-meta) and the js-module linker's (the script's ``import Kid``, whose
-``derived_from`` names the placeholder edge it resolved, which is how that
-placeholder comes to be demoted, ADR-0057 section 14.1). So before the fold
-the edge that will survive takes the other's ``origin``, and its
-``derived_from`` when it states none of its own. One edge then says both
-passes found the relation, and the placeholder is still demoted. It never
-adds a second pass's ``derived_from`` to an edge that has one: which pass
-consumed which placeholder stays readable.
+identical edges and the call sites of the second, nothing else. A component's
+two views of one import are identical: the template analyzer's edge
+(``App.vue`` uses ``<Kid>``, with the tag's directives in its meta) and the
+js-module linker's (the script's ``import Kid``, whose ``derived_from`` names
+the placeholder edge it resolved, which is how that placeholder comes to be
+demoted, ADR-0057 section 14.1), whether the rewiring here made them so or
+both producers named the file by one id. So before the fold, for every
+relation that starts or ends at a file pseudo-symbol, the edge that will
+survive takes the other's ``origin``, and its ``derived_from`` when it states
+none of its own. One edge then says both passes found the relation, and the
+placeholder is still demoted. It never adds a second pass's ``derived_from``
+to an edge that has one: which pass consumed which placeholder stays
+readable.
 
 WHAT IT DOES NOT DO. It never CREATES a file Symbol and never changes the
-language slot of a path's only one: a component whose single file node the
-JavaScript analyzer minted stays ``typescript:`` / ``javascript:``. Changing
-that slot changes the node's ``stable_id`` (``make_file_stable_id`` hashes
-the language), which is a stable-id scheme change and not a merge.
+language slot of a path's only one: that slot changes the node's
+``stable_id`` (``make_file_stable_id`` hashes the language). The producers
+pick it: the JavaScript analyzer mints a Vue or Svelte component's node in
+the component's own slot (WI-vavag), so a component no template edge names
+has its ``vue:`` / ``svelte:`` node too.
 """
 from __future__ import annotations
 
@@ -177,18 +180,17 @@ def rewire_endpoints(
     return changed_edges
 
 
-def _carry_provenance_across_folds(edges: List[Edge], rewired: List[Edge]) -> None:
+def _carry_provenance_across_folds(edges: List[Edge], file_ids: set[str]) -> None:
     """Give each soon-to-survive edge what the fold would drop (module docstring).
 
-    Only relations a rewired edge takes part in are looked at: every other
-    fold is ``deduplicate_edges``' as before.
+    Only relations that start or end at a file pseudo-symbol (``file_ids``)
+    are looked at: every other fold is ``deduplicate_edges``' as before.
     """
-    touched = {(e.src, e.dst, e.edge_type) for e in rewired}
     first: Dict[tuple[str, str, str], Edge] = {}
     for edge in edges:
-        key = (edge.src, edge.dst, edge.edge_type)
-        if key not in touched:
+        if edge.src not in file_ids and edge.dst not in file_ids:
             continue
+        key = (edge.src, edge.dst, edge.edge_type)
         survivor = first.setdefault(key, edge)
         if survivor is edge:
             continue
@@ -209,8 +211,9 @@ def unify_file_pseudo_symbols(
     Mutates ``symbols`` (the dropped members removed, in place), the survivor
     (see the module docstring) and ``edges`` / ``usage_contexts`` (rewired).
     Paths must already be repo-relative, so it runs after the linkers' path
-    normalisation. A graph with one file pseudo-symbol per path is returned
-    untouched, with an empty map.
+    normalisation. A graph with one file pseudo-symbol per path keeps its
+    symbols and endpoints and gets an empty map; its relations at a file
+    node still have their provenance carried across the fold to come.
     """
     by_path: Dict[str, List[Symbol]] = {}
     for symbol in symbols:
@@ -232,14 +235,13 @@ def unify_file_pseudo_symbols(
             # second is dropped all the same, and there is nothing to rewire.
             if member.id != survivor.id:
                 remap[member.id] = survivor.id
-    if not dropped:
-        return remap
-
-    symbols[:] = [s for s in symbols if id(s) not in dropped]
-    if remap:
-        _carry_provenance_across_folds(
-            edges, rewire_endpoints(edges, remap, usage_contexts),
-        )
+    if dropped:
+        symbols[:] = [s for s in symbols if id(s) not in dropped]
+        if remap:
+            rewire_endpoints(edges, remap, usage_contexts)
+    _carry_provenance_across_folds(
+        edges, {s.id for s in symbols if is_file_pseudo_symbol(s)},
+    )
     return remap
 
 
