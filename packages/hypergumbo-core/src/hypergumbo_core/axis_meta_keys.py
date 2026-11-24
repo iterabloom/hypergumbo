@@ -1254,8 +1254,10 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "the binding; it does not classify the call."),
     MetaKeySpec("parameters", AXIS_SYMBOL_META,
                 "Structured parameter list on function / method "
-                "Symbols (name + type + default). Used by "
-                "signature-shape matching."),
+                "Symbols (name + type + default; ``variadic`` when "
+                "true; in the C family ``declarator``, the pointer, "
+                "reference and array marks written on the parameter, "
+                "when it has any). Used by signature-shape matching."),
     MetaKeySpec("params", AXIS_SYMBOL_META,
                 "Short-form parameter-name list on function / "
                 "method Symbols. Lighter-weight alternative to "

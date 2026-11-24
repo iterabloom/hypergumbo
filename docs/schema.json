@@ -1218,7 +1218,7 @@
               "description": "Package-manager ecosystem on package-shaped Symbols (e.g. 'npm', 'composer'). Fold residue for the ``npm_package`` / ``composer_package`` \u2192 ``package`` migration per audit-findings 0005."
             },
             "parameters": {
-              "description": "Structured parameter list on function / method Symbols (name + type + default). Used by signature-shape matching."
+              "description": "Structured parameter list on function / method Symbols (name + type + default; ``variadic`` when true; in the C family ``declarator``, the pointer, reference and array marks written on the parameter, when it has any). Used by signature-shape matching."
             },
             "params": {
               "description": "Short-form parameter-name list on function / method Symbols. Lighter-weight alternative to ``parameters`` for analyzers that don't extract types."
