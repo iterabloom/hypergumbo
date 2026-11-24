@@ -1642,6 +1642,10 @@ _DEFAULT_VALUE_FIELDS = {
 }
 #: What a default value is hashed as (:func:`_jsts_hashed_text`).
 _DEFAULT_VALUE_HASHED = "..."
+#: The tokens that put a type after them: a type annotation's ``:``, an
+#: optional or mapped member's ``?:`` / ``-?:`` / ``+?:``, a conditional
+#: type's ``:``.
+_TS_TYPE_COLONS = frozenset({":", "?:", "-?:", "+?:"})
 #: The parameter kinds a type predicate's subject is counted among.
 _TS_PARAMETER_TYPES = ("required_parameter", "optional_parameter")
 
@@ -1697,6 +1701,14 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       and hashes alike. A ``/`` in the pattern is written ``\\x2f`` too, so no
       ``/*`` or ``//`` in a regex reads as a comment.
     - A comment is not code: each ``comment`` node is written as one space.
+    - A space is written after a type's ``:`` (``{a:T}``, ``[a:T]``,
+      ``-?:T``) and before and after a conditional type's (``? C: D``) where
+      the source has none (since v19). ``layout_free`` spaces the hash
+      alike anyway; the space is for the import rewrite
+      (``canonical_type_names``), which reads a name right before a ``:``
+      as a label and one right after a ``:`` as no type name, so it left
+      ``C`` of ``A extends B ? C: D`` and ``T`` of ``{a:T}`` as written in
+      one layout and wrote them through the file's imports in the other.
     - A type predicate's subject (``x is T``, ``asserts x``) is written as
       the position of the parameter it names, ``#0 is T``
       (:func:`_ts_predicate_subject_position`; since v19): renaming the
@@ -1704,6 +1716,7 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
       ``this is T`` is kept.
 
     None occurs in a text that had no default value, no type predicate, no
+    ``:`` without a space after it (or, in a conditional type, before it), no
     leading ``&`` or ``|``, no comment and no whitespace or ``/`` in a regex, so every other
     hashed text is the displayed one, byte for byte.
     """
@@ -1718,6 +1731,11 @@ def _jsts_hashed_text(node: "tree_sitter.Node", source: bytes) -> str:
                         if subject is not None and subject.type == "identifier" else None)
             if subject is not None and position is not None:
                 edits.append((subject.start_byte, subject.end_byte, f"#{position}"))
+        if current.type in _TS_TYPE_COLONS and current.parent is not None:
+            if current.parent.type == "conditional_type" and not source[current.start_byte - 1:current.start_byte].isspace():
+                edits.append((current.start_byte, current.start_byte, " "))
+            if not source[current.end_byte:current.end_byte + 1].isspace():
+                edits.append((current.end_byte, current.end_byte, " "))
         default_field = _DEFAULT_VALUE_FIELDS.get(current.type)
         default = current.child_by_field_name(default_field) if default_field else None
         if default is not None:
