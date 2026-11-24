@@ -24,7 +24,10 @@ Key constructs extracted:
 
 Symbol kinds: a model is ``kind="class"`` with ``meta["is_model"]``, an enum is
 ``kind="enum"``, and a datasource or generator is ``kind="block"`` with the
-construct kept in ``meta["block_type"]``. Each ``@relation`` field yields a
+construct kept in ``meta["block_type"]``. Every stable id hashes the
+Symbol's kind; until stable-id scheme v19 a model hashed the role word
+``model`` and a block its ``datasource`` / ``generator`` keyword (WI-lilab).
+Each ``@relation`` field yields a
 ``references`` edge from its model to the target model. The source model is
 the ``model_block`` containing the field, found by POSITION
 (``symbol_declared_by``; WI-jusah, the WI-kosar family); the target is looked
@@ -142,7 +145,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 sym = Symbol(
                     id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
                     stable_id=self.compute_stable_id(
-                        node, kind="model", name=name,
+                        node, kind="class", name=name,
                         file_stable_id=file_stable_id,
                     ),
                     name=name,
@@ -206,13 +209,13 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                     # the kind="config" specialisation is redundant — the real
                     # construct (``datasource`` / ``generator``) lives in
                     # ``meta["block_type"]``. Emit ``kind="block"`` (canonical
-                    # AXIS_LANGUAGE_CONSTRUCT) instead. The stable id still
-                    # hashes ``block_type``; the node id's kind slot is the
-                    # Symbol's kind (ADR-0036 Ruling 2).
+                    # AXIS_LANGUAGE_CONSTRUCT) instead. The node id's kind slot
+                    # (ADR-0036 Ruling 2) and the stable id (WI-lilab) both
+                    # carry the Symbol's kind.
                     sym = Symbol(
                         id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "block"),
                         stable_id=self.compute_stable_id(
-                            node, kind=block_type, name=name,
+                            node, kind="block", name=name,
                             file_stable_id=file_stable_id,
                         ),
                         name=name,
