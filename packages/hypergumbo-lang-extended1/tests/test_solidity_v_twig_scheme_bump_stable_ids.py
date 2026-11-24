@@ -98,8 +98,9 @@ def test_v_deleting_an_earlier_method_moves_nothing(tmp_path: Path) -> None:
 
 
 def test_v_parameters_exclude_the_receiver(tmp_path: Path) -> None:
+    # A function with a receiver is kind ``method`` (WI-lilab follow-up).
     syms = {s.name: s for s in _symbols(analyze_v, tmp_path, "src/demo.v", _V)
-            if s.kind == "function"}
+            if s.kind in ("function", "method")}
     assert syms["helper"].meta[PARAMETERS_KEY] == []
     push = syms["push"].meta[PARAMETERS_KEY]
     assert [(p["name"], p["type"], p.get("variadic", False)) for p in push] == [

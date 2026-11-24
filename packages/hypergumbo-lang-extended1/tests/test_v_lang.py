@@ -455,7 +455,7 @@ def _kind_slot_result(tmp_path: Path):
 def test_the_v_id_fixture_reaches_every_kind(tmp_path: Path) -> None:
     result = _kind_slot_result(tmp_path)
     got = sorted((s.kind, s.name) for s in result.symbols)
-    assert got == [('enum', 'Color'), ('function', 'helper'), ('function', 'main'), ('function', 'sum'), ('interface', 'Shape'), ('struct', 'Point'), ('struct', 'T')], got
+    assert got == [('enum', 'Color'), ('function', 'helper'), ('function', 'main'), ('interface', 'Shape'), ('method', 'sum'), ('struct', 'Point'), ('struct', 'T')], got
 
 
 def test_every_v_node_id_names_its_symbols_own_kind(tmp_path: Path) -> None:
@@ -490,3 +490,57 @@ def test_a_v_union_is_kind_union_and_a_struct_kind_struct(tmp_path: Path) -> Non
     )
     got = sorted((s.kind, s.name) for s in analyze_v(tmp_path).symbols)
     assert got == [("struct", "Point"), ("union", "Num")], got
+
+
+_METHOD_SOURCE = """\
+module main
+
+struct Point {
+\tx int
+}
+
+fn (p Point) norm(k int) int {
+\treturn p.x + k
+}
+
+fn (p Point) twice() int {
+\treturn p.norm(2) + helper(1)
+}
+
+fn helper(x int) int {
+\treturn x
+}
+
+fn main() {
+\tp := Point{x: 1}
+\tp.twice()
+\thelper(3)
+}
+"""
+
+
+def test_a_v_function_with_a_receiver_is_a_method(tmp_path: Path) -> None:
+    """A V ``fn (p Point) norm()`` has a receiver: it is kind ``method``, the
+    way the Go analyzer reports a function with a receiver (WI-lilab
+    follow-up). A function without one stays ``function`` (the control). The
+    name stays the declared word, as before."""
+    (tmp_path / "m.v").write_text(_METHOD_SOURCE)
+    got = sorted((s.kind, s.name) for s in analyze_v(tmp_path).symbols)
+    assert got == [("function", "helper"), ("function", "main"),
+                   ("method", "norm"), ("method", "twice"), ("struct", "Point")], got
+
+
+def test_a_call_inside_a_v_method_starts_on_the_method(tmp_path: Path) -> None:
+    """A call inside a method starts on the method's own node id: the caller
+    id is rebuilt from the enclosing declaration, so it must carry the
+    method kind too. (A call through a selector, ``p.norm(2)``, emits no edge
+    at all, before and after; not this change.)"""
+    (tmp_path / "m.v").write_text(_METHOD_SOURCE)
+    result = analyze_v(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    calls = sorted((by_id[e.src].name, by_id[e.dst].name) for e in result.edges
+                   if e.edge_type == "calls" and e.src in by_id and e.dst in by_id)
+    assert calls == [("main", "helper"), ("twice", "helper")], calls
+    twice = next(s for s in result.symbols if s.name == "twice")
+    assert any(e.src == twice.id for e in result.edges if e.edge_type == "calls")
+    assert [e.src for e in result.edges if e.edge_type == "calls" and e.src not in by_id] == []
