@@ -1,0 +1,26 @@
+- op: create  # df39
+  at: '2026-11-24T22:08:28Z'  # df39
+  by: agent  # df39
+  actor: jgstern_agent  # df39
+  clock: 1  # df39
+  nonce: df39  # df39
+  data:  # df39
+    kind: invariant  # df39
+    title: "rust: a variable typed in one function types the same name in every other function of the file (let db = Conn::new() bound to Other::execute)"  # df39
+    status: violated  # df39
+    priority: 2  # df39
+    parent:  # df39
+    tags:  # df39
+    - rust  # df39
+    - call_graph  # df39
+    - analysis_quality  # df39
+    - call_matrix  # df39
+    - owner_ruling  # df39
+    isbefore: []  # df39
+    duplicate_of: []  # df39
+    not_duplicate_of: []  # df39
+    pr_ref:  # df39
+    description: "STATEMENT\nA local variable's type is taken from the function that binds it. A type written for a same-named variable in another function of the file does not type it.\n\nOBSERVED (2026-11-24, branch jgstern-agent/fix/rust-untyped-receiver-pick, i.e. WITH the INV-hupis fix; fixture ~/hypergumbo_lab_notebook/hupis_11242026/probe/var_scope)\n  pub fn a() { let db: Other = Other::new(); db.execute(); }\n  pub fn b() { let db = extlib::make();      db.execute(); }\n  pub fn c() { let db = Conn::new();         db.execute(); }\nAll three calls are edges to Other::execute at 0.85 with meta.receiver = typed_var. c constructs a Conn on the line above its call. Run: analyze_rust on the fixture, edges whose dst names execute.\n\nWHY\nrust.py keeps ONE variable-type map per file (_extract_var_types_rust: \"File-scoped (not method-scoped) matches the Java/Kotlin/C#/Go convention per ADR-0006 ... first writer wins\"). Its docstring gives the trade-off as \"extra edges, never missing edges\". The fixture shows that is not the trade-off: c's edge to Conn::execute is MISSING and an edge to Other::execute is there instead, because the first writer blocks the right type.\n\nTHIS NEEDS THE OWNER\nThe file scope is a stated convention of ADR-0006 (Accepted), whose line 104 reads \"False positives (extra edges) are preferable to false negatives (missing edges)\". Scoping the map by function changes that convention for Rust, and the docstring says Java, Kotlin, C# and Go share it (NOT checked in those analyzers; the call-resolution matrix has one variable name per function and cannot see this). WI-mobih already names the ADR-0006 line; the shared-layer notebook entry (notebookjournal_11242026_0538.md) lists it as decision 1.\n\nA FIX, not built: key the map by the enclosing function_item (parameters under their own function, a let under its nearest enclosing function; closures stay inside it; a nested fn is its own scope), and look a receiver up in the calling function's map. The companion map _extract_qualified_var_type_paths is file-scoped in the same way.\n\nNOT DONE: no count of edges on a real repository that rest on a type borrowed from another function."  # df39
+    fields:  # df39
+      statement: "A local variable's type is taken from the function that binds it; a type written for a same-named variable in another function of the file does not type it."  # df39
+      root_cause: "rust.py keeps one variable-type map per file, first writer wins (_extract_var_types_rust), a convention its docstring attributes to ADR-0006 and to the Java, Kotlin, C# and Go analyzers (those were not checked)."  # df39
