@@ -22,3 +22,12 @@
     pr_ref:  # d9c0
     description: "WHAT\nA route decorator is attributed to a framework by the NAME of the object it is called on, not by what that object was constructed from.\n1. A FastAPI application bound to a name other than app is not seen: api = FastAPI(); @api.get(\"/items\") yields no route concept and no route node.\n2. A Flask route on an object named app is tagged with two frameworks: @app.route(\"/\", methods=[\"POST\"]) on app = Flask(__name__) carries concept route twice, framework fastapi and framework flask.\n\nREPRO\n- fx/f4_fastapi_api/app.py (api = FastAPI()): 0 route concepts, 0 route nodes.\n- fx/f4_fastapi_app/app.py (app = FastAPI(), same body): route concept fastapi GET /items and route node \"GET /items\".\n- fx/f5_mixed/app.py (app = Flask, api = FastAPI in one file): index has concepts (route, fastapi, POST, /) and (route, flask, POST, /); the FastAPI route on api is missing. The reviewer's \"a FastAPI route is missed when Flask routes share its file\" is case 1, not an effect of sharing a file.\n\nMEASURED\nFixtures only.\n\nNOT CHECKED\n- Which pattern rows match (frameworks/flask.yaml, fastapi.yaml were not read): \"by name\" is inferred from the two f4 arms.\n- APIRouter under another name, Flask under another name (flask_app = Flask(...)), objects imported from another module.\n- Other frameworks whose pattern is a decorator on a conventionally named object.\nThe variable bp already carries matched_meta constructed_from Blueprint in the map, so the constructed-from fact exists for at least one object kind.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # d9c0
     fields: {}  # d9c0
+- op: update  # b7f5
+  at: '2026-11-24T10:21:17Z'  # b7f5
+  by: agent  # b7f5
+  actor: jgstern_agent  # b7f5
+  clock: 2  # b7f5
+  nonce: b7f5  # b7f5
+  set: {}  # b7f5
+  add:  # b7f5
+    tags: [outside_review_10_0_0]  # b7f5

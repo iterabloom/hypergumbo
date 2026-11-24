@@ -1,0 +1,24 @@
+- op: create  # ef9c
+  at: '2026-11-24T10:21:07Z'  # ef9c
+  by: agent  # ef9c
+  actor: jgstern_agent  # ef9c
+  clock: 1  # ef9c
+  nonce: ef9c  # ef9c
+  data:  # ef9c
+    kind: work_item  # ef9c
+    title: "scip-python: the receiver type Pyright knows does not reach the call edge (flaskr: 13 execute/commit calls unresolved, verdicts unchanged)"  # ef9c
+    status: todo_soft  # ef9c
+    priority: 4  # ef9c
+    parent:  # ef9c
+    tags:  # ef9c
+    - scip  # ef9c
+    - python  # ef9c
+    - call_graph  # ef9c
+    - outside_review_10_0_0  # ef9c
+    - reported_not_rerun  # ef9c
+    isbefore: []  # ef9c
+    duplicate_of: []  # ef9c
+    not_duplicate_of: []  # ef9c
+    pr_ref:  # ef9c
+    description: "WHAT (as reported)\nWith the scip-python backend enabled (integration package, scip-python 0.6.8, the app's virtualenv active so Pyright sees Flask), flaskr's verdicts were unchanged: the backend touched 115 of 316 edges and resolved sqlite3.connect, while all 13 execute / commit calls stayed unresolved. Pyright, asked directly, types get_db() as sqlite3.Connection | Any and db.execute(...) as returning Cursor: the backend has the receiver type and it does not reach the call edge. Resolving imports more precisely also grew the list of unchecked modules in the verdict text from 9 to 24 with no verdict change.\n\nNOT CHECKED\nWhat the SCIP translation takes from an occurrence (definition/reference roles only, or types). Related: the item filed the same day on a return annotation naming an external type (get_db() returning sqlite3.Connection).\n\nREPORTED, NOT RE-RUN. Source: an outside reviewer who tried hypergumbo 10.0.0 from PyPI on 2026-11-24 (transcript pasted by the owner in session). Nothing in this item was run on dev by the filing agent unless a line says so; the reviewer's fixtures are not on this machine. FIRST STEP: reproduce on current dev with a fixture, and check the unreleased changelog, before building anything. Filed at the owner's request (\"file them all now\")."  # ef9c
+    fields: {}  # ef9c

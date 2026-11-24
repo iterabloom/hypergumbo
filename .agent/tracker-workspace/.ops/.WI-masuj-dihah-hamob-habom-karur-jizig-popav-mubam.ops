@@ -21,3 +21,12 @@
     pr_ref:  # e344
     description: "WHAT\nA Flask route declared with several methods is reported with the first one only.\n\nREPRO\nfx/f2_methods/app.py:\n  @app.route(\"/login\", methods=[\"GET\", \"POST\"])   -> one route node \"GET /login\"; concept method GET\n  @app.route(\"/only_post\", methods=[\"POST\"])      -> \"POST /only_post\" (control: a one-element list is right)\nExpected: GET /login and POST /login.\n\nMEASURED\nFixture only.\n\nNOT CHECKED\n- methods given as a tuple, a set, a name bound elsewhere, or add_url_rule(..., methods=[...]).\n- Other frameworks whose route call takes a method list (Django require_http_methods, Starlette Route(methods=), aiohttp, Bottle): not run.\nRelated, closed: WI-kohav (done) is about the usage-context key name methods; it did not change what a decorator's list yields.\n\nFound 2026-11-24: an outside reviewer tried hypergumbo 10.0.0 from PyPI (transcript pasted by the owner in session); each line under REPRO and MEASURED is my own re-run on dev fc8c8cb19 (worktree, PYTHONPATH pinned, python -m hypergumbo_core run <dir> --no-sketch-fan-out --no-handler-slices). Fixtures: ~/hypergumbo_lab_notebook/outside_review_11242026/fx/, outputs out/ (summary.txt)."  # e344
     fields: {}  # e344
+- op: update  # 88a8
+  at: '2026-11-24T10:21:15Z'  # 88a8
+  by: agent  # 88a8
+  actor: jgstern_agent  # 88a8
+  clock: 2  # 88a8
+  nonce: 88a8  # 88a8
+  set: {}  # 88a8
+  add:  # 88a8
+    tags: [outside_review_10_0_0]  # 88a8
