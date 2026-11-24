@@ -200,7 +200,9 @@ def test_deleting_the_instance_method_keeps_the_static_callback_id(tmp_path: Pat
 
 def test_scope_label_of_a_static_method_names_static(tmp_path: Path) -> None:
     """A symbol nested in ``static run`` is scoped ``static run``; one nested in
-    the instance ``run`` keeps the bare name, so its id does not move."""
+    the instance ``run`` is scoped by its name alone. Since stable-id v19 both
+    labels carry the method's hashed signature (``_jsts_callable_label``,
+    WI-finam); the ``static`` word still tells the pair apart."""
     import tree_sitter
     import tree_sitter_typescript
 
@@ -219,7 +221,8 @@ def test_scope_label_of_a_static_method_names_static(tmp_path: Path) -> None:
     scopes = sorted(
         (a.start_point[0], _jsts_scope(a, src)) for a in arrows
     )
-    assert [s for _line, s in scopes] == [["N", "run"], ["N", "static run"]]
+    assert [s for _line, s in scopes] == [
+        ["N", "run(Promise<number>)void"], ["N", "static run(Promise<number>)void"]]
 
 
 def test_static_method_with_a_computed_name_labels_nothing() -> None:
