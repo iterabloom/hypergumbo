@@ -25,7 +25,8 @@ A function's ``stable_id`` is the Python producer's formula,
 ``py.python_callable_stable_id``: the normalized signature, decorators and
 name-convention visibility, anchored on the notebook file, with the enclosing
 classes and functions in the qualified name (``A.predict``,
-``outer.helper``). So ``run(x)`` and its redefinition ``run(x, y)`` in a later
+``outer.helper``), each enclosing ``def`` labelled by its signature and
+decorators (``py.python_scope_labels``, since scheme v19: ``outer(x).helper``). So ``run(x)`` and its redefinition ``run(x, y)`` in a later
 cell hold two ids, and deleting an earlier cell moves no other function's id.
 A redefinition with the SAME signature in the same scope is a same-scope tie,
 which the run's split pass numbers (ADR-0035 §1). A class takes the Python
@@ -76,6 +77,7 @@ from hypergumbo_lang_mainstream.py import (
     _compute_stable_id,
     _python_visibility_modifiers,
     python_callable_stable_id,
+    python_scope_labels,
     python_type_names,
 )
 from hypergumbo_core.analyze.base import resolving_type_names
@@ -237,15 +239,10 @@ def _analyze_notebook_file(
     }
 
     def scope_chain(node: ast.AST) -> list[str]:
-        """Enclosing class and function names, outermost first (py.py's
-        ``_enclosing_scope_chain``)."""
-        chain: list[str] = []
-        current = parents.get(id(node))
-        while current is not None:
-            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                chain.append(current.name)
-            current = parents.get(id(current))
-        return chain[::-1]
+        """Enclosing classes and functions, outermost first, each ``def``
+        labelled by its signature and decorators (py.py's
+        ``python_scope_labels``, WI-finam)."""
+        return python_scope_labels(node, parents)
 
     # WI-palus: each annotation a stable id hashes is written through the
     # notebook's imports, as py.py writes a module's.
