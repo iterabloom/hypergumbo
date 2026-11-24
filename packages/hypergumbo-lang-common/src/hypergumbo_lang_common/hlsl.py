@@ -44,7 +44,9 @@ in ``namespace a`` and in ``namespace b``, or a local ``x`` in two functions,
 are two identities. Since scheme v19 the preprocessor branches open at the
 declaration are in that chain too (``guards=True``, WI-sifar), so ``f`` under
 ``#ifdef FAST`` and under its ``#else`` no longer tie; a whole-file include
-guard is not a branch.
+guard is not a branch. An enclosing function is labelled by its name and the
+parameter types its own id hashes (``signatures=True``, WI-finam): the
+locals of the overloads ``f(float)`` and ``f(float2)`` tied until v19.
 
 Why This Design
 ---------------
@@ -175,7 +177,9 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
             analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
             qualified_name=nested_qualified_name(
-                c_family_scope_chain(node, source, functions=True, guards=True), name,
+                c_family_scope_chain(
+                    node, source, functions=True, guards=True, signatures=True,
+                ), name,
             ),
         ),
         signature=signature,

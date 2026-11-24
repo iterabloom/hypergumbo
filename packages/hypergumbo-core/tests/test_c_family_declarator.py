@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tree_sitter_language_pack as tlp
 
+from hypergumbo_core.analyze.base import iter_tree
 from hypergumbo_core.analyze.c_family import (
     c_family_declarator, c_family_parameter_list, c_family_parameter_name,
     c_family_parameters, c_family_scope_chain,
@@ -186,3 +187,37 @@ def test_scope_chain_adds_enclosing_functions_on_request() -> None:
     assert c_family_scope_chain(
         _first("c", macro, "struct_specifier"), macro.encode(), types=False, functions=True,
     ) == []
+    assert c_family_scope_chain(
+        _first("c", macro, "struct_specifier"), macro.encode(), types=False, functions=True,
+        signatures=True,
+    ) == []
+
+
+def test_scope_chain_labels_functions_by_signature_on_request() -> None:
+    """WI-finam: with ``signatures``, an enclosing function is labelled by its
+    name and the parameter types its own id hashes (``f(float)``), so the
+    locals of two overloads do not tie; one hashing no type keeps its bare
+    name. A lambda bound to a variable is labelled by it (``a = []``); an
+    unbound one adds nothing. Without ``signatures`` the label is the name.
+    The types are the ones the function's own id hashes, so a pointer or
+    reference mark is not in them (as in the function's id)."""
+    hlsl = "float f(float x) {\n  float y = x;\n  return y;\n}\nfloat g() {\n  float y = 1;\n  return y;\n}\n"
+    tree = tlp.get_parser("hlsl").parse(hlsl.encode())
+    locals_ = [n for n in iter_tree(tree.root_node) if n.type == "declaration"]
+    assert [c_family_scope_chain(n, hlsl.encode(), functions=True, signatures=True) for n in locals_] == [
+        ["f(float)"], ["g"],
+    ]
+    assert c_family_scope_chain(locals_[0], hlsl.encode(), functions=True) == ["f"]
+    cpp = (
+        "auto a = [](int k) { struct L {}; };\n"
+        "void h() { call([]() { struct M {}; }); }\n"
+        "bool operator==(const X& l, int r) { struct N {}; return true; }\n"
+    )
+    tree = tlp.get_parser("cpp").parse(cpp.encode())
+    tags = [n for n in iter_tree(tree.root_node) if n.type == "struct_specifier"]
+    assert [c_family_scope_chain(n, cpp.encode(), functions=True, signatures=True) for n in tags] == [
+        ["a = []"], ["h"], ["operator==(const X,int)"],
+    ]
+    misparse = "class C FINAL : public B\n{\n  struct P { int a; };\n};\n"
+    tag = _first("cpp", misparse, "struct_specifier")
+    assert c_family_scope_chain(tag, misparse.encode(), functions=True, signatures=True) == []
