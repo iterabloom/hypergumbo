@@ -31,3 +31,10 @@
   set: {}  # e072
   add:  # e072
     tags: [outside_review_10_0_0]  # e072
+- op: discuss  # 05f5
+  at: '2026-11-24T10:22:10Z'  # 05f5
+  by: agent  # 05f5
+  actor: jgstern_agent  # 05f5
+  clock: 3  # 05f5
+  nonce: 05f5  # 05f5
+  message: "REPORTED, NOT RE-RUN (same outside review, 10.0.0, ripgrep): in HiArgs::from_low_args the map showed calls to EncodingMode::Some, ParseResult::Ok and BinaryDetection::is_none, which are std Option / Result operations credited to in-repository types. It reads as this invariant's shape (a receiver of unknown type, a method name some in-repo type declares); whether it is the same code path was not checked."  # 05f5
