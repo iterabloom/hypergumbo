@@ -23,7 +23,10 @@ Three kinds of test, because each catches what the others cannot:
   half alone.
 * The credential helper is run the way git runs one, through ``sh -c``, with
   and without the environment, so "names only" is checked on the text git
-  receives.
+  receives. The tracker's helper is tested the same way in its own package
+  (``packages/hypergumbo-tracker/tests/test_sync_credential_helper.py``):
+  this directory is also run with no hypergumbo package installed, so
+  nothing here may import one.
 * A SCAN of the scripts and of the tracker's sources for the two old
   spellings, so a new call site cannot bring them back. The scan is the only
   check that covers sites no test executes (``auto-pr``'s push paths need a
@@ -184,28 +187,6 @@ class TestCurlWithSecretHeaders:
         found = re.match(r"curl (\d+)\.(\d+)", out)
         assert found, out
         assert (int(found.group(1)), int(found.group(2))) >= (7, 55), out
-
-
-class TestTrackerPush:
-    def test_the_helper_names_two_variables_and_holds_no_value(self) -> None:
-        from hypergumbo_tracker import sync
-
-        helper = sync._CREDENTIAL_HELPER
-        assert helper.startswith("!")
-        with_env = subprocess.run(
-            ["sh", "-c", helper[1:] + " get"], capture_output=True, text=True,
-            env={**os.environ, sync._CRED_USER_VAR: "x-access-token", sync._CRED_TOKEN_VAR: TOKEN},
-        ).stdout
-        assert with_env.splitlines() == ["username=x-access-token", f"password={TOKEN}"]
-        env = {k: v for k, v in os.environ.items() if k not in (sync._CRED_USER_VAR, sync._CRED_TOKEN_VAR)}
-        without = subprocess.run(["sh", "-c", helper[1:] + " get"], capture_output=True, text=True, env=env).stdout
-        assert without.splitlines() == ["username=", "password="]
-
-    def test_the_shell_and_python_helpers_are_the_same_text(self) -> None:
-        """One contract, two spellings: the scripts and the tracker name the same variables."""
-        from hypergumbo_tracker import sync
-
-        assert f"credential.helper='{sync._CREDENTIAL_HELPER}'" in SECRET_ARGS.read_text()
 
 
 # The two old spellings: a credential helper whose text expands a variable
