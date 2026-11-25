@@ -1646,7 +1646,7 @@ JS_BUILTIN_METHODS: frozenset[str] = frozenset({
     "fill", "copyWithin", "entries", "keys", "values",
     "forEach", "at",
     # Map/Set methods
-    "get", "set", "has", "delete", "clear",
+    "get", "set", "has", "delete", "clear", "add",
     # Object methods
     "hasOwnProperty", "toString", "valueOf", "toJSON",
     "toLocaleString",

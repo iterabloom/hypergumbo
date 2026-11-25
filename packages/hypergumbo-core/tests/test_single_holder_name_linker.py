@@ -109,10 +109,11 @@ def test_a_qualifier_binds_by_name_only_when_the_files_imports_bind_it_to_the_re
     namespace.add_namespace("src/index.ts", "store")
     (edge,) = _link([holder, caller], [_member_call(caller, "drain", qualifier="store.inner")], namespace)
     assert edge.dst == holder.id
+    # An owner that is itself a module binding names a FUNCTION of it, so
+    # the method is not asked for (the cases are pinned further down).
     rooted = _files()
     rooted.add_namespace("src/store.ts", "crate.store")
-    (edge,) = _link([holder, caller], [_member_call(caller, "drain", qualifier="crate::store")], rooted)
-    assert edge.dst == holder.id
+    assert _link([holder, caller], [_member_call(caller, "drain", qualifier="crate::store")], rooted) == []
 
 
 def test_a_qualifier_in_a_language_of_declared_names_never_binds_by_name() -> None:
@@ -247,3 +248,51 @@ def test_a_file_whose_analyzer_does_not_screen_library_names_is_left_alone() -> 
     assert _link([holder, caller], [stub], ImportScope(), path="Main.cs") == []
     (edge,) = _link([holder, caller], [stub], ImportScope(library_names_screened=True), path="Main.cs")
     assert edge.dst == holder.id
+
+
+# --- a stub an earlier pass answered without consuming it ---------------------------
+
+
+def test_a_second_call_of_an_imported_function_is_not_looked_up_by_name() -> None:
+    """``aid(); aid();`` in one caller: the import step binds the first and
+    skips the second (one edge per caller and target), leaving its stub open.
+    The import leads to a declaration, so the stub is answered: the name is
+    not tried, whatever other ``aid`` the repository holds."""
+    namesake = _sym("function", "aid", "src/other.ts")
+    caller = _caller()
+    scope = _files()
+    scope.add_named("src/index.ts", "aid")
+    barrel = _files()
+    barrel.add_reexport("src/impl.ts", "helper", exported_as="aid")
+    helper = _sym("function", "helper", "src/impl.ts", (7, 9))
+    ctx = LinkerContext(
+        repo_root=Path("/"), symbols=[namesake, helper, caller], edges=[_bare_call(caller, "aid")],
+        import_scopes={CALLER_FILE: scope, "src/index.ts": barrel},
+    )
+    # ``aid`` of the barrel is impl's ``helper``; the one function NAMED aid is another.
+    assert link_single_holder_name(ctx).edges == []
+
+
+def test_a_call_through_a_module_binding_asks_for_a_function() -> None:
+    """Rust ``diesel::insert_into(..)`` twice in one caller: the qualifier is
+    a namespace binding, so the callee is a FUNCTION of that module. When the
+    module leads to it the stub is answered; a METHOD of that name elsewhere
+    is never the callee. When the module does not lead to it (an inline
+    module the table cannot express), the one function of the name is bound."""
+    method = _sym("method", "Batch.insert_into", "src/batch.rs", language="rust")
+    function = _sym("function", "insert_into", "src/query.rs", language="rust")
+    caller = _caller("rust", "src/main.rs")
+    scope = _files()
+    scope.add_namespace("src/lib.rs", "diesel")
+    root = _files()
+    root.add_named("src/query.rs", "insert_into")
+    stub = _member_call(caller, "insert_into", qualifier="diesel")
+    stub.meta.pop("call_construct")
+    scopes = {"src/main.rs": scope, "src/lib.rs": root}
+    ctx = LinkerContext(repo_root=Path("/"), symbols=[method, function, caller], edges=[stub],
+                        import_scopes=scopes)
+    assert link_single_holder_name(ctx).edges == []
+    ctx = LinkerContext(repo_root=Path("/"), symbols=[method, function, caller], edges=[stub],
+                        import_scopes={"src/main.rs": scope})
+    (edge,) = link_single_holder_name(ctx).edges
+    assert edge.dst == function.id

@@ -46,7 +46,10 @@ repository. The stub's facts say so, and each refuses:
   only when the owner's first segment is a binding of the file's table, which
   holds bindings to files of the repository only: an imported object or
   instance (``import {store} from './store'; store.drain()``), whose type the
-  analyzer could not say. ``console.log()`` binds nothing.
+  analyzer could not say. ``console.log()`` binds nothing. An owner that is
+  a MODULE binding (``import * as util``; ``use crate::db;``) makes the
+  callee a function of that module: the holder asked for is a function,
+  never some type's method.
 * ``stdlib_member_name``: the analyzer says the language's own library
   defines this name on its types (JavaScript ``push``, ``then``,
   ``forEach``). The library is then a second holder: ``items.push(x)`` on an
@@ -59,6 +62,14 @@ repository. The stub's facts say so, and each refuses:
   the first two were tried before this pass. A name the table does bind, to a
   file that does not declare it (a re-export through a barrel file), is looked
   up by its ORIGINAL name.
+
+A stub the import step answered is not looked up either. That step makes
+one edge per caller and target, so the second ``aid()`` in one function stays
+an open stub beside the edge the first one got. Where the import the call
+goes through leads to a declaration (``type_visibility.declaring_files``),
+the call is answered and the name is not tried: measured on diesel before
+this rule, 19 of 36 new name binds were the second ``diesel::insert_into(..)``
+of a caller, bound to a method of that name.
 
 What this does not know: that a receiver's first name is not declared in the
 caller's file at all (a global such as ``document``). No stub says so; a
@@ -96,13 +107,14 @@ the resolved edge that names it in ``derived_from``.
 from __future__ import annotations
 
 import time
+from typing import Callable
 
 from .. import resolved_by
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id, stated_module_of,
 )
 from ..import_scope import MODULES_ARE_FILES, ImportScope
-from ..type_visibility import call_language, dotted
+from ..type_visibility import call_language, declaring_files, dotted
 from .method_call_recovery import parse_unresolved_name, short_name
 from .registry import (
     LinkerActivation,
@@ -126,9 +138,17 @@ _REFUSING_FACTS = (
 _NAME_CONFIDENCE = 0.7
 
 
-def _holder_to_look_up(edge: Edge, scope: ImportScope) -> tuple[str, str] | None:
+def _holder_to_look_up(
+    edge: Edge,
+    scope: ImportScope,
+    leads_to_a_function: Callable[[str, str], bool],
+) -> tuple[str, str] | None:
     """The (kind, name) whose one holder this stub may be bound to, or
-    ``None`` when the stub's own text refuses the name (module docstring)."""
+    ``None`` when the stub's own text refuses the name (module docstring) or
+    the stub is already answered: ``leads_to_a_function(file, name)`` says
+    the import the call goes through reaches a declaration, which the import
+    step binds (and, for a second call of one function from one caller,
+    leaves as an open stub beside the edge it already made)."""
     meta = edge.meta or {}
     if any(meta.get(fact) for fact in _REFUSING_FACTS):
         return None
@@ -137,17 +157,24 @@ def _holder_to_look_up(edge: Edge, scope: ImportScope) -> tuple[str, str] | None
         return None
     qualifier = meta.get("qualifier")
     if qualifier:
+        if scope.module_kind != MODULES_ARE_FILES:
+            return None
         owner = dotted(str(qualifier))
+        module = scope.namespace(owner)
+        if module is not None:
+            # The owner is a MODULE (``util.helper()``, ``diesel::insert_into()``):
+            # the callee is a function of it, never some type's method.
+            return None if leads_to_a_function(module, callee) else (_BARE, callee)
         head = owner.partition(".")[0]
-        bound_to_the_repository = scope.module_kind == MODULES_ARE_FILES and (
-            scope.named(head) is not None or scope.namespace(head) is not None
-            or scope.namespace(owner) is not None
-        )
-        return (_ON_A_RECEIVER, callee) if bound_to_the_repository else None
+        if scope.named(head) is not None or scope.namespace(head) is not None:
+            return _ON_A_RECEIVER, callee
+        return None
     if meta.get("call_construct") == "method":
         return None if stated_module_of(edge) is not None else (_ON_A_RECEIVER, callee)
     bound = scope.named(callee)
-    return (_BARE, bound.name) if bound is not None else None
+    if bound is None or leads_to_a_function(bound.module, bound.name):
+        return None
+    return _BARE, bound.name
 
 
 @register_linker(
@@ -176,6 +203,17 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
             key = (call_language(symbol.language or ""), symbol.kind, short_name(symbol.name))
             holders.setdefault(key, []).append(symbol)
 
+    functions_at = {
+        (symbol.path, short_name(symbol.name))
+        for symbol in ctx.symbols if symbol.kind == _BARE
+    }
+
+    def leads_to_a_function(module: str, name: str) -> bool:
+        return bool(declaring_files(
+            module, name, lambda file, wanted: (file, wanted) in functions_at,
+            ctx.import_scopes,
+        ))
+
     resolved_stubs: set[str] = set()
     existing_call_pairs: set[tuple[str, str]] = set()
     for edge in ctx.edges:
@@ -190,7 +228,7 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
         scope = ctx.import_scopes.get(caller.path) if caller is not None else None
         if caller is None or scope is None or not scope.library_names_screened:
             continue
-        wanted = _holder_to_look_up(edge, scope)
+        wanted = _holder_to_look_up(edge, scope, leads_to_a_function)
         found = holders.get((call_language(caller.language or ""), *wanted), ()) if wanted else ()
         if len(found) != 1 or (edge.src, found[0].id) in existing_call_pairs:
             continue
