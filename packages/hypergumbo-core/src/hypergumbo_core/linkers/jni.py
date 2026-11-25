@@ -55,6 +55,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .. import resolved_by
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -300,6 +301,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
             meta=edge_meta,
             # derived-from endpoints: the two are joined by the JNI mangled-name convention alone
             derived_from=[sym.id, native_sym.id],
+            resolved_by=resolved_by.KEY_MATCH,
         )
         edges.append(edge)
 

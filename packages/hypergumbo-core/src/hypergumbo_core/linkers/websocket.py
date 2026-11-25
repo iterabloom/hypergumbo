@@ -114,6 +114,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from .. import resolved_by
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
@@ -972,6 +973,7 @@ def link_websocket(
                     # derived-from consumed-none: a file scan; the server endpoint is minted and the
                     #   file id computed
                     derived_from=[],
+                    resolved_by=resolved_by.KEY_MATCH,
                 ))
 
     # WI-lisan: the claim is what the scan found, never what was emitted.

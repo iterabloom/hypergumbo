@@ -55,6 +55,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import resolved_by
 from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ..paths import is_test_node
@@ -411,6 +412,7 @@ def link_pyffi(
                     # derived-from endpoints: a ctypes/cffi call-name string joined on the C
                     #   symbol's name
                     derived_from=[src_sym.id, c_sym.id],
+                    resolved_by=resolved_by.KEY_MATCH,
                 ))
             elif is_stdlib:
                 # Stdlib call with no repo-local match — emit unresolved edge
@@ -431,6 +433,10 @@ def link_pyffi(
                     meta={"bridge_kind": "ffi"},
                     # derived-from endpoints: the dst is a minted stdlib placeholder
                     derived_from=[src_sym.id],
+                    # The placeholder is outside the repository, so finalize's
+                    # verdict removes this mark; it is passed because every
+                    # call-family creation site states one.
+                    resolved_by=resolved_by.KEY_MATCH,
                 ))
             else:
                 # Non-stdlib call with repo-local C symbol. INV-zuhub: multi-value
@@ -458,6 +464,7 @@ def link_pyffi(
                     # derived-from endpoints: a ctypes/cffi call-name string joined on the C
                     #   symbol's name
                     derived_from=[src_sym.id, c_sym.id],
+                    resolved_by=resolved_by.KEY_MATCH,
                 ))
 
     # --- Phase 2: Match PyO3 Rust symbols to Python unresolved calls ---
@@ -514,6 +521,7 @@ def link_pyffi(
                 data_direction="src_to_dst",
                 meta=pyo3_meta,
                 derived_from=[edge.src, rust_sym.id, edge.id],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

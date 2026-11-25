@@ -127,6 +127,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
+from .. import resolved_by
 from ..analyze.base import (
     make_site_stable_id,
     make_symbol_id,
@@ -1577,6 +1578,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 # derived-from endpoints: the client node is minted here; the route is joined by URL
                 #   path (meta url_path)
                 derived_from=[matched_route.id],
+                resolved_by=resolved_by.KEY_MATCH,
             )
             edge.meta = {
                 "protocol": "http",

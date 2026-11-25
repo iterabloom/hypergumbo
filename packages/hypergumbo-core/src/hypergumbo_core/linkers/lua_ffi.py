@@ -53,6 +53,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import resolved_by
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
 from .registry import (
@@ -256,6 +257,7 @@ def link_lua_ffi(
                 meta=edge_meta,
                 # derived-from endpoints: the enclosing Lua symbol plus an FFI function-name match
                 derived_from=[src_sym.id, c_sym.id],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     # --- Phase 2: Match unresolved Lua call edges against C symbols ---

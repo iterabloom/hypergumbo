@@ -40,6 +40,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from .. import resolved_by
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -129,6 +130,7 @@ def link_vue_template_methods(
             meta={"framework_dispatch": "vue_event_handler", "mechanism": "template"},
             # derived-from endpoints: a same-file handler-name join from the directive
             derived_from=[sym.id, target.id],
+            resolved_by=resolved_by.SAME_FILE,
         )
         new_edges.append(edge)
 
