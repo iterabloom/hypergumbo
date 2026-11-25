@@ -813,3 +813,28 @@ class TestAMemberChainReceiverIsNotTheClassHint:
         symbols, edges = self._fixture("external")
         result = link_method_call_recovery(_ctx(symbols, edges))
         assert [e.dst for e in result.edges] == ["k:Router.kt:10-20:Router.add:method"]
+
+
+def test_a_stub_an_earlier_linker_resolved_gets_no_second_answer() -> None:
+    """``Protocol.read(new RedisInputStream(is))``: the stub ``read`` was bound
+    to ``Protocol.read`` by its qualifier. The class the caller constructs on
+    that line also declares ``read``; it is not a second callee."""
+    main = _sym("j:T.java:5-9:T.run:method", "T.run", "method", language="java", start=5, end=9)
+    stream = _sym("j:S.java:1-30:Stream:class", "Stream", "class", language="java", path="S.java", end=30)
+    stream_read = _sym("j:S.java:10-20:Stream.read:method", "Stream.read", "method",
+                       language="java", path="S.java", start=10, end=20)
+    protocol_read = _sym("j:P.java:10-20:Protocol.read:method", "Protocol.read", "method",
+                         language="java", path="P.java", start=10, end=20)
+    stub = _edge(main.id, "java:external:0-0:read:unresolved", "calls", line=7,
+                 evidence_type="ast_method_unresolved")
+    built = _edge(main.id, stream.id, "instantiates", line=7)
+    contains = _edge(stream.id, stream_read.id, "contains", line=10)
+    symbols = [main, stream, stream_read, protocol_read]
+    (recovered,) = link_method_call_recovery(_ctx(symbols, [stub, built, contains])).edges
+    assert recovered.dst == stream_read.id
+    answered = Edge.create(
+        src=main.id, dst=protocol_read.id, edge_type="calls", line=7, origin="earlier-linker",
+        origin_run_id="r", evidence_type="ast_call", is_resolved=True,
+        derived_from=[stub.id, protocol_read.id], resolved_by="qualified",
+    )
+    assert link_method_call_recovery(_ctx(symbols, [stub, built, contains, answered])).edges == []

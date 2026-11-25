@@ -40,6 +40,12 @@ A single post-analysis pass, language-agnostic. For each caller N:
   3y. Refuse when the producer stamped ``meta.receiver == "field_chain"``: the
      receiver is a member chain (``v.p.m()``), so a class the caller
      instantiates is not it (WI-sulas).
+  3x. Skip an unresolved edge an earlier linker already resolved (a resolved
+     ``calls`` edge names it in ``derived_from``): the stub stays in the
+     graph beside its answer, and a class the caller constructs is no second
+     answer (``Protocol.read(new RedisInputStream(is))``, bound to
+     ``Protocol.read`` through its ``qualifier``, was also given
+     ``RedisInputStream.read``).
   3a. Drop any hint that CONTRADICTS a ``receiver_type_hint`` the producer
      stamped on the unresolved edge. The premise of step 1 is that the class
      hint IS the receiver; a producer that named a different type for the
@@ -267,10 +273,14 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
     class_hints: dict[NodeId, list[Edge]] = defaultdict(list)
     unresolved: dict[NodeId, list[tuple[str, Edge]]] = defaultdict(list)
     resolved_targets: dict[str, set[str]] = defaultdict(set)
+    answered = {
+        stub for e in ctx.edges if e.edge_type == "calls" and e.is_resolved
+        for stub in e.derived_from or ()
+    }
     for e in ctx.edges:
         if e.edge_type in _CLASS_HINT_EDGE_TYPES and e.dst in class_ids:
             class_hints[e.src].append(e)
-        if e.edge_type == "calls" and e.dst.endswith(":unresolved"):
+        if e.edge_type == "calls" and e.dst.endswith(":unresolved") and e.id not in answered:
             name = parse_unresolved_name(e.dst)
             if name is not None:
                 unresolved[e.src].append((name, e))

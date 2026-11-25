@@ -755,6 +755,8 @@ def test_new_names_a_type_through_the_table() -> None:
     stub = make_unresolved_edge(
         "java", caller.id, "Conn", 12, "test-pass", "test-run", instantiates=True,
     )
+    # Nobody has said which type it is yet: an unresolved stub's confidence.
+    assert (stub.is_resolved, stub.confidence) == (False, 0.5)
     assert (stub.edge_type, stub.is_resolved) == ("instantiates", False)
     (edge,) = _named_link([own, other, caller], stub, ImportScope(), caller.path)
     assert (edge.dst, edge.edge_type, edge.is_resolved) == (own.id, "instantiates", True)
@@ -833,3 +835,104 @@ def test_kotlin_has_a_hierarchy_walker() -> None:
     ctx = LinkerContext(repo_root=Path("/"), symbols=[base, save, child, caller], edges=[extends, stub])
     (edge,) = link_inherited_calls(ctx).edges
     assert (edge.dst, edge.meta["resolved_by"]) == (save.id, "own_type")
+
+
+# --- found on the Java, Kotlin and PHP adapters ---------------------------------------
+
+
+def _java(kind: str, package: str, name: str, path: str, lines: tuple[int, int] = (1, 9)) -> Symbol:
+    return _decl(kind, package, name, path, language="java", lines=lines)
+
+
+def test_a_nested_type_named_with_its_owner_is_found_by_its_last_name() -> None:
+    """Java names a nested type ``Outer.Inner``. A file writes it
+    ``Outer.Inner`` from outside and ``Inner`` inside ``Outer``; both mean
+    it, and a ``Builder`` of another class does not."""
+    outer = _java("class", "db", "Config", "db/Config.java", lines=(1, 40))
+    builder = _java("class", "db", "Config.Builder", "db/Config.java", lines=(5, 20))
+    build = _java("method", "db", "Config.Builder.build", "db/Config.java", lines=(8, 9))
+    other = _java("class", "web", "Request.Builder", "web/Request.java", lines=(5, 20))
+    other_build = _java("method", "web", "Request.Builder.build", "web/Request.java", lines=(8, 9))
+    symbols = [outer, builder, build, other, other_build]
+
+    outside = _java("method", "db", "Main.run", "db/Main.java", lines=(3, 9))
+    new = make_unresolved_edge("java", outside.id, "Config.Builder", 4, "test-pass", "test-run", instantiates=True)
+    (edge,) = _named_link([*symbols, outside], new, ImportScope(own_namespace="db"), outside.path)
+    assert (edge.dst, edge.edge_type, edge.meta["resolved_by"]) == (builder.id, "instantiates", "qualified")
+    typed = make_unresolved_edge(
+        "java", outside.id, "build", 5, "test-pass", "test-run",
+        receiver_type_hint="Config.Builder", call_construct="method",
+    )
+    (edge,) = _named_link([*symbols, outside], typed, ImportScope(own_namespace="db"), outside.path)
+    assert edge.dst == build.id
+
+    inside = _java("method", "db", "Config.fresh", "db/Config.java", lines=(30, 35))
+    new = make_unresolved_edge("java", inside.id, "Builder", 31, "test-pass", "test-run", instantiates=True)
+    (edge,) = _named_link([*symbols, inside], new, ImportScope(own_namespace="db"), inside.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (builder.id, "same_module")
+
+
+def test_a_bare_call_reaches_a_method_the_file_imports() -> None:
+    """``import static util.Text.pad;`` then ``pad(s)``: the method the import
+    names. A wildcard over the type supplies it too. Without the import a
+    method of that name is not a function in scope."""
+    pad = _java("method", "util", "Text.pad", "util/Text.java", lines=(3, 5))
+    namesake = _java("method", "ui", "Box.pad", "ui/Box.java", lines=(3, 5))
+    caller = _java("method", "app", "Main.run", "app/Main.java", lines=(3, 9))
+    stub = make_unresolved_edge("java", caller.id, "pad", 4, "test-pass", "test-run")
+    symbols = [pad, namesake, caller]
+    assert _named_link(symbols, stub, ImportScope(own_namespace="app"), caller.path) == []
+    named = ImportScope(own_namespace="app")
+    named.add_named(module="util.Text", name="pad")
+    (edge,) = _named_link(symbols, stub, named, caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (pad.id, "import")
+    star = ImportScope(own_namespace="app")
+    star.add_open_wildcard("util.Text")
+    (edge,) = _named_link(symbols, stub, star, caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (pad.id, "import")
+
+
+def test_a_method_of_an_enclosing_type_is_not_bound_as_an_import() -> None:
+    """The bare-call lookup takes a method only through an import: the type
+    the caller is declared in, and its ancestors, are the hierarchy walk's."""
+    own = _java("method", "app", "Main.pad", "app/Main.java", lines=(12, 14))
+    caller = _java("method", "app", "Main.run", "app/Main.java", lines=(3, 9))
+    stub = make_unresolved_edge("java", caller.id, "pad", 4, "test-pass", "test-run")
+    assert _named_link([own, caller], stub, ImportScope(own_namespace="app"), caller.path) == []
+
+
+def test_a_call_in_a_class_body_starts_at_that_class() -> None:
+    """A property initialiser's caller is the class itself: ``helper()``
+    written there is the class's own or an ancestor's, and ``Nested()`` its
+    nested type."""
+    base = _decl("class", "app", "Base", "app/Base.kt", lines=(1, 9))
+    helper = _decl("method", "app", "Base.helper", "app/Base.kt", lines=(2, 3))
+    owner = _decl("class", "app", "Widget", "app/Widget.kt", lines=(1, 30))
+    nested = _decl("class", "app", "Widget.Nested", "app/Widget.kt", lines=(20, 25))
+    extends = Edge.create(
+        src=owner.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test-run",
+    )
+    # A namesake class elsewhere: the caller's own qualified name, not the
+    # name ``Widget``, says which class the walk starts at.
+    namesake = _decl("class", "other", "Widget", "other/Widget.kt", lines=(1, 30))
+    its_base = _decl("class", "other", "Frame", "other/Frame.kt", lines=(1, 9))
+    its_helper = _decl("method", "other", "Frame.helper", "other/Frame.kt", lines=(2, 3))
+    also_extends = Edge.create(
+        src=namesake.id, dst=its_base.id, edge_type="extends", line=1, origin="test",
+        origin_run_id="test-run",
+    )
+    symbols = [namesake, its_base, its_helper, base, helper, owner, nested]
+    call = make_unresolved_edge(
+        "kotlin", owner.id, "helper", 4, "test-pass", "test-run", enclosing_class="Widget",
+    )
+    ctx = LinkerContext(
+        repo_root=Path("/"), symbols=symbols, edges=[also_extends, extends, call],
+        import_scopes={owner.path: ImportScope(own_namespace="app")},
+    )
+    (edge,) = link_inherited_calls(ctx).edges
+    assert edge.dst == helper.id
+    construct = make_unresolved_edge(
+        "kotlin", owner.id, "Nested", 5, "test-pass", "test-run", enclosing_class="Widget",
+    )
+    (edge,) = _named_link(symbols, construct, ImportScope(own_namespace="app"), owner.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (nested.id, "same_module")

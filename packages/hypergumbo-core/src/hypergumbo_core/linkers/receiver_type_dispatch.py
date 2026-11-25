@@ -90,6 +90,10 @@ _RECEIVER_META_EVIDENCE: tuple[tuple[str, str], ...] = (
     ("ufcs_receiver_type", "ast_call_ufcs"),
 )
 
+#: The ``meta`` keys by which a callable says it is called ON A RECEIVER of a
+#: type it names, although it is declared outside that type.
+RECEIVER_META_KEYS: tuple[str, ...] = tuple(key for key, _ in _RECEIVER_META_EVIDENCE)
+
 
 def _build_receiver_type_index(
     symbols: list[Symbol],

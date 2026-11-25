@@ -296,3 +296,36 @@ def test_a_call_through_a_module_binding_asks_for_a_function() -> None:
                         import_scopes={"src/main.rs": scope})
     (edge,) = link_single_holder_name(ctx).edges
     assert edge.dst == function.id
+
+
+def _namespaces() -> ImportScope:
+    return ImportScope(library_names_screened=True)
+
+
+def test_a_bare_call_in_a_language_of_declared_names_is_never_bound_by_name() -> None:
+    """``import okio.buffer`` names a library's function: the repository's one
+    ``buffer`` is not it. An import that names a repository declaration was
+    bound by the declared-name rule before this pass."""
+    holder = _sym("function", "buffer", "src/Pool.kt", language="kotlin")
+    caller = _caller("kotlin", "src/Main.kt")
+    table = _namespaces()
+    table.add_named("okio", "buffer")
+    assert _link([holder, caller], [_bare_call(caller, "buffer")], table, caller.path) == []
+
+
+def test_a_function_declared_on_a_receiver_holds_its_name_for_a_receiver_call() -> None:
+    """A Kotlin extension ``fun Socket.closeQuietly()`` is a function that is
+    called on a receiver: alone it is the one holder of the name, beside a
+    method of that name it makes two."""
+    extension = _sym("function", "closeQuietly", "src/Util.kt", language="kotlin")
+    extension.meta = {"extension_receiver": "Socket"}
+    plain = _sym("function", "drain", "src/Util.kt", (7, 9), language="kotlin")
+    caller = _caller("kotlin", "src/Main.kt")
+    (edge,) = _link([extension, plain, caller], [_member_call(caller, "closeQuietly")],
+                    _namespaces(), caller.path)
+    assert edge.dst == extension.id
+    assert _link([extension, plain, caller], [_member_call(caller, "drain")],
+                 _namespaces(), caller.path) == []
+    method = _sym("method", "Pool.closeQuietly", "src/Pool.kt", language="kotlin")
+    assert _link([extension, method, caller], [_member_call(caller, "closeQuietly")],
+                 _namespaces(), caller.path) == []

@@ -223,7 +223,7 @@ _CALLERS = {"java": "A.caller", "csharp": "C.Caller", "scala": "O.caller"}
 #: In these analyzers the resolver arm emits ``ast_call`` (with
 #: ``call_construct``) and the shared unresolved emitter ``ast_call_direct``.
 _RESOLUTION_LABEL_HOLES = dict.fromkeys(
-    ("go", "swift", "kotlin", "rust", "ruby", "csharp", "scala", "cpp"),
+    ("go", "swift", "kotlin", "rust", "ruby", "csharp", "scala", "cpp", "php"),
     "WI-sukug: the resolved bare call is ast_call, the unresolved one ast_call_direct",
 )
 

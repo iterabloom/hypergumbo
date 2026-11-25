@@ -28,7 +28,10 @@ marked ``resolved_by="name"``. Several holders: unresolved. A holder is a
 METHOD for a call written on a receiver (``x.drain()``) and a FUNCTION for a
 bare call (``drain()``), as in the lookups this replaces and the sample that
 measured them: ``cd.shout()`` on an imported object is not the module-level
-function ``shout`` of the same file, whatever the name.
+function ``shout`` of the same file, whatever the name. A function declared
+to be called on a receiver (a Kotlin extension ``fun Socket.closeQuietly()``,
+``receiver_type_dispatch.RECEIVER_META_KEYS``) holds its name for a call on a
+receiver too: beside a method of that name it makes two holders.
 
 When the name is refused although one declaration holds it
 ----------------------------------------------------------
@@ -62,6 +65,11 @@ repository. The stub's facts say so, and each refuses:
   the first two were tried before this pass. A name the table does bind, to a
   file that does not declare it (a re-export through a barrel file), is looked
   up by its ORIGINAL name.
+* A bare call in a language of declared names (the table's modules are
+  namespaces): the declared-name rule is the whole answer. An import that
+  names a declaration of the repository was bound by it; one that names none
+  is a library's (``import okio.buffer``), and the repository's one
+  ``buffer`` is not it.
 
 A stub the import step answered is not looked up either. That step makes
 one edge per caller and target, so the second ``aid()`` in one function stays
@@ -116,6 +124,7 @@ from ..ir import (
 from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..type_visibility import call_language, declaring_files, dotted
 from .method_call_recovery import parse_unresolved_name, short_name
+from .receiver_type_dispatch import RECEIVER_META_KEYS
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -172,7 +181,10 @@ def _holder_to_look_up(
     if meta.get("call_construct") == "method":
         return None if stated_module_of(edge) is not None else (_ON_A_RECEIVER, callee)
     bound = scope.named(callee)
-    if bound is None or leads_to_a_function(bound.module, bound.name):
+    if (
+        bound is None or scope.module_kind != MODULES_ARE_FILES
+        or leads_to_a_function(bound.module, bound.name)
+    ):
         return None
     return _BARE, bound.name
 
@@ -199,9 +211,12 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in ctx.symbols}
     holders: dict[tuple[str, str, str], list[Symbol]] = {}
     for symbol in ctx.symbols:
-        if symbol.kind in (_ON_A_RECEIVER, _BARE):
-            key = (call_language(symbol.language or ""), symbol.kind, short_name(symbol.name))
-            holders.setdefault(key, []).append(symbol)
+        if symbol.kind not in (_ON_A_RECEIVER, _BARE):
+            continue
+        language, name = call_language(symbol.language or ""), short_name(symbol.name)
+        holders.setdefault((language, symbol.kind, name), []).append(symbol)
+        if symbol.kind == _BARE and any((symbol.meta or {}).get(k) for k in RECEIVER_META_KEYS):
+            holders.setdefault((language, _ON_A_RECEIVER, name), []).append(symbol)
 
     functions_at = {
         (symbol.path, short_name(symbol.name))

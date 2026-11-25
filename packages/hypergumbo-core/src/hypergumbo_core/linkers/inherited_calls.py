@@ -179,7 +179,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Callable
+from typing import Callable, Iterable
 
 from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
@@ -1012,10 +1012,18 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     # ``record`` out.
     type_kinds = type_like_kind_names() | {"module"}
     class_ids_by_name: dict[str, list[str]] = {}
+    # Types by the LAST segment of their name, for a name read through a
+    # file's table (``_type_meant``, ``_declaration_named``). Java and Kotlin
+    # name a nested type ``Outer.Inner``, and a file writes it ``Inner``
+    # (inside ``Outer``, or imported) as well as ``Outer.Inner``: the scope
+    # walk compares qualified names, so the index has only to offer every
+    # type whose name ends so.
+    types_by_last_name: dict[str, list[str]] = {}
     class_symbols: dict[str, Symbol] = {}
     for s in ctx.symbols:
         if s.kind in type_kinds:
             class_ids_by_name.setdefault(s.name, []).append(s.id)
+            types_by_last_name.setdefault(short_name(s.name), []).append(s.id)
             class_symbols[s.id] = s
     # C3 needs left-to-right base order, but a qualified in-tree base's
     # extends edge arrives out of order (recovered late by the
@@ -1056,11 +1064,14 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     # declaration named by a bare call or a ``new`` (``_declaration_named``).
     # Built only when some file's table names namespaces.
     functions_by_name: dict[str, list[Symbol]] = {}
+    methods_by_name: dict[str, list[Symbol]] = {}
     existing_constructions: set[tuple[str, str]] = set()
     if any(s.module_kind != MODULES_ARE_FILES for s in ctx.import_scopes.values()):
         for s in ctx.symbols:
             if s.kind == "function":
                 functions_by_name.setdefault(short_name(s.name), []).append(s)
+            elif s.kind == "method":
+                methods_by_name.setdefault(short_name(s.name), []).append(s)
         existing_constructions = {
             (e.src, e.dst) for e in ctx.edges
             if e.edge_type == "instantiates" and e.is_resolved
@@ -1073,8 +1084,8 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         language = caller.language or ""
         answer = _declaration_named(
             str((stub.meta or {}).get("callee_name") or parse_unresolved_name(stub.dst) or ""),
-            caller, table, ctx.import_scopes, functions_by_name,
-            class_ids_by_name, class_symbols,
+            caller, table, ctx.import_scopes, functions_by_name, methods_by_name,
+            types_by_last_name, class_symbols,
             functions=not constructs,
             types=constructs or language in _BARE_CALL_MAY_NAME_A_TYPE,
         )
@@ -1200,7 +1211,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
                 named_type, scoped_by = qualifier, resolved_by.QUALIFIED
             if named_type and receiver_type_id is None:
                 meant = _type_meant(
-                    named_type, src_sym, scope, class_ids_by_name, class_symbols,
+                    named_type, src_sym, scope, types_by_last_name, class_symbols,
                     ctx.import_scopes,
                 )
                 if meant is _NOT_BOUND:
@@ -1270,7 +1281,8 @@ def _declaration_named(
     scope: ImportScope,
     scopes: dict[str, ImportScope],
     functions_by_name: dict[str, list[Symbol]],
-    class_ids_by_name: dict[str, list[str]],
+    methods_by_name: dict[str, list[Symbol]],
+    types_by_last_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
     *,
     functions: bool,
@@ -1289,20 +1301,25 @@ def _declaration_named(
     the parts of a type. Where several FILES declare it, the caller's own
     file's declaration is the one meant: two scripts that each define a
     function of one name are not loaded together.
+
+    A bare call that names no function or type may name a METHOD the file
+    IMPORTS: a member imported by its name (Java ``import static
+    a.b.Util.helper;``, Kotlin ``import a.b.Registry.lookup`` of an object's
+    member), or one a wildcard over a type supplies (``import static
+    a.b.Util.*;``). A method an enclosing scope declares is not bound here:
+    the type the caller is declared in and its ancestors are Site 1's.
     """
-    language = caller.language or ""
+    language = call_language(caller.language or "")
+
+    def same_language(symbols: Iterable[Symbol]) -> list[Symbol]:
+        return [s for s in symbols if call_language(s.language or "") == language]
 
     def candidates(short: str) -> list[Symbol]:
-        found: list[Symbol] = []
-        if functions:
-            found += [
-                f for f in functions_by_name.get(short, ())
-                if call_language(f.language or "") == call_language(language)
-            ]
+        found = same_language(functions_by_name.get(short, ())) if functions else []
         if types:
             found += [
                 class_symbols[class_id] for class_id in _same_language_class_ids(
-                    short, language, class_ids_by_name, class_symbols,
+                    short, language, types_by_last_name, class_symbols,
                 )
             ]
         return found
@@ -1311,6 +1328,14 @@ def _declaration_named(
         written, caller.qualified_name, scope, candidates,
         caller_path=caller.path, scopes=scopes,
     )
+    if not seen and functions:
+        seen, scoped = visible_declarations(
+            written, caller.qualified_name, scope,
+            lambda short: same_language(methods_by_name.get(short, ())),
+            caller_path=caller.path, scopes=scopes,
+        )
+        if scoped != resolved_by.IMPORT:
+            return None
     if not seen or scoped is None:
         return None
     one_name = {dotted(s.qualified_name or "") for s in seen}
@@ -1408,7 +1433,7 @@ def _type_meant(
     written: str,
     caller: Symbol,
     scope: ImportScope,
-    class_ids_by_name: dict[str, list[str]],
+    types_by_last_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
     scopes: dict[str, ImportScope],
 ) -> list[str] | None:
@@ -1428,7 +1453,7 @@ def _type_meant(
     def types_named(short: str) -> list[Symbol]:
         found = [
             class_symbols[class_id] for class_id in _same_language_class_ids(
-                short, caller.language or "", class_ids_by_name, class_symbols,
+                short, caller.language or "", types_by_last_name, class_symbols,
             )
         ]
         # Name and arity are looked up TOGETHER, before any scope is walked:
@@ -1455,12 +1480,14 @@ def _enclosing_type_ids(
 ) -> list[str] | None:
     """The declarations of the type ``caller`` is a member of: the classes
     named ``enclosing_class`` whose qualified name is the caller's own minus
-    its last segment. ``one_file``: in a language whose imports name files a
+    its last segment, or the caller's own when the caller IS that type (a
+    call in a class body, outside any function: a property initialiser). ``one_file``: in a language whose imports name files a
     type is one file's declaration, so a namesake class of another file is
     another type however equal its qualified name (in a language of declared
     names it is a part of the same type: a C# partial class). ``None`` when the caller or a candidate records no
     qualified name, or none matches: the name walk is then all there is."""
-    owner = dotted(caller.qualified_name or "").rpartition(".")[0]
+    own = dotted(caller.qualified_name or "")
+    owner = own if caller.id in class_symbols else own.rpartition(".")[0]
     candidates = [
         class_symbols[class_id] for class_id in _same_language_class_ids(
             enclosing_class, caller.language or "", class_ids_by_name, class_symbols,

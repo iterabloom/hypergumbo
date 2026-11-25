@@ -1533,20 +1533,21 @@ def _java_import_scope(tree: "tree_sitter.Tree", source: bytes) -> ImportScope:
     - ``import a.b.*;`` brings every type of a package: ``add_open_wildcard``.
     - ``import static a.b.Util.helper;`` brings the static members named
       ``helper`` of ``a.b.Util``, a static nested type among them (JLS 7.5.3):
-      ``add_named("a.b.Util", "helper")``, so a type written ``helper`` (a
-      nested type) means that one. A METHOD named so is not found through
-      it: the shared lookup finds functions, and a Java method is not one.
+      ``add_named("a.b.Util", "helper")``: a bare call ``helper()`` means
+      that method, a type written ``helper`` that nested type.
     - ``import static a.b.Util.*;`` brings Util's static members, its static
       nested types among them: ``add_open_wildcard("a.b.Util")``.
 
-    Not recorded: the file's own package, which the caller's qualified name
-    supplies; ``java.lang``, imported into every file (JLS 7.3) and declared
+    The file's package is the table's ``own_namespace``: Java packages do not
+    nest (JLS 7.1), so a name is looked for in the caller's enclosing types
+    and its own package, never in a parent package. Not recorded:
+    ``java.lang``, imported into every file (JLS 7.3) and declared
     nowhere in a repository; ``import Foo;``, a type of the unnamed package,
     which a file of a named package cannot import (JLS 7.5). Java has no
     import aliases. Imports stand at the top of a compilation unit only, so
     the root's children are all that is read.
     """
-    scope = ImportScope()
+    scope = ImportScope(own_namespace=_extract_java_package(tree.root_node, source) or "")
     for node in tree.root_node.children:
         if node.type != "import_declaration":
             continue

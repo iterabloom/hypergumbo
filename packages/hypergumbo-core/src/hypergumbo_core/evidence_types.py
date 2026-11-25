@@ -192,7 +192,7 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      base_confidence=0.85),
     EvidenceTypeSpec("ast_new", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a `new` constructor expression.",
-                     base_confidence=0.95),
+                     base_confidence=0.95, base_confidence_unresolved=0.50),
     EvidenceTypeSpec("ast_package", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a package declaration."),
     EvidenceTypeSpec("ast_perform", AXIS_INFERENCE_PATHWAY,

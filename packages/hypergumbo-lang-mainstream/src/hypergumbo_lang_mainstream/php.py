@@ -212,8 +212,11 @@ class _PhpUses:
     alias)``, ``use Foo;`` is ``add_named("", "Foo")``. A ``use const`` is
     left out: nothing calls a constant. PHP's own global functions and
     classes are not recorded: nothing in a repository is declared there.
-    The file's own namespace needs no record: the caller's qualified name
-    carries it.
+    The file's namespace is the table's ``own_namespace`` (PHP namespaces do
+    not nest: ``Conn`` written in ``App\Http`` is ``App\Http\Conn`` or an
+    import, never ``App\Conn``), left unsaid for a file that declares more
+    than one; ``global_functions_visible`` says PHP's one exception, a
+    function called by a bare name that the namespace does not declare.
 
     ``library_names_screened`` stays False, so the single-holder name linker
     does not run for PHP, although this analyzer marks a call whose name PHP's
@@ -249,7 +252,14 @@ def _php_uses(tree: "tree_sitter.Tree", source: bytes) -> _PhpUses:
     declaration's for a group written ``use function A\{f, g};``.
     """
     aliases: dict[str, str] = {}
-    scope = ImportScope()
+    namespaces = [
+        _php_namespace_name(child, source) or ""
+        for child in tree.root_node.children if child.type == "namespace_definition"
+    ]
+    scope = ImportScope(
+        own_namespace=(namespaces or [""])[0] if len(namespaces) < 2 else None,
+        global_functions_visible=True,
+    )
 
     for node in iter_tree(tree.root_node):
         if node.type != "namespace_use_declaration":
