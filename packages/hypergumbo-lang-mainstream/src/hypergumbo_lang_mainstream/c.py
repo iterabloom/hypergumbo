@@ -1013,6 +1013,7 @@ def _extract_edges(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
+                            resolved_by=lookup_result.resolved_by,
                         )
                         _unfollowed = _unfollowed_call_kind(
                             node, facts.get(lookup_result.symbol.id),
@@ -1034,7 +1035,8 @@ def _extract_edges(
                         held = pointer_targets[callee_name]
                         _before_held = len(edges)
                         for target in held:
-                            _sym = resolver.lookup(target, caller_path=_caller_path).symbol
+                            _held_lookup = resolver.lookup(target, caller_path=_caller_path)
+                            _sym = _held_lookup.symbol
                             _libc = declared_by_an_included_header("c", target, visible_headers)
                             if _sym is not None and _sym.kind == "function" and not (
                                 _sym.path != _caller_path and _libc
@@ -1048,6 +1050,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="function_pointer",
+                                    resolved_by=_held_lookup.resolved_by,
                                 ))
                             elif _libc:
                                 edges.append(make_unresolved_edge(
@@ -1125,6 +1128,7 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="function_pointer_arg",
+                                resolved_by=cb_lookup.resolved_by,
                             ))
 
             stamp_io_mode_from_call(
