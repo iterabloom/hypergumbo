@@ -100,20 +100,48 @@ a project type keeps the placeholder). A navigation-chain receiver goes
 through ``_emit_navigation_receiver_call``: ``this.field.m()`` uses the
 field's type, an inline fully-qualified path under
 ``_KOTLIN_INLINE_QUALIFIED_ROOTS`` names its owner via
-``inline_qualified_owner``, and a chain ending in a project type resolves on
-that type. ``super.m()`` resolves through the enclosing class's
-``base_classes`` (``_emit_super_call``); an external base leaves an
-unresolved edge whose ``receiver_type_hint`` names it. The enclosing class
-of a ``super.m()``, ``this.m()``, ``::m`` or ``this::m`` is the one whose
-declaration contains the call, by POSITION, and its own member is this
-file's declaration at ``<class qualified name>.m`` (``_own_class_lookup``);
-the base's ``m`` is the one at the path the file imports
-(``_kt_import_target``), else its own package's; a base class resolves
-same-file, import, same package, then by id (``_resolve_base_class_kotlin``).
-Position and path are used because the run-wide name-keyed table keeps one
-``Foo`` and one ``Foo.m`` across every package's ``Foo`` (WI-gikuk). A
-``this.m()`` the class does not declare (an extension, an inherited member)
-keeps the name lookup.
+``inline_qualified_owner``, and a path of names ending in a type names the
+owner the call is on. The enclosing class of a ``super.m()``, ``this.m()``,
+``::m`` or ``this::m`` is the one whose declaration contains the call, by
+POSITION, and its own member is this file's declaration at ``<class
+qualified name>.m`` (``_own_member``); a base class resolves same-file,
+import, same package, then by id (``_resolve_base_class_kotlin``). Position
+and path are used because the run-wide name-keyed table keeps one ``Foo`` and
+one ``Foo.m`` across every package's ``Foo`` (WI-gikuk).
+
+Which declaration a call means (ADR-0064). This analyzer binds a call only
+where the language's own evidence is in hand: a bare ``m()`` or ``this.m()``
+whose enclosing type declares ``m`` (found by position). Every other call is
+REPORTED, with the facts the call site has, and the shared linkers decide
+through each file's import table (``_kotlin_import_scope``, handed over in
+``AnalysisResult.import_scopes``) and the caller's package:
+
+* a bare ``helper()`` or a construction ``Request(url)`` (Kotlin writes a
+  construction as a call): a bare stub, with ``enclosing_class`` when it is
+  written inside a type (the inherited-calls linker walks the type's
+  ancestors, then looks the name up among the functions AND types visible
+  from the file); a construction of a nested or qualified type
+  (``Request.Builder()``, ``okhttp3.Request(..)``) is a bare stub of the type
+  as written;
+* ``x.m()`` on a receiver whose type the file establishes (a parameter, a
+  declared or constructed local, a property, a chained construction, a
+  library call's row, a bound callee's declared return type):
+  ``receiver_type_hint``, the type as written;
+* ``Type.m()`` / ``Outer.Inner.m()``: ``qualifier``, the owner as written;
+* ``this.m()`` the type does not declare: ``enclosing_class``; ``super.m()``:
+  ``enclosing_class`` and ``super_receiver``;
+* a receiver nobody can type: no fact. The single-holder name linker may bind
+  it to the repository's ONE method of that name, unless the name is one the
+  standard library defines on its types (``stdlib_member_name``, the screen
+  :data:`_KOTLIN_LIBRARY_MEMBER_NAMES`).
+
+Nothing here looks a callee up by its name among the run's declarations any
+more: the run-wide name table, the same-file name table and the explicit
+import's re-check of their answer (WI-tipoh) are the import table's work now.
+What is lost with them: a variable initialised by a call the linkers bind
+(``val r = Factory.make()``) is no longer typed by that callee's declared
+return type, except where this file declares the callee as a top-level
+function or as a member of the enclosing type.
 
 The process's own standard streams (WI-rabum). ``System.err.println(k)`` is
 a call on the ``java.io.PrintStream`` the field declares, emitted with that
@@ -128,30 +156,11 @@ project type or local renames it. The value-read half checks only imports and
 project types, because it runs after the walk, when no scope is open to ask
 about locals.
 
-Explicit imports outrank the resolver (WI-tipoh). When the file's import of
-a name contradicts the symbol the name-keyed resolver returns,
-``_kt_import_target`` rebinds the call to the project symbol at the imported
-path; when the project has none, the call falls through to an unresolved
-edge.
-
-Call sources and the ambiguity guard. A call that sits in no function (a
-top-level ``val`` initialiser or lambda, a ``by lazy`` block, a class or
-object body) is drawn from the enclosing class or object declaration
-(``_TYPE_BODY_NODES``; a ``companion object`` has no symbol of its own, so
-its body's calls are drawn from the class) and, failing that, from the file
-anchor symbol. A bare ``helper()`` call whose name 3 or more project methods share
-is dropped with no edge (the AMB-METHOD guard,
-``ListNameResolver(..., ambiguity_threshold=3)``). The guard runs before the
-same-file lookup, so a same-file function of that name is dropped too.
-A bare call that passes the guard prefers its enclosing type's own member
-(``Enclosing.callee``). A hit on ANOTHER type's method that rests on the
-short name alone, same-file or from the resolver, is withheld
-(``defer_bare_method_call``, INV-fahub) and emitted as an unresolved edge
-stamped with ``enclosing_class``, which the ``inherited_calls`` linker
-resolves when the method is inherited; an import naming the callee still
-binds. The cost: a bare call inside a scope function
-(``other.apply { helper() }``) that really is ``Other.helper`` stays
-unresolved, since its receiver is not typed there.
+Call sources. A call that sits in no function (a top-level ``val``
+initialiser or lambda, a ``by lazy`` block, a class or object body) is drawn
+from the enclosing class or object declaration (``_TYPE_BODY_NODES``; a
+``companion object`` has no symbol of its own, so its body's calls are drawn
+from the class) and, failing that, from the file anchor symbol.
 
 Extension functions (WI-fuhav / WI-lodij). ``fun Receiver.name()`` records
 ``meta.extension_receiver``. A call ``recv.name()`` on a receiver of that
@@ -219,20 +228,20 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Final, Iterator, Opti
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.library_signatures import load_library_signatures
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.import_scope import ImportScope
+from hypergumbo_core.type_visibility import visible_types
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
-from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
+from hypergumbo_core.symbol_resolution import LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
     AnalysisResult,
     SymbolsAt,
     TreeSitterAnalyzer,
     ancestor_labels,
-    defer_bare_method_call,
-    resolved_by_for_bare_call,
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
@@ -292,6 +301,16 @@ _TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "object_decla
 #: The declarations whose ``base_classes`` a ``super.m()`` inside them walks
 #: (found by position; INV-dupol, WI-gikuk).
 _SUPER_OWNER_NODES: frozenset[str] = frozenset({"class_declaration", "object_declaration"})
+
+#: The kinds of a Kotlin type declaration: what a receiver's type, a
+#: qualifier or a construction names.
+_KT_TYPE_KINDS: frozenset[str] = frozenset({"class", "interface", "object"})
+
+#: What a call written ``m()`` or ``this.m()`` binds to when the enclosing type
+#: itself declares ``m``: a method, or a property holding a function. A nested
+#: type ``Inner()`` is a construction, which the linker finds through the
+#: caller's enclosing scopes like any other type.
+_OWN_MEMBER_KINDS: frozenset[str] = frozenset({"method", "field"})
 
 
 def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
@@ -1238,6 +1257,9 @@ class FileAnalysis:
     #: The file's ``package`` header, ``None`` for the default package. A
     #: base named without an import is looked up here first (WI-gikuk).
     package: Optional[str] = None
+    #: The file's import table, handed to the linkers (ADR-0064;
+    #: :func:`_kotlin_import_scope`).
+    import_scope: ImportScope = field(default_factory=ImportScope)
 
 
 def _kt_declared_type(type_node: "tree_sitter.Node | None", source: bytes) -> str | None:
@@ -1317,20 +1339,6 @@ def _kt_chain_root_constructor(call_expr: "tree_sitter.Node", source: bytes) -> 
         node = next((c for c in callee.children if c.type == "call_expression"), None)
         depth += 1
     return None
-
-
-def _kt_project_type_key(type_name: str) -> str:
-    """The name kotlin's symbol registry keys a receiver TYPE under.
-
-    Nested-class methods are keyed by the INNER class alone (``Builder.url``
-    for ``Request.Builder.url``), so a receiver typed ``Request.Builder`` by its
-    dotted constructor must look up ``Builder.url``; the full path finds
-    nothing. A lowercase-headed path (``java.io.File``) is a package path, not
-    a project nesting, and stays whole. (WI-nasuf)
-    """
-    if "." in type_name and type_name[:1].isupper():
-        return type_name.rsplit(".", 1)[-1]
-    return type_name
 
 
 #: The roots a fully-qualified inline call is taken at its word for
@@ -1435,31 +1443,168 @@ def _extract_imports(
 _KT_TYPE_DECLARATION_NODES = frozenset({"class_declaration", "object_declaration", "type_alias"})
 
 
-def _kotlin_import_bindings(
+def _kotlin_import_nodes(
     tree: "tree_sitter.Tree", source: bytes,
-) -> list[tuple[str, str]]:
-    """What each import binds: ``import a.b.Foo`` binds ``Foo``, ``import
-    a.b.Foo as Bar`` binds ``Bar``, both to ``a.b.Foo``; ``import a.b.*``
-    binds nothing. (:func:`_extract_imports`, the call resolver's map, reads
-    an alias's original name and a star import's package; neither is what
-    the file's text binds.)"""
-    bindings: list[tuple[str, str]] = []
+) -> Iterator[tuple[str, str | None, bool]]:
+    """Each ``import`` of the file as ``(path, alias, star)``: ``import a.b.Foo``
+    is ``("a.b.Foo", None, False)``, ``import a.b.Foo as Bar`` is
+    ``("a.b.Foo", "Bar", False)``, ``import a.b.*`` is ``("a.b", None, True)``."""
     for node in iter_tree(tree.root_node):
-        if node.type != "import" or any(c.type == "*" for c in node.children):
+        if node.type != "import":
             continue
         path_node = find_child_by_type(node, "qualified_identifier")
         if path_node is None:
             path_node = find_child_by_type(node, "identifier")
         if path_node is None:  # pragma: no cover - an import always names a path
             continue
-        path = node_text(path_node, source)
         alias = next((
             c for i, c in enumerate(node.children)
             if c.type == "identifier" and i > 0 and node.children[i - 1].type == "as"
         ), None)
-        bound = node_text(alias, source) if alias is not None else path.rsplit(".", 1)[-1]
-        bindings.append((bound, path))
-    return bindings
+        yield (
+            node_text(path_node, source),
+            node_text(alias, source) if alias is not None else None,
+            any(c.type == "*" for c in node.children),
+        )
+
+
+def _kotlin_import_bindings(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> list[tuple[str, str]]:
+    """What each import binds: ``import a.b.Foo`` binds ``Foo``, ``import
+    a.b.Foo as Bar`` binds ``Bar``, both to ``a.b.Foo``; ``import a.b.*``
+    binds nothing. (:func:`_extract_imports`, the module-slot map, reads
+    an alias's original name and a star import's package; neither is what
+    the file's text binds.)"""
+    return [
+        (alias or path.rsplit(".", 1)[-1], path)
+        for path, alias, star in _kotlin_import_nodes(tree, source) if not star
+    ]
+
+
+def _kotlin_import_scope(tree: "tree_sitter.Tree", source: bytes) -> ImportScope:
+    """The file's import table for the shared call resolution (ADR-0064).
+
+    ``import a.b.Foo`` binds ``Foo`` to the declaration ``a.b.Foo``
+    (``add_named``), ``import a.b.Foo as Bar`` binds ``Bar`` to it, and
+    ``import a.b.*`` brings in every name of ``a.b`` (``add_open_wildcard``).
+    A companion object's member is imported through ``Companion``
+    (``import a.b.Foo.Companion.of``) while its qualified name has no such
+    segment (``a.b.Foo.of``): the segment is dropped (``kotlin_import_path``).
+    What is NOT recorded: the file's own package, which the caller's qualified
+    name already supplies to the declared-name rule, and Kotlin's default
+    imports (``kotlin.*``, ``kotlin.collections.*``, ``java.lang.*``, ...),
+    where nothing of a repository is declared.
+
+    The table says the analyzer screens library names
+    (``library_names_screened``): a call whose name the standard library
+    defines on its types is handed over with ``stdlib_member_name``
+    (:data:`_KOTLIN_LIBRARY_MEMBER_NAMES`).
+    """
+    scope = ImportScope(library_names_screened=True)
+    for path, alias, star in _kotlin_import_nodes(tree, source):
+        if star:
+            scope.add_open_wildcard(kotlin_import_path(path))
+            continue
+        module, _, name = kotlin_import_path(path).rpartition(".")
+        scope.add_named(module, name, alias=alias)
+    return scope
+
+
+#: THE SCREEN OF LIBRARY NAMES (ADR-0064): functions and methods the Kotlin
+#: standard library defines on its own types, so a call of one of them on a
+#: receiver this analyzer cannot type (``items.map { }``, ``s.trim()``,
+#: ``x.let { }``) is the library's at least as likely as the repository's one
+#: declaration of that name. Such a call is handed over with
+#: ``stdlib_member_name``, and the single-holder name linker does not bind it
+#: by its name. Taken from the standard library's API reference
+#: (kotlinlang.org/api/core/kotlin-stdlib), package by package, as named in
+#: each group below; NOT from the repositories measured. A typed or qualified
+#: call is decided through its type whatever its name: the screen matters only
+#: where nothing else does.
+_KOTLIN_LIBRARY_MEMBER_NAMES: Final = frozenset({
+    # kotlin.Any (members of every type), kotlin.Comparable, kotlin.Function
+    "equals", "hashCode", "toString", "compareTo", "invoke",
+    # kotlin (Standard.kt): the scope functions and their kin
+    "let", "run", "with", "apply", "also", "takeIf", "takeUnless", "repeat",
+    # kotlin.AutoCloseable / kotlin.io.Closeable: close and use
+    "close", "use",
+    # kotlin.Lazy, kotlin.Result
+    "isInitialized", "getOrNull", "getOrThrow", "getOrElse", "getOrDefault",
+    "exceptionOrNull", "onSuccess", "onFailure", "fold", "recover", "recoverCatching",
+    "mapCatching", "runCatching",
+    # kotlin.Throwable
+    "printStackTrace", "addSuppressed", "stackTraceToString",
+    # kotlin.Number, kotlin.Int / Long / ... (conversions and operators)
+    "toByte", "toShort", "toInt", "toLong", "toFloat", "toDouble", "toChar",
+    "toUByte", "toUShort", "toUInt", "toULong",
+    "plus", "minus", "times", "div", "rem", "mod", "inc", "dec", "unaryMinus",
+    "unaryPlus", "not", "and", "or", "xor", "inv", "shl", "shr", "ushr",
+    "rangeTo", "rangeUntil", "countOneBits", "countLeadingZeroBits",
+    "countTrailingZeroBits", "takeHighestOneBit", "takeLowestOneBit",
+    "rotateLeft", "rotateRight", "toBigInteger", "toBigDecimal",
+    # kotlin.ranges
+    "coerceIn", "coerceAtLeast", "coerceAtMost", "until", "downTo", "step",
+    "reversed", "contains", "first", "last", "random", "randomOrNull",
+    # kotlin.collections: Iterable / Collection / List / Set / Map and their
+    # Mutable variants, and arrays (members and extension functions)
+    "iterator", "hasNext", "next", "remove", "add", "addAll", "removeAll",
+    "retainAll", "clear", "containsAll", "containsKey", "containsValue",
+    "get", "set", "put", "putAll", "getOrPut", "putIfAbsent", "isEmpty",
+    "isNotEmpty", "isNullOrEmpty", "orEmpty", "ifEmpty", "indexOf",
+    "lastIndexOf", "indexOfFirst", "indexOfLast", "subList", "elementAt",
+    "elementAtOrNull", "elementAtOrElse", "firstOrNull", "lastOrNull", "single",
+    "singleOrNull", "find", "findLast", "component1", "component2",
+    "component3", "component4", "component5",
+    "map", "mapNotNull", "mapIndexed", "mapIndexedNotNull", "mapTo", "mapKeys",
+    "mapValues", "flatMap", "flatten", "filter", "filterNot", "filterNotNull",
+    "filterIsInstance", "filterIndexed", "filterKeys", "filterValues", "forEach",
+    "forEachIndexed", "onEach", "any", "all", "none", "count", "sum", "sumOf",
+    "average", "max", "min", "maxOf", "minOf", "maxOrNull", "minOrNull", "maxBy",
+    "minBy", "maxByOrNull", "minByOrNull", "maxWith", "minWith", "sorted",
+    "sortedBy", "sortedByDescending", "sortedDescending", "sortedWith", "sort",
+    "sortBy", "sortByDescending", "sortWith", "shuffled", "shuffle", "reverse",
+    "asReversed", "distinct", "distinctBy", "groupBy", "groupingBy", "eachCount",
+    "associate", "associateBy", "associateWith", "partition", "zip",
+    "zipWithNext", "unzip", "chunked", "windowed", "take", "takeLast",
+    "takeWhile", "takeLastWhile", "drop", "dropLast", "dropWhile",
+    "dropLastWhile", "slice", "reduce", "reduceOrNull", "reduceIndexed",
+    "foldIndexed", "runningFold", "runningReduce", "scan", "withIndex",
+    "joinTo", "joinToString", "toList", "toMutableList", "toSet",
+    "toMutableSet", "toHashSet", "toSortedSet", "toMap", "toMutableMap",
+    "toSortedMap", "toTypedArray", "toCollection", "toPair", "asList",
+    "asIterable", "asSequence", "intersect", "union", "subtract",
+    "removeFirst", "removeLast", "removeFirstOrNull", "removeLastOrNull",
+    "removeIf", "removeAt", "addFirst", "addLast", "binarySearch", "fill",
+    "copyOf", "copyOfRange", "copyInto", "contentEquals", "contentHashCode",
+    "contentToString", "plusElement", "minusElement", "requireNoNulls",
+    "getValue", "withDefault",
+    # kotlin.sequences
+    "generateSequence", "sequence", "yield", "yieldAll", "constrainOnce",
+    # kotlin.text: String / CharSequence / StringBuilder / Char / Regex
+    "trim", "trimStart", "trimEnd", "trimIndent", "trimMargin",
+    "split", "lines", "lineSequence", "substring", "substringBefore",
+    "substringAfter", "substringBeforeLast", "substringAfterLast", "subSequence",
+    "startsWith", "endsWith", "replace", "replaceFirst", "replaceRange",
+    "lowercase", "uppercase", "lowercaseChar", "uppercaseChar", "toLowerCase",
+    "toUpperCase", "capitalize", "decapitalize", "replaceFirstChar", "format",
+    "padStart", "padEnd", "isBlank", "isNotBlank", "isNullOrBlank", "ifBlank",
+    "toIntOrNull", "toLongOrNull", "toDoubleOrNull", "toFloatOrNull",
+    "toBoolean", "toBooleanStrict", "toBooleanStrictOrNull", "toByteArray",
+    "encodeToByteArray", "decodeToString", "toCharArray", "toRegex", "matches",
+    "matchEntire", "containsMatchIn", "findAll", "removePrefix", "removeSuffix",
+    "removeSurrounding", "prependIndent", "commonPrefixWith", "commonSuffixWith",
+    "regionMatches", "equalsIgnoreCase", "chunkedSequence", "digitToInt",
+    "digitToIntOrNull", "isDigit", "isLetter", "isLetterOrDigit", "isWhitespace",
+    "isUpperCase", "isLowerCase", "append", "appendLine", "appendRange",
+    "insert", "setLength", "deleteCharAt", "deleteRange", "setRange",
+    "buildString", "codePointAt", "toHexString", "hexToByteArray",
+    # kotlin.io: File and stream extensions
+    "readText", "writeText", "appendText", "readBytes", "writeBytes",
+    "appendBytes", "readLines", "forEachLine", "useLines", "bufferedReader",
+    "bufferedWriter", "reader", "writer", "inputStream", "outputStream",
+    "copyTo", "copyRecursively", "deleteRecursively", "walk", "readLine",
+})
 
 
 def _kotlin_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
@@ -1613,6 +1758,7 @@ def _extract_parsed_symbols(
     """The symbols of one parsed Kotlin file (:func:`_extract_symbols_from_file`)."""
     analysis = FileAnalysis()
     analysis.imports = _extract_imports(tree, source)
+    analysis.import_scope = _kotlin_import_scope(tree, source)
     # Extract package once for qualified_name population (ADR-0032).
     package_name = _extract_kotlin_package(tree.root_node, source)
     analysis.package = package_name
@@ -2001,30 +2147,6 @@ def _extract_parsed_symbols(
     return analysis
 
 
-def _kt_import_target(
-    sym: Symbol,
-    imported: str | None,
-    member: str | None,
-    project_by_qualified: dict[str, Symbol],
-) -> Symbol | None:
-    """The project symbol a call binds to, given the file's explicit import
-    (WI-tipoh), or ``None`` to withhold.
-
-    ``sym`` is what the name-keyed resolver returned. It stands when the import
-    does not contradict it. When the import names a different path, the call
-    binds to the project symbol at THAT path (``<import>.<member>`` for a call
-    on an imported type), and to nothing when the project has none. The
-    resolver keeps one symbol per name, so without this check a call to an
-    imported ``assertThat`` can bind to an unrelated project helper of the
-    same name at another path.
-    """
-    if not imported_elsewhere(sym.qualified_name, imported):
-        return sym
-    assert imported is not None  # imported_elsewhere is False without one
-    path = kotlin_import_path(imported)
-    return project_by_qualified.get(f"{path}.{member}" if member else path)
-
-
 def _kt_names_project_path(imported: str, project_by_qualified: dict[str, Symbol]) -> bool:
     """Whether an import names a symbol the project declares, or a member of one."""
     parts = kotlin_import_path(imported).split(".")
@@ -2039,10 +2161,11 @@ def _extract_edges_from_file(
     imports: dict[str, str],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
-    method_resolver: ListNameResolver | None = None,
     extension_index: dict[str, list[Symbol]] | None = None,
     file_symbols: list[Symbol] | None = None,
     project_by_qualified: dict[str, Symbol] | None = None,
+    import_scopes: dict[str, ImportScope] | None = None,
+    declared_by_name: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2051,12 +2174,22 @@ def _extract_edges_from_file(
     - Navigation calls: Object.method(), instance.method()
     - Type inference from constructor assignments: val x = ClassName()
 
-    ``project_by_qualified`` maps every project symbol's qualified name to it. An
-    explicit import binds a call to the symbol at the imported path, which may
-    not be the one the name-keyed resolver returns (WI-tipoh).
+    ``project_by_qualified`` maps every project symbol's qualified name to it:
+    the declaration an explicit import names, and a member of a type the
+    call's receiver names. ``import_scopes`` holds every file's import table
+    (:func:`_kotlin_import_scope`) by the path its symbols carry (this file's is
+    read from the tree when not given); ``declared_by_name`` holds every type and top-level function of the run by
+    its short name. With the two, the declared-name rule the linkers apply
+    (``type_visibility.visible_types``) says which declaration a written name
+    means here, which is how a variable a call initialises is typed by the
+    callee's declared return type.
     """
     if project_by_qualified is None:
         project_by_qualified = {}
+    if declared_by_name is None:
+        declared_by_name = {}
+    if import_scopes is None:
+        import_scopes = {}
     if resolver is None:
         resolver = NameResolver(global_symbols)
     if extension_index is None:
@@ -2075,6 +2208,7 @@ def _extract_edges_from_file(
 
     _caller_path = str(file_path)
     file_package = _extract_kotlin_package(tree.root_node, source)
+    file_scope = import_scopes.get(_caller_path) or _kotlin_import_scope(tree, source)
     edges: list[Edge] = []
     file_id = make_file_id("kotlin", str(file_path))
     file_anchor = file_anchor_symbol("kotlin", str(file_path), PASS_ID, run.execution_id)
@@ -2214,6 +2348,70 @@ def _extract_edges_from_file(
             (g for g in names if is_known_library_method("kotlin", f"{owner}.{g}")), None)
         return None if getter is None else (owner, getter)
 
+    def _report(
+        name: str, line: int, *, module_hint: str = "external",
+        receiver_type_hint: str | None = None, qualifier: str | None = None,
+        enclosing_class: str | None = None, super_receiver: bool = False,
+        on_receiver: bool = True,
+    ) -> None:
+        """One call this analyzer does not bind, handed to the linkers with the
+        facts the call site has (ADR-0064): the receiver's type as written, the
+        owner the call names, the enclosing type and whether the call is on
+        ``super``. A name the standard library defines on its types is marked
+        (:data:`_KOTLIN_LIBRARY_MEMBER_NAMES`), so that no linker binds it by
+        its name alone."""
+        assert current_function is not None  # narrowed by the call arm
+        edges.append(make_unresolved_edge(
+            "kotlin", current_function.id, name, line, PASS_ID, run.execution_id,
+            module_hint=module_hint, receiver_type_hint=receiver_type_hint,
+            qualifier=qualifier, enclosing_class=enclosing_class,
+            super_receiver=super_receiver,
+            call_construct="method" if on_receiver else None,
+            stdlib_member_name=name in _KOTLIN_LIBRARY_MEMBER_NAMES,
+        ))
+
+    def _report_named_owner(owner: str, member: str, line: int, module_hint: str) -> None:
+        """A call on a receiver that is a NAME, not a value: a type by Kotlin's
+        naming (``Util.helper()``, ``Outer.Inner.m()``) or a package path
+        (``okhttp3.Request(..)``). A capitalised member is a construction of a
+        nested or qualified type (``Request.Builder()``), reported as a bare
+        call of the type as written, which the linker looks up through the
+        file's imports; any other member is a call on the owner the call site
+        names (the ``qualifier``)."""
+        if member[:1].isupper():
+            _report(f"{owner}.{member}", line, module_hint=module_hint, on_receiver=False)
+        else:
+            _report(member, line, module_hint=module_hint, qualifier=owner)
+
+    def _type_declared_variable(
+        call: "tree_sitter.Node", callee: Symbol, ret_name: str | None,
+    ) -> None:
+        """``val x = f()``: ``x`` is typed by ``ret_name``, ``f``'s declared
+        return type, a simple name read where ``f`` is DECLARED (its file's
+        imports and enclosing scopes), which need not mean the same type here,
+        or anything: Kotlin infers ``x``'s type and the caller's file need not
+        import it. The type is written as the declaring file's name for it
+        when this file means the same type by it (an extension on that name is
+        then found), else by its qualified name. A return type no declaration
+        of the run answers (a library's) types nothing, and a declaration that
+        writes its own type (``val w: WebSocket = newWebSocket()``) keeps it:
+        a variable's type is the type its declaration writes."""
+        prop_decl = call.parent
+        if not ret_name or prop_decl is None or prop_decl.type != "property_declaration":
+            return
+        returned = _visible_declaration(ret_name, _KT_TYPE_KINDS, place=callee)
+        var_decl = find_child_by_type(prop_decl, "variable_declaration")
+        var_name_node = find_child_by_type(var_decl, "identifier") if var_decl else None
+        if returned is None or var_name_node is None or _kt_declared_type(
+            find_child_by_type(var_decl, "user_type"), source,
+        ) is not None:
+            return
+        here = _visible_declaration(ret_name, _KT_TYPE_KINDS)
+        var_types[node_text(var_name_node, source)] = (
+            ret_name if here is not None and here.qualified_name == returned.qualified_name
+            else returned.qualified_name or ""
+        )
+
     def _emit_navigation_receiver_call(
         receiver: "tree_sitter.Node", method_name: str, line: int,
         *, this_property: str | None,
@@ -2222,23 +2420,17 @@ def _extract_edges_from_file(
 
         In java's spelling of the same shapes: ``this.field.m()`` names the
         field's declared type, a fully-qualified inline path names its owner,
-        a chain ending in a project type resolves on that type, and anything
-        else keeps the ``external`` placeholder so the untyped-receiver
-        disclosure names the call. A chain through ANOTHER object's field
-        (``h.file.m()``) stays a placeholder: ``var_types`` is file-wide and
-        keyed by bare name, so typing it from there could put the wrong type
-        in the slot (INV-kotob).
+        a path of names ending in a type (``Outer.Inner.m()``) names the owner
+        the call is on, and anything else keeps the ``external`` placeholder so
+        the untyped-receiver disclosure names the call. A chain through ANOTHER
+        object's field (``h.file.m()``) stays a placeholder: ``var_types`` is
+        file-wide and keyed by bare name, so typing it from there could put the
+        wrong type in the slot (INV-kotob).
         """
-        assert current_function is not None  # narrowed by the call arm
         recv_type = var_types.get(this_property) if this_property else None
         if recv_type is not None:
             module = _kt_receiver_module(recv_type, imports, is_project_type=_is_project_receiver)
-            edges.append(make_unresolved_edge(
-                "kotlin", current_function.id, method_name, line, PASS_ID,
-                run.execution_id, module_hint=module or "external",
-                receiver_type_hint=_kt_project_type_key(recv_type),
-                call_construct="method",
-            ))
+            _report(method_name, line, module_hint=module or "external", receiver_type_hint=recv_type)
             return
         # WI-rabum, java's WI-dorus: ``System.err.println(k)`` is a call on the
         # PrintStream the field declares, writing the process's own stream --
@@ -2247,6 +2439,7 @@ def _extract_edges_from_file(
             node_text(receiver, source),
             bare_system_is_java_lang=_bare_system_here(),
         ):
+            assert current_function is not None  # narrowed by the call arm
             stdio_call = make_unresolved_edge(
                 "kotlin", current_function.id, method_name, line, PASS_ID,
                 run.execution_id, module_hint=PRINT_STREAM_TYPE,
@@ -2264,106 +2457,90 @@ def _extract_edges_from_file(
                 roots=_KOTLIN_INLINE_QUALIFIED_ROOTS,
             )
             if owner is not None:
-                edges.append(make_unresolved_edge(
-                    "kotlin", current_function.id, method_name, line, PASS_ID,
-                    run.execution_id, module_hint=owner, call_construct="method",
-                ))
+                _report(method_name, line, module_hint=owner)
                 return
-            leaf = path.rsplit(".", 1)[-1]
-            if leaf in class_symbols:
-                found = resolver.lookup(f"{leaf}.{method_name}", caller_path=_caller_path)
-                if found.found and found.symbol is not None:
-                    edges.append(Edge.create(
-                        src=current_function.id, dst=found.symbol.id,
-                        edge_type="calls", line=line,
-                        resolution_score=found.confidence,
-                        origin=PASS_ID, origin_run_id=run.execution_id,
-                        evidence_type="ast_call_static",
-                        resolved_by=resolved_by.QUALIFIED,
-                    ))
-                    return
-        edges.append(make_unresolved_edge(
-            "kotlin", current_function.id, method_name, line, PASS_ID,
-            run.execution_id, call_construct="method",
-        ))
+            if path.split(".", 1)[0] not in var_types and (
+                path.rsplit(".", 1)[-1][:1].isupper() or method_name[:1].isupper()
+            ):
+                _report_named_owner(path, method_name, line, "external")
+                return
+        _report(method_name, line)
 
     # WI-gikuk: this file's declarations by qualified name (``a.Foo.helper``).
     own_by_qualified: dict[str, Symbol] = {
         s.qualified_name: s for s in decl_symbols if s.qualified_name
     }
+    def _visible_declaration(
+        written: str, kinds: frozenset[str], place: Symbol | None = None,
+    ) -> Symbol | None:
+        """The ONE declaration of one of ``kinds`` that ``written`` names from
+        ``place`` (default: the caller), by the rule the linkers apply
+        (``type_visibility.visible_types``: the imports of the place's file and
+        its enclosing scopes); ``None`` when none is visible or several are.
+        It types variables; it binds no call."""
+        at = place if place is not None else current_function
+        assert at is not None  # narrowed by the call arm
+        # Every file of the run hands over a table; a file read on its own
+        # (no tables passed) sees the other files' declarations by their
+        # qualified names only.
+        scope = file_scope if at.path == _caller_path else import_scopes.get(at.path, ImportScope())
+        # A call drawn from the file anchor (code in no declaration the
+        # parse found) has no qualified name; its scope is the file's package.
+        qualified = at.qualified_name or (f"{file_package}.<file>" if file_package else None)
+        found = visible_types(
+            written, qualified, scope,
+            lambda short: [s for s in declared_by_name.get(short, ()) if s.kind in kinds],
+        )
+        if not found or len({s.qualified_name for s in found}) != 1:
+            return None
+        return found[0]
+
+    def _member_of(owner: str, member: str) -> Symbol | None:
+        """``owner.member``: the member the type ``owner`` (as written) means
+        from here declares itself, or ``None``."""
+        declared = _visible_declaration(owner, _KT_TYPE_KINDS)
+        return project_by_qualified.get(f"{declared.qualified_name}.{member}") if declared else None
+
+    def _own_member(
+        node: "tree_sitter.Node", member: str,
+        kinds: frozenset[str] | None = _OWN_MEMBER_KINDS,
+    ) -> Symbol | None:
+        """The member ``member`` of the type whose declaration contains
+        ``node`` (by POSITION): this file's declaration at ``<class qualified
+        name>.<member>``, of one of ``kinds`` (any kind when ``None``). The
+        run-wide resolver keeps one ``Foo.helper`` for every ``Foo`` in the
+        project, so it could bind ``b.Foo``'s ``this.helper()`` to ``a.Foo``'s
+        (WI-gikuk)."""
+        owner = enclosing_declared_symbol(node, decl_index, _SUPER_OWNER_NODES)
+        if owner is None or not owner.qualified_name:
+            return None
+        own = own_by_qualified.get(f"{owner.qualified_name}.{member}")
+        return own if own is not None and (kinds is None or own.kind in kinds) else None
 
     def _own_class_lookup(
         node: "tree_sitter.Node", member: str, name_key: str,
     ) -> LookupResult:
-        """``this.member`` / ``::member``: the enclosing class's OWN member first.
-
-        The class is the one whose declaration contains ``node`` (by
-        POSITION) and its member the declaration of this file at
-        ``<class qualified name>.<member>``. The run-wide resolver keeps one
-        ``Foo.helper`` for every ``Foo`` in the project, so it alone could bind
-        ``b.Foo``'s ``this.helper()`` to ``a.Foo``'s. When this class declares
-        no such member (an extension function, an inherited one) the name
-        lookup of ``name_key`` stands. (WI-gikuk)
-        """
-        owner = enclosing_declared_symbol(node, decl_index, _SUPER_OWNER_NODES)
-        if owner is not None and owner.qualified_name:
-            own = own_by_qualified.get(f"{owner.qualified_name}.{member}")
-            if own is not None:
-                return LookupResult(symbol=own, confidence=NameResolver.CONFIDENCE_EXACT)
+        """``::member`` / ``this::member``: the enclosing class's OWN member
+        first (``_own_member``); when this class declares no such member (an
+        extension function, an inherited one) the name lookup of ``name_key``
+        stands. A callable reference is not a call: ADR-0064 has not moved it."""
+        own = _own_member(node, member, kinds=None)
+        if own is not None:
+            return LookupResult(symbol=own, confidence=NameResolver.CONFIDENCE_EXACT)
         return resolver.lookup(name_key, caller_path=_caller_path)
 
     def _emit_super_call(call: "tree_sitter.Node", method_name: str) -> None:
-        """INV-dupol: ``super.m()`` calls the BASE's ``m``.
+        """INV-dupol: ``super.m()`` calls a BASE's ``m``.
 
-        Resolved through the enclosing class's ``base_classes`` (the
-        delegation specifiers the symbol pass already records). A base the
-        project does not define keeps an unresolved edge whose receiver type
-        names it, with the module its import (or java.lang) gives.
-
-        The enclosing class is the one whose declaration node contains the
-        call, by POSITION, not a bare-name lookup in ``class_symbols`` (one
-        class per name, run-wide), under which ``a.Foo`` and ``b.Foo``, or two
-        outer classes' nested ``Inner``, would walk one class's bases
-        (WI-gikuk). The base's member is the one at the path the file imports
-        (WI-tipoh's :func:`_kt_import_target`), or for a base it does not
-        import, its own package's, not the name-keyed resolver's pick among
-        same-named bases.
+        Reported with the enclosing type and ``super_receiver``: the
+        inherited-calls linker walks the enclosing type's ancestors, the
+        superclass first, then the interfaces, past the enclosing type's own
+        override (ADR-0064). The enclosing type is the one whose declaration
+        contains the call. The module slot names the first declared base
+        through its import (or java.lang), as before, for the taint gates.
         """
-        assert current_function is not None  # narrowed by the call arm
-        line = call.start_point[0] + 1
         owner_sym = enclosing_declared_symbol(call, decl_index, _SUPER_OWNER_NODES)
         bases = list((owner_sym.meta or {}).get("base_classes", [])) if owner_sym else []
-        for base in bases:
-            # A base the file does not import is first its own package's.
-            same_package = (
-                project_by_qualified.get(
-                    f"{file_package}.{base}.{method_name}" if file_package
-                    else f"{base}.{method_name}",
-                )
-                if base not in imports else None
-            )
-            found = (
-                LookupResult(symbol=same_package, confidence=NameResolver.CONFIDENCE_EXACT)
-                if same_package is not None
-                else resolver.lookup(f"{base}.{method_name}", caller_path=_caller_path)
-            )
-            target = (
-                _kt_import_target(found.symbol, imports.get(base), method_name,
-                                  project_by_qualified)
-                if found.found and found.symbol is not None else None
-            )
-            if target is not None:
-                edges.append(Edge.create(
-                    src=current_function.id, dst=target.id,
-                    edge_type="calls", line=line,
-                    resolution_score=found.confidence,
-                    origin=PASS_ID, origin_run_id=run.execution_id,
-                    evidence_type="ast_call_this",
-                    # ``super`` is the enclosing object; the key is its
-                    # declared base's member.
-                    resolved_by=resolved_by.OWN_TYPE,
-                ))
-                return
         base = bases[0] if bases else None
         module = (
             static_owner_module(
@@ -2372,11 +2549,11 @@ def _extract_edges_from_file(
             )
             if base else None
         )
-        edges.append(make_unresolved_edge(
-            "kotlin", current_function.id, method_name, line, PASS_ID,
-            run.execution_id, module_hint=module or "external",
-            receiver_type_hint=base, call_construct="method",
-        ))
+        _report(
+            method_name, call.start_point[0] + 1, module_hint=module or "external",
+            enclosing_class=owner_sym.name if owner_sym is not None else None,
+            super_receiver=True,
+        )
 
     for node in iter_tree(tree.root_node):
         var_types.close_scopes_before(node)
@@ -2487,93 +2664,45 @@ def _extract_edges_from_file(
 
                 if receiver_node and method_node:
                     method_name = node_text(method_node, source)
-                    edge_added = False
+                    line = node.start_point[0] + 1
 
-                    # Case 1: this.method() - call on current instance
+                    # ``this.m()``: the enclosing type's OWN member, the one
+                    # whose declaration contains the call by position. Any
+                    # other (inherited) is reported with the enclosing type,
+                    # whose ancestors the inherited-calls linker walks.
                     if receiver_node.type == "this_expression":
-                        # Look for method in enclosing class
-                        enclosing_class = _get_enclosing_class(node, source)
-                        if enclosing_class:
-                            lookup_result = _own_class_lookup(
-                                node, method_name, f"{enclosing_class}.{method_name}",
-                            )
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_call_this",
-                                    resolved_by=resolved_by.OWN_TYPE,
-                                ))
-                                edge_added = True
+                        own = _own_member(node, method_name)
+                        if own is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id, dst=own.id,
+                                edge_type="calls", line=line,
+                                resolution_score=NameResolver.CONFIDENCE_EXACT,
+                                origin=PASS_ID, origin_run_id=run.execution_id,
+                                evidence_type="ast_call_this",
+                                resolved_by=resolved_by.OWN_TYPE,
+                            ))
+                        else:
+                            _report(method_name, line, enclosing_class=_get_enclosing_class(node, source))
 
-                    # Case 1b: this.property.method() - call on injected dep
+                    # ``this.p.m()`` and every other receiver that is itself
+                    # a navigation: one edge each (INV-dupol), so that an
+                    # inline ``java.nio.file.Files.readAllBytes(p)`` is not lost.
                     elif receiver_node.type == "navigation_expression":
-                        this_node = find_child_by_type(
-                            receiver_node, "this_expression"
+                        this_node = find_child_by_type(receiver_node, "this_expression")
+                        prop_node = find_child_by_type(receiver_node, "identifier")
+                        _emit_navigation_receiver_call(
+                            receiver_node, method_name, line,
+                            this_property=(
+                                node_text(prop_node, source)
+                                if this_node and prop_node else None
+                            ),
                         )
-                        prop_node = find_child_by_type(
-                            receiver_node, "identifier"
-                        )
-                        if this_node and prop_node:
-                            prop_name = node_text(prop_node, source)
-                            if prop_name in var_types:
-                                type_name = var_types[prop_name]
-                                candidate = f"{type_name}.{method_name}"
-                                import_hint = imports.get(type_name)
-                                lookup_result = resolver.lookup(
-                                    candidate, path_hint=import_hint, caller_path=_caller_path,
-                                )
-                                _target = (
-                                    _kt_import_target(lookup_result.symbol, import_hint,
-                                                      method_name, project_by_qualified)
-                                    if lookup_result.found and lookup_result.symbol is not None
-                                    else None
-                                )
-                                if _target is not None:
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=_target.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        resolution_score=lookup_result.confidence,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type=(
-                                            "ast_call_this_property"
-                                        ),
-                                        resolved_by=resolved_by.RECEIVER_TYPE,
-                                    ))
-                                    edge_added = True
-                        # Every other navigation receiver is emitted here,
-                        # because the unresolved-edge fallback below lives in
-                        # the branch a navigation receiver never enters; an
-                        # inline ``java.nio.file.Files.readAllBytes(p)`` would
-                        # otherwise get no edge at all (INV-dupol).
-                        if not edge_added:
-                            _emit_navigation_receiver_call(
-                                receiver_node, method_name,
-                                node.start_point[0] + 1,
-                                this_property=(
-                                    node_text(prop_node, source)
-                                    if this_node and prop_node else None
-                                ),
-                            )
-                            edge_added = True
 
                     # INV-dupol: ``super.m()`` is the base's ``m``, never the
-                    # override that makes the call. Resolved through the
-                    # enclosing class's declared bases; an external base keeps
-                    # an unresolved edge naming it.
+                    # override that makes the call.
                     elif receiver_node.type == "super_expression":
                         _emit_super_call(node, method_name)
-                        edge_added = True
 
-                    # For non-this cases, get receiver name from identifier node
                     else:
                         receiver_name = node_text(receiver_node, source)
                         # WI-nasuf: a chained receiver has no name to look up;
@@ -2590,360 +2719,117 @@ def _extract_edges_from_file(
                             # receiver is what a library call returns.
                             if chained_type is None:
                                 chained_type = _library_call_type(receiver_node)
+                        _recv_type = (
+                            chained_type if chained_type is not None
+                            else var_types.get(receiver_name)
+                        )
 
-                        resolved_nav_sym = None
-
-                        # Case 2: Object.method() - static/object call
-                        if receiver_name in class_symbols:
-                            candidate = f"{receiver_name}.{method_name}"
-                            # Use import path as hint for disambiguation
-                            import_hint = imports.get(receiver_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
-                            _target = (
-                                _kt_import_target(lookup_result.symbol, import_hint,
-                                                  method_name, project_by_qualified)
-                                if lookup_result.found and lookup_result.symbol is not None
-                                else None
+                        # ``val r = x.m()`` / ``val r = Type.m()``: ``r`` is
+                        # typed by the declared return of the ``m`` the type of
+                        # ``x`` (or ``Type``) declares, else of an extension
+                        # ``m`` declared on that type's name (WI-lodij,
+                        # INV-vigaf). The call itself is the linkers' (the
+                        # inherited-calls and the receiver-type-dispatch linkers
+                        # bind it from the stub below).
+                        resolved_nav_sym: Symbol | None = None
+                        if receiver_name in var_types:
+                            resolved_nav_sym = _member_of(
+                                var_types[receiver_name], method_name,
+                            ) or next((
+                                ext for ext in extension_index.get(
+                                    var_types[receiver_name].split("<")[0], ())
+                                if ext.name.rsplit(".", 1)[-1] == method_name
+                            ), None)
+                        elif receiver_node.type == "identifier" and receiver_name[:1].isupper():
+                            resolved_nav_sym = _member_of(receiver_name, method_name)
+                        if resolved_nav_sym is not None and resolved_nav_sym.kind in ("function", "method"):
+                            _type_declared_variable(
+                                node, resolved_nav_sym,
+                                _extract_kotlin_return_type_name(resolved_nav_sym.signature),
                             )
-                            if _target is not None:
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=_target.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_call_static",
-                                    resolved_by=resolved_by.QUALIFIED,
-                                ))
-                                edge_added = True
-                                resolved_nav_sym = _target
 
-                        # Case 3: instance.method() - use type inference
-                        elif receiver_name in var_types:
-                            type_class_name = _kt_project_type_key(var_types[receiver_name])
-                            candidate = f"{type_class_name}.{method_name}"
-                            # Use import path of the type as hint for disambiguation
-                            import_hint = imports.get(type_class_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
-                            _target = (
-                                _kt_import_target(lookup_result.symbol, import_hint,
-                                                  method_name, project_by_qualified)
-                                if lookup_result.found and lookup_result.symbol is not None
-                                else None
+                        # A typed receiver: its type as written, for the
+                        # linkers to look up through the file's imports; its
+                        # module (the import, an inline path, java.lang) in the
+                        # slot the taint gates read (WI-nasuf, ADR-0051).
+                        if _recv_type is not None:
+                            _report(
+                                method_name, line,
+                                module_hint=_kt_receiver_module(
+                                    _recv_type, imports, is_project_type=_is_project_receiver,
+                                ) or "external",
+                                receiver_type_hint=_recv_type,
                             )
-                            if _target is not None:
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=_target.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_call_type_inferred",
-                                    resolved_by=resolved_by.RECEIVER_TYPE,
-                                ))
-                                edge_added = True
-                                resolved_nav_sym = _target
-
-                        # Case 3b: ``receiver.extFn()``
-                        # where ``extFn`` is a Kotlin extension function whose
-                        # receiver_type matches the receiver's declared type.
-                        # The symbol pass records ``meta.extension_receiver``
-                        # on the definition. This branch emits an unresolved
-                        # call + receiver_type_hint and the shared
-                        # receiver_type_dispatch linker emits the
-                        # ast_call_extension edge; the local extension_index
-                        # lookup only resolves the extension's RETURN TYPE
-                        # (resolved_nav_sym) for chained navigation calls
-                        # (WI-visaz, WI-lodij, INV-vigaf).
-                        # Class methods win over extensions in Kotlin's
-                        # resolution semantics, so only probe when Case 3 did not
-                        # already add an edge. Generic receivers (``List<Int>``)
-                        # match on the base name (the linker's _base_type
-                        # normalization mirrors this pass's split-on-``<`` rule).
-                        if (
-                            not edge_added
-                            and receiver_name in var_types
-                            and extension_index
-                        ):
-                            type_class_name = var_types[receiver_name]
-                            receiver_base = (
-                                type_class_name.split("<")[0]
-                                if "<" in type_class_name
-                                else type_class_name
-                            )
-                            for ext_sym in extension_index.get(receiver_base, ()):
-                                ext_short = (
-                                    ext_sym.name.split(".")[-1]
-                                    if "." in ext_sym.name
-                                    else ext_sym.name
-                                )
-                                if ext_short == method_name:
-                                    # Emit the call as unresolved +
-                                    # receiver_type_hint and let the shared
-                                    # receiver_type_dispatch linker emit the
-                                    # resolved ast_call_extension edge. The
-                                    # local extension_index lookup is used
-                                    # ONLY to track the extension's return type
-                                    # (resolved_nav_sym) for chained navigation
-                                    # calls, which is a pass-2 concern the linker
-                                    # (running later) cannot feed back
-                                    # (WI-lodij, INV-vigaf).
-                                    edges.append(make_unresolved_edge(
-                                        "kotlin", current_function.id,
-                                        method_name, node.start_point[0] + 1,
-                                        PASS_ID, run.execution_id,
-                                        receiver_type_hint=type_class_name,
-                                    ))
-                                    edge_added = True
-                                    resolved_nav_sym = ext_sym
-                                    break
-
-                        # Return type tracking for navigation calls
-                        if resolved_nav_sym and resolved_nav_sym.kind in ("function", "method"):
-                            ret_name = _extract_kotlin_return_type_name(
-                                resolved_nav_sym.signature
-                            )
-                            if ret_name and ret_name in class_symbols:
-                                prop_decl = node.parent
-                                if prop_decl and prop_decl.type == "property_declaration":
-                                    var_decl = find_child_by_type(
-                                        prop_decl, "variable_declaration"
-                                    )
-                                    if var_decl:
-                                        var_name_node = find_child_by_type(
-                                            var_decl, "identifier"
-                                        )
-                                        if var_name_node:
-                                            var_types[
-                                                node_text(var_name_node, source)
-                                            ] = ret_name
-
-                        # Case 4: Fallback - try qualified name directly
-                        if not edge_added and receiver_name:
-                            candidate = f"{receiver_name}.{method_name}"
-                            # Use import path as hint if receiver is an imported name
-                            import_hint = imports.get(receiver_name)
-                            lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
-                            # A ``<variable>.<method>`` key never suffix-matches a
-                            # symbol (the resolver suffix-matches a BARE name only),
-                            # so this fallback resolves nothing for a variable
-                            # receiver; kept for a receiver spelled like a class.
-                            # It DOES exact-match ``Type.method`` when Case 2
-                            # withheld an object call for its import (WI-tipoh),
-                            # so the import is checked here too.
-                            if lookup_result.found and lookup_result.symbol is not None and not imported_elsewhere(  # pragma: no cover
-                                lookup_result.symbol.qualified_name, import_hint,
-                            ):  # WI-tipoh: Case 2 re-targets; this only refuses
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_call_direct",
-                                    resolved_by=resolved_by.QUALIFIED,
-                                ))
-                                edge_added = True
-
-                        # Nothing above resolved the call. Every gate so far
-                        # is ``lookup_result.found``, which a JDK method can
-                        # never satisfy, so without this arm ``f.writeText(s)``
-                        # on an imported ``java.io.File`` would emit no edge,
-                        # and most of kotlin's catalogued sinks are method-kind
-                        # (WI-nasuf). A typed receiver (a declared, parameter or constructed
-                        # local, or a chained construction) carries its type,
-                        # qualified through the file's imports or written
-                        # inline, in the module slot; an untyped one carries the
-                        # ``external`` placeholder. Both stamp
-                        # ``call_construct: method``, which the taint gates and
-                        # the untyped-receiver disclosure read, and both keep the
-                        # bare type as ``receiver_type_hint`` for the Tier-2
-                        # linkers. ``analyzer_disclosure``'s declaration that
-                        # kotlin emits method-call edges rests on this edge.
-                        if not edge_added:
-                            _recv_type = (
-                                chained_type
-                                if chained_type is not None
-                                else var_types.get(receiver_name)
-                            )
-                            _module = (
-                                _kt_receiver_module(_recv_type, imports, is_project_type=_is_project_receiver)
-                                if _recv_type is not None
-                                # WI-kilap: an untyped receiver spelled as a TYPE
-                                # (``Files.readAllBytes(p)``, ``System.getenv(k)``)
-                                # is a static call, and its owner is the module.
-                                # Only the file's import or java.lang's closed list
-                                # names one; anything else keeps the placeholder.
-                                else static_owner_module(
-                                    receiver_name, imports,
-                                    shadowed=KOTLIN_SHADOWED_JAVA_LANG,
-                                    # WI-tipoh: an explicit import of a path
-                                    # OUTSIDE the project outranks a same-named
-                                    # project type. An import of a project path
-                                    # keeps the placeholder the Tier-2 linkers
-                                    # resolve from (WI-kilap).
-                                    is_project_type=_is_project_receiver(receiver_name),
-                                )
-                            )
-                            edges.append(make_unresolved_edge(
-                                "kotlin", current_function.id, method_name,
-                                node.start_point[0] + 1, PASS_ID, run.execution_id,
-                                module_hint=_module or "external",
-                                receiver_type_hint=(
-                                    _kt_project_type_key(_recv_type)
-                                    if _recv_type is not None else None
-                                ),
-                                call_construct="method",
-                            ))
+                        else:
+                            # WI-kilap: an untyped receiver spelled as a TYPE
+                            # (``Files.readAllBytes(p)``, ``System.getenv(k)``)
+                            # is a static call whose owner is the module: the
+                            # file's import or java.lang's closed list; a
+                            # project type, or an import of a project path,
+                            # keeps the placeholder (WI-tipoh).
+                            _module = static_owner_module(
+                                receiver_name, imports,
+                                shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+                                is_project_type=_is_project_receiver(receiver_name),
+                            ) or "external"
+                            if receiver_node.type == "identifier" and (
+                                receiver_name[:1].isupper() or method_name[:1].isupper()
+                            ):
+                                _report_named_owner(receiver_name, method_name, line, _module)
+                            else:
+                                _report(method_name, line, module_hint=_module)
             else:
-                # Simple function call: helper()
+                # Simple function call: ``helper()``, or a construction
+                # ``Foo()``. Bound here: a member of the enclosing type, found
+                # by position (the language's implicit receiver); a member of
+                # an object or companion the file imports by name (``import
+                # okhttp3.Headers.Companion.headersOf``), at the path the
+                # import names. Anything else is reported: a function or a type
+                # the file's package or imports make visible, or a member the
+                # enclosing type inherits, is the linkers' to find (ADR-0064),
+                # with the enclosing type for the inherited-calls walk.
                 callee_node = find_child_by_type(node, "identifier")
                 if callee_node:
                     callee_name = node_text(callee_node, source)
-                    resolved_simple_sym = None
-
-                    # AMB-METHOD guard: when 3+ classes define the same
-                    # method name, suppress the edge to avoid false positives.
-                    if method_resolver is not None:
-                        if method_resolver.too_ambiguous(callee_name):
-                            continue  # 3+ method candidates, suppress
-                    # A bare call reaches a free function or its OWN type's
-                    # method (INV-fahub, WI-fajib). ``local_symbols`` keeps every
-                    # method under its short name too, last declaration winning,
-                    # and the resolver returns the only candidate, so either
-                    # alone could bind ``helper()`` in ``Point`` to an unrelated
-                    # ``Other.helper``. Prefer ``Enclosing.callee``; withhold a
-                    # hit on another type's method, stamping the enclosing class
-                    # so the inherited-calls linker can recover a genuinely
-                    # inherited one. The cost: a bare call inside a scope
-                    # function (``other.apply { helper() }``) that really is
-                    # ``Other.helper`` stays unresolved, since its receiver is
-                    # not typed here.
-                    _enclosing_type = _get_enclosing_class(node, source)
-                    local_callee: Optional[Symbol] = (
-                        local_symbols.get(f"{_enclosing_type}.{callee_name}")
-                        if _enclosing_type else None
+                    line = node.start_point[0] + 1
+                    own = _own_member(node, callee_name)
+                    imported = file_scope.named(callee_name) if own is None else None
+                    imported_member = (
+                        project_by_qualified.get(f"{imported.module}.{imported.name}")
+                        if imported is not None and imported.module else None
                     )
-                    _by = resolved_by.OWN_TYPE
-                    if local_callee is None and callee_name in local_symbols:
-                        _short = local_symbols[callee_name]
-                        if not defer_bare_method_call(
-                            _short.kind, _short.name, "suffix", _enclosing_type,
-                        ):
-                            local_callee = _short
-                            # The file's bare-name table, last declaration
-                            # winning: nothing but the file scoped it.
-                            _by = resolved_by_for_bare_call(
-                                _short.kind, _short.name,
-                                resolved_by.SAME_FILE, _enclosing_type,
-                            )
-                    if local_callee is not None:
+                    if imported_member is not None and imported_member.kind not in _OWN_MEMBER_KINDS:
+                        imported_member = None
+                    bound = own or imported_member
+                    if bound is not None:
                         edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=local_callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
+                            src=current_function.id, dst=bound.id,
+                            edge_type="calls", line=line,
                             evidence_type="ast_call",
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin=PASS_ID, origin_run_id=run.execution_id,
                             meta={"call_construct": "function"},
-                            resolved_by=_by,
+                            resolved_by=(
+                                resolved_by.OWN_TYPE if own is not None else resolved_by.IMPORT
+                            ),
                         ))
-                        resolved_simple_sym = local_callee
-                    # Check global symbols via resolver
                     else:
-                        import_hint = imports.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
-                        # WI-tipoh: the file's explicit import outranks a
-                        # same-named project symbol in another package.
-                        _target = (
-                            _kt_import_target(lookup_result.symbol, import_hint, None,
-                                              project_by_qualified)
-                            if lookup_result.found and lookup_result.symbol is not None
-                            else None
+                        _report(
+                            callee_name, line,
+                            module_hint=imports.get(callee_name) or "external",
+                            enclosing_class=_get_enclosing_class(node, source),
+                            on_receiver=False,
                         )
-                        # The registry also holds each method under its bare
-                        # name, so ``helper`` comes back an "exact" match for
-                        # ``Other.helper``: by name it is short-name evidence.
-                        # An import naming the callee is not (``import
-                        # okhttp3.Headers.Companion.headersOf`` binds a bare
-                        # ``headersOf`` to ``Headers.headersOf``).
-                        _match = (
-                            "suffix"
-                            if lookup_result.match_type == "exact"
-                            and import_hint is None
-                            and _target is not None and _target.name != callee_name
-                            else lookup_result.match_type
+                    # ``val db = getDb()``: ``db`` is typed by the declared
+                    # return of the member bound above, else of the top-level
+                    # function the name means here.
+                    resolved_simple_sym = bound or _visible_declaration(
+                        callee_name, frozenset({"function"}),
+                    )
+                    if resolved_simple_sym is not None and resolved_simple_sym.kind in ("function", "method"):
+                        _type_declared_variable(
+                            node, resolved_simple_sym,
+                            _extract_kotlin_return_type_name(resolved_simple_sym.signature),
                         )
-                        _withheld = _target is not None and defer_bare_method_call(
-                            _target.kind, _target.name, _match, _enclosing_type,
-                        )
-                        if _target is not None and not _withheld:
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=_target.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ast_call",
-                                resolution_score=lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                meta={"call_construct": "function"},
-                                # The file's import of the callee binds it
-                                # (``_kt_import_target`` re-targets to the
-                                # import's path); without one, the name.
-                                resolved_by=(
-                                    resolved_by.IMPORT if import_hint is not None
-                                    else resolved_by_for_bare_call(
-                                        _target.kind, _target.name,
-                                        lookup_result.resolved_by, _enclosing_type,
-                                    )
-                                ),
-                            ))
-                            resolved_simple_sym = _target
-                        else:
-                            edges.append(make_unresolved_edge(
-                                "kotlin", current_function.id, callee_name,
-                                node.start_point[0] + 1, PASS_ID, run.execution_id,
-                                module_hint=import_hint or "external",
-                                dst_ref=(
-                                    ExternalRef(lang="kotlin", module_path=import_hint, name=callee_name)
-                                    if import_hint else None
-                                ),
-                                enclosing_class=_enclosing_type if _withheld else None,
-                            ))
-
-                    # Return type tracking for simple function calls
-                    if (
-                        resolved_simple_sym
-                        and resolved_simple_sym.kind in ("function", "method")
-                    ):
-                        ret_name = _extract_kotlin_return_type_name(
-                            resolved_simple_sym.signature
-                        )
-                        if ret_name and ret_name in class_symbols:
-                            prop_decl = node.parent
-                            if (
-                                prop_decl
-                                and prop_decl.type == "property_declaration"
-                            ):
-                                var_decl = find_child_by_type(
-                                    prop_decl, "variable_declaration"
-                                )
-                                if var_decl:
-                                    var_name_node = find_child_by_type(
-                                        var_decl, "identifier"
-                                    )
-                                    if var_name_node:
-                                        var_types[
-                                            node_text(var_name_node, source)
-                                        ] = ret_name
 
         # Callable references: ::functionName (unqualified)
         elif node.type == "callable_reference":
@@ -3414,22 +3300,19 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             else:
                 files_skipped += 1
 
-        # Build global symbol registry
+        # Build global symbol registry: callable references (``::f``,
+        # ``X::m``) and annotation targets still look a name up in it; no call
+        # does (ADR-0064).
         global_symbols: dict[str, Symbol] = {}
-        # AMB-METHOD: multi-value method registry for ambiguity guard
-        global_methods: dict[str, list[Symbol]] = {}
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 # Store by short name for cross-file resolution
                 short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
                 global_symbols[short_name] = symbol
                 global_symbols[symbol.name] = symbol
-                if symbol.kind == "method":
-                    global_methods.setdefault(short_name, []).append(symbol)
 
         # Pass 2: Extract edges
         resolver = NameResolver(global_symbols)
-        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
 
         # Index extension functions by receiver type. Pass 1 tags each
         # one's receiver in meta["extension_receiver"]; here those tags
@@ -3467,19 +3350,30 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         # ``global_symbols`` keeps one symbol per name, so alone it would bind
         # an import to a same-named symbol at another path.
         project_by_qualified: dict[str, Symbol] = {}
+        # Every type and top-level function by its short name: the candidates
+        # ``type_visibility`` picks among when a variable is typed by a callee.
+        declared_by_name: dict[str, list[Symbol]] = {}
         for analysis in file_analyses.values():
             for sym in analysis.symbols:
                 if sym.qualified_name:
                     project_by_qualified.setdefault(sym.qualified_name, sym)
+                if sym.kind in _KT_TYPE_KINDS or sym.kind == "function":
+                    declared_by_name.setdefault(sym.name, []).append(sym)
 
+        # Every file's import table (ADR-0064), by the path its symbols carry.
+        import_scopes = {
+            str(kt_file): analysis.import_scope for kt_file, analysis in file_analyses.items()
+        }
         for kt_file, analysis in file_analyses.items():
             all_symbols.extend(analysis.symbols)
 
             edges = _extract_edges_from_file(
                 kt_file, parser, analysis.symbol_by_name, global_symbols,
-                analysis.imports, run, resolver, method_resolver=method_resolver,
+                analysis.imports, run, resolver,
                 extension_index=extension_index, file_symbols=analysis.symbols,
                 project_by_qualified=project_by_qualified,
+                import_scopes=import_scopes,
+                declared_by_name=declared_by_name,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
@@ -3536,6 +3430,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             edges=all_edges,
             run=run,
             dependency_manifest=jvm_manifest if jvm_manifest.entries else None,
+            import_scopes=import_scopes,
         )
 
 

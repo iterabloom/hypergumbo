@@ -44,10 +44,7 @@
       "evidence_type=ast_method_type_inferred": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/kotlin.py": {
-      "evidence_type=ast_call_static": 2,
-      "evidence_type=ast_call_this": 2,
-      "evidence_type=ast_call_this_property": 1,
-      "evidence_type=ast_call_type_inferred": 1
+      "evidence_type=ast_call_this": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/lua.py": {
       "resolution_quality=typed": 1
