@@ -96,6 +96,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, ExternalRef, Span, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -598,6 +599,11 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                     evidence_type="ast_call",
                                     resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "function"},
+                                    # ``Foo::bar()`` names its package.
+                                    resolved_by=(
+                                        resolved_by.QUALIFIED if "::" in func_name
+                                        else lookup_result.resolved_by
+                                    ),
                                 )
                                 edges.append(edge)
                             else:
@@ -666,6 +672,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         edges.append(self._class_method_edge(
                             caller.id, package, method_name,
                             node.start_point[0] + 1, global_symbols, run_id,
+                            by=resolved_by.QUALIFIED,
                         ))
                 elif _PERL_METHOD_IDENTIFIER.fullmatch(method_name):
                     # WI-mugir: an EXPRESSION invocant resolves on its type,
@@ -678,6 +685,13 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             caller.id, owner, method_name,
                             node.start_point[0] + 1, global_symbols, run_id,
                             call_construct="method",
+                            # ``shift->m`` is the invocant itself; a scalar
+                            # or a ``Pkg->new`` carries the type it was given.
+                            by=(
+                                resolved_by.OWN_TYPE
+                                if _is_method_invocant(node.children[0], source)
+                                else resolved_by.RECEIVER_TYPE
+                            ),
                         ))
                     elif caller:
                         edges.append(make_unresolved_edge(
@@ -706,6 +720,11 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                 evidence_type="ast_call",
                                 resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "method"},
+                                # ``$o->Other::m`` names its package.
+                                resolved_by=(
+                                    resolved_by.QUALIFIED if "::" in method_name
+                                    else lookup_result.resolved_by
+                                ),
                             )
                             edges.append(edge)
 
@@ -720,13 +739,15 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         global_symbols: dict[str, Symbol],
         run_id: str,
         *,
+        by: str,
         call_construct: str = "function",
     ) -> Edge:
         """The edge for ``package->method_name``: ``package``'s own sub, or its external edge.
 
         ``call_construct`` is ``function`` for a call on the package itself
         (``Pkg->m``) and ``method`` for one on a value of it (``$obj->m``,
-        WI-mugir), per ADR-0059.
+        WI-mugir), per ADR-0059. ``by`` is what named ``package``, the
+        resolved edge's ``resolved_by``.
 
         The registry is keyed by qualified name (``register_symbol``), and a
         ``main`` sub by its bare name, so the exact key is the whole lookup:
@@ -747,6 +768,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                 evidence_type="ast_call",
                 confidence=0.85,
                 meta={"call_construct": call_construct},
+                resolved_by=by,
             )
         return _package_unresolved_edge(
             caller_id, package, method_name, line, run_id,
