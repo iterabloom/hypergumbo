@@ -41,6 +41,7 @@ from typing import Any, ClassVar, Iterator, Optional, Sequence, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -376,6 +377,8 @@ def _extract_scheme_edges(
                         evidence_type="ast_call_direct",
                         is_resolved=resolved,
                         evidence_lang="scheme",
+                        # The run-wide name table, last declaration winning.
+                        resolved_by=resolved_by.NAME if resolved else None,
                     )
                     edges.append(edge)
 

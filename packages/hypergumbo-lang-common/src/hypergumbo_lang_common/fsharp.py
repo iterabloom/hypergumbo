@@ -234,6 +234,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, UsageContext, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
@@ -991,13 +992,15 @@ _FSHARP_NOT_A_READ = frozenset({"dot_expression", "typed_expression", "identifie
 
 
 class _FsharpTarget(NamedTuple):
-    """What a call site resolved to, and how sure the choice among overloads is."""
+    """What a call site resolved to, how sure the choice among overloads is,
+    and what scoped the choice (``by``, the edge's ``resolved_by``)."""
 
     symbol: Symbol
     edge_type: str
     construct: str
     confidence: float
     ambiguous: bool
+    by: str
 
 
 class _FsharpBinding(NamedTuple):
@@ -1006,11 +1009,13 @@ class _FsharpBinding(NamedTuple):
 
     type: Optional[Symbol] = None
     function: Optional[Symbol] = None
+    #: The binder is the enclosing member's self identifier (``this``).
+    own: bool = False
 
 
 def _fsharp_pick(
     tiers: Sequence[Sequence[Symbol]], arg_count: Optional[int],
-    edge_type: str, construct: str,
+    edge_type: str, construct: str, by: str,
 ) -> _FsharpTarget:
     """One of the same-named ``tiers`` members, by ``choose_overload``.
 
@@ -1024,7 +1029,7 @@ def _fsharp_pick(
     if choice.symbol is None:
         choice = choose_overload(tiers, None)
     symbol = choice.symbol or next(sym for tier in tiers for sym in tier)
-    return _FsharpTarget(symbol, edge_type, construct, choice.confidence, choice.ambiguous)
+    return _FsharpTarget(symbol, edge_type, construct, choice.confidence, choice.ambiguous, by)
 
 
 def _fsharp_file_names(
@@ -1310,7 +1315,7 @@ class _FsharpCallResolver:
             ident = defn.child_by_field_name("name") if defn is not None else None
             instance = ident.child_by_field_name("instance") if ident is not None else None
             if instance is not None and node_text(instance, self.source) == name:
-                return _FsharpBinding(self.owner_type(node))
+                return _FsharpBinding(self.owner_type(node), own=True)
             return None
         if kind == "method_or_prop_defn":
             return self._bound_by_patterns(
@@ -1458,7 +1463,9 @@ class _FsharpCallResolver:
         receiver, names = _fsharp_callee_path(callee, self.source)
         if receiver is not None:
             owner = self.expression_type(receiver)
-            return self._member(owner, names[0], arg_count, False) if owner else None
+            return self._member(
+                owner, names[0], arg_count, False, resolved_by.RECEIVER_TYPE,
+            ) if owner else None
         if not names or (arg_count is None and len(names) == 1):
             return None
         bound = self.binding(names[0], callee)
@@ -1468,9 +1475,14 @@ class _FsharpCallResolver:
                 # need the type of a property, which is not followed.
                 if bound.type is None or len(names) != 2:
                     return None
-                return self._member(bound.type, names[1], arg_count, False)
+                return self._member(
+                    bound.type, names[1], arg_count, False,
+                    resolved_by.OWN_TYPE if bound.own else resolved_by.RECEIVER_TYPE,
+                )
             owner = self.type_named(".".join(names[:-1]), callee)
-            found = self._member(owner, names[-1], arg_count, True) if owner else None
+            found = self._member(
+                owner, names[-1], arg_count, True, resolved_by.QUALIFIED,
+            ) if owner else None
             if found is not None:
                 return found
         if arg_count is None:
@@ -1480,6 +1492,7 @@ class _FsharpCallResolver:
             # that function, whatever else in the repository shares the name.
             return _FsharpTarget(
                 bound.function, "calls", "function", 1.0, False,
+                resolved_by.LEXICAL_SCOPE,
             ) if bound.function is not None else None
         if not constructs:
             return None
@@ -1498,11 +1511,18 @@ class _FsharpCallResolver:
         ], arg_count)
         primary = arity_bounds(constructed)
         if constructors and (primary is None or not primary.admits(arg_count)):
-            return _fsharp_pick([constructors], arg_count, "instantiates", "constructor")
-        return _FsharpTarget(constructed, "instantiates", "constructor", 1.0, False)
+            return _fsharp_pick(
+                [constructors], arg_count, "instantiates", "constructor",
+                resolved_by.SAME_MODULE,  # resolved_by: closest fit, see report
+            )
+        return _FsharpTarget(
+            constructed, "instantiates", "constructor", 1.0, False,
+            resolved_by.SAME_MODULE,  # resolved_by: closest fit, see report
+        )
 
     def _member(
         self, owner: Symbol, name: str, arg_count: Optional[int], static: bool,
+        by: str,
     ) -> Optional[_FsharpTarget]:
         """``owner``'s member ``name``, static or not as the call form requires.
         A body is preferred to an abstract slot of the same name: a call of a
@@ -1517,7 +1537,7 @@ class _FsharpCallResolver:
         return _fsharp_pick([
             [member for member in named if "abstract" not in member.modifiers],
             [member for member in named if "abstract" in member.modifiers],
-        ], arg_count, "calls", "method")
+        ], arg_count, "calls", "method", by)
 
 
 def _extract_symbols_from_file(
@@ -1781,6 +1801,9 @@ def _extract_edges_from_file(
             evidence_type="ast_call",
             resolution_score=target.confidence,
             meta=meta,
+            # ``target`` is always a declaration of the run, its edge type
+            # ``calls`` or ``instantiates``.
+            resolved_by=target.by,
         )
 
     for node in iter_tree(tree.root_node):
@@ -1838,7 +1861,9 @@ def _extract_edges_from_file(
                 lookup_result = resolver.lookup(
                     dotted, allow_suffix=False,
                 ) if dotted else None
+                _by: Optional[str] = resolved_by.QUALIFIED
                 if lookup_result is None or not lookup_result.found:
+                    _by = None  # the bare-name lookup below states its own
                     # Next, what the call site itself decides (a member, a
                     # type, a function bound in an enclosing scope), ahead of
                     # the bare-name guess below; a bare name that IS a
@@ -1869,6 +1894,7 @@ def _extract_edges_from_file(
                         evidence_type="ast_call",
                         resolution_score=lookup_result.confidence,
                         meta={"call_construct": "function"},
+                        resolved_by=_by or lookup_result.resolved_by,
                     )
                     edges.append(edge)
 

@@ -64,6 +64,7 @@ from typing import Any, TYPE_CHECKING, ClassVar
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -596,6 +597,8 @@ class _RobotExtractor:
             evidence_type="ast_call_direct",
             is_resolved=bool(resolved_id),
             evidence_lang="robot",
+            # The run-wide name table, last declaration winning.
+            resolved_by=resolved_by.NAME if resolved_id else None,
         )
         self._edges.append(edge)
 
