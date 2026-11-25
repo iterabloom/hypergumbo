@@ -100,6 +100,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -782,6 +783,9 @@ def _extract_edges_from_file(
                     # ``evidence_type`` above; a ``macro`` construct would
                     # restate the pathway on a second axis (history: WI-dapap).
                     evidence_type="macro_expansion",
+                    # OTP's logger, never a declaration of the tree: no
+                    # in-repository target was chosen.
+                    resolved_by=None,
                 ))
 
         elif node.type == "call":
@@ -817,6 +821,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "remote"},
+                                    resolved_by=resolved_by.QUALIFIED,
                                 )
                                 edges.append(edge)
                             else:
@@ -839,6 +844,9 @@ def _extract_edges_from_file(
                                     # id), and the construct is the same either way:
                                     # ``mod:func(args)``. (history: INV-tadup)
                                     meta={"call_construct": "remote"},
+                                    # A synthetic external node: no
+                                    # in-repository target was chosen.
+                                    resolved_by=None,
                                 )
                                 edges.append(edge)
                 else:
@@ -857,6 +865,8 @@ def _extract_edges_from_file(
                         # module is an exact match; otherwise the resolver
                         # grades the match.
                         resolution_score = 1.0
+                        # One module per file: the file's table IS the module.
+                        _by = resolved_by.SAME_MODULE
                         if callee is None:
                             # ADR-0007: Use import module as path_hint
                             path_hint = None
@@ -868,6 +878,7 @@ def _extract_edges_from_file(
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
                                 resolution_score = lookup_result.confidence
+                                _by = lookup_result.resolved_by
                         if callee is not None:
                             edge = Edge.create(
                                 src=caller.id,
@@ -879,6 +890,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 resolution_score=resolution_score,
                                 meta={"call_construct": "local"},
+                                resolved_by=_by,
                             )
                             edges.append(edge)
 

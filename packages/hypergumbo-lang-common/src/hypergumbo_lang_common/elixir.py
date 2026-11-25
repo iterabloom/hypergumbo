@@ -222,7 +222,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, NamedTuple, Optional
 
-from hypergumbo_core import kept_work
+from hypergumbo_core import kept_work, resolved_by
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.framework_patterns import usage_row_names_call
 from hypergumbo_core.ir import (
@@ -3191,6 +3191,9 @@ def _extract_edges_from_tree(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
+                                    # The file's table, not the caller's
+                                    # module: a file may define several.
+                                    resolved_by=resolved_by.SAME_FILE,
                                 ))
                         # Fallback: single-match local lookup (modules, macros)
                         elif not named_multi and target_name in local_symbols:  # pragma: no cover — defensive; multi index covers all symbols
@@ -3204,6 +3207,7 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=resolved_by.SAME_FILE,
                             ))
                         # A bare ``name(...)`` whose module the file's
                         # ``import`` directives actually establish — surface an
@@ -3274,6 +3278,12 @@ def _extract_edges_from_tree(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function"},
+                                        # Gated to the ``import``ed modules
+                                        # when the file's imports are known.
+                                        resolved_by=(
+                                            resolved_by.IMPORT if imported_modules is not None
+                                            else resolved_by.NAME
+                                        ),
                                     ))
                             else:  # pragma: no cover — multi-index has same keys as resolver
                                 # Use alias hints for disambiguation
@@ -3290,6 +3300,7 @@ def _extract_edges_from_tree(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function"},
+                                        resolved_by=lookup_result.resolved_by,
                                     ))
 
             # Module-qualified calls: Helper.greet(), App.Services.UserService.find()
@@ -3333,6 +3344,7 @@ def _extract_edges_from_tree(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "pipe"},
+                                    resolved_by=resolved_by.SAME_FILE,
                                 ))
                         elif func_name not in _ELIXIR_STDLIB_FUNCTIONS:
                             global_multi = global_symbols_multi.get(func_name) if global_symbols_multi else None
@@ -3352,6 +3364,10 @@ def _extract_edges_from_tree(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "pipe"},
+                                        resolved_by=(
+                                            resolved_by.IMPORT if imported_modules is not None
+                                            else resolved_by.NAME
+                                        ),
                                     ))
                 # Note: ``data |> Mod.func`` (module-qualified pipe) does NOT
                 # produce a bare ``dot`` rhs — tree-sitter wraps it in a
@@ -3469,6 +3485,7 @@ def _handle_dot_call(
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run_id,
+            resolved_by=resolved_by.QUALIFIED,
         ))
         return
 
@@ -3487,6 +3504,8 @@ def _handle_dot_call(
                 confidence=0.85,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                # The ``alias`` directive bound the written qualifier.
+                resolved_by=resolved_by.IMPORT,
             ))
             return
 

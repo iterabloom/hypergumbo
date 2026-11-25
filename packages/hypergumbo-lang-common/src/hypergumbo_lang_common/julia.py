@@ -79,6 +79,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Collection, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -1144,6 +1145,7 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             meta={"call_construct": "function"},
+                            resolved_by=resolved_by.SAME_FILE,
                         ))
                     # Check global symbols via resolver
                     else:
@@ -1159,6 +1161,7 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=lookup_result.resolved_by,
                             ))
 
     return edges
