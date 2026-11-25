@@ -53,8 +53,11 @@ _B_INDEX = {"index.js": "function helper() { return 1; }\nmodule.exports = { hel
 
 
 def _call_dsts(data: dict, caller: str) -> set[str]:
+    """The live call targets of ``caller``: a stub a linker superseded is not
+    one (ADR-0064 hands these calls to the shared pass)."""
     src = next(n["id"] for n in data["nodes"] if n["name"] == caller)
-    return {e["dst"] for e in data["edges"] if e["type"] == "calls" and e["src"] == src}
+    return {e["dst"] for e in data["edges"] if e["type"] == "calls" and e["src"] == src
+            and not (e.get("meta") or {}).get("superseded_by")}
 
 
 def _imports_from(data: dict, path: str) -> set[str]:
@@ -74,7 +77,8 @@ def test_require_of_a_sibling_package_calls_its_function(tmp_path: Path) -> None
         data, "packages/a/index.js")
     ids = {n["id"] for n in data["nodes"]}
     assert "javascript:npm:0-0:@ws/b:package" not in ids
-    assert not [i for i in ids if i.startswith("javascript:@ws/b:0-0:helper")]
+    live = {e["dst"] for e in data["edges"] if not (e.get("meta") or {}).get("superseded_by")}
+    assert not [i for i in ids & live if i.startswith("javascript:@ws/b:0-0:helper")]
 
 
 def test_esm_import_of_a_sibling_package_without_main(tmp_path: Path) -> None:

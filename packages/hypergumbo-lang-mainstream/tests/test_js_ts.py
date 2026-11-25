@@ -9,6 +9,28 @@ from hypergumbo_lang_mainstream import js_ts as js_ts_module
 from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 
 
+def _pipeline_calls(root: Path) -> set[tuple[str, str, str, str]]:
+    """(caller name, callee name, callee's repo-relative path, mark) of every
+    resolved ``calls`` edge of the whole pipeline's map of ``root``: what the
+    analyzer binds itself and what the shared pass binds from its facts
+    (ADR-0064)."""
+    import json
+    from hypergumbo_core.cli import run_behavior_map
+
+    out = root.parent / f"{root.name}.map.json"
+    run_behavior_map(repo_root=root, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+    nodes = {n["id"]: n for n in data["nodes"]}
+    return {
+        (nodes[e["src"]]["name"], nodes[e["dst"]]["name"], nodes[e["dst"]]["path"],
+         (e.get("meta") or {}).get("resolved_by"))
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved")
+        and not (e.get("meta") or {}).get("superseded_by")
+        and e["src"] in nodes and e["dst"] in nodes
+    }
+
+
 class TestFindJsTsFiles:
     """Tests for JS/TS file discovery."""
 
@@ -2271,12 +2293,14 @@ function main(logger) {
 
         result = analyze_javascript(tmp_path)
 
+        # ADR-0064: an untyped receiver's method is not looked up by its name
+        # among the repository's methods (it was bound to Logger.writeMessage
+        # because that was the only method of the name): the call goes out on
+        # the placeholder, with nothing that could name a type.
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        inferred_calls = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
-        assert len(inferred_calls) == 1
-        assert "writeMessage" in inferred_calls[0].dst
-        # Exact grade on ast_method_inferred: its base (ADR-0039 ruling 6).
-        assert inferred_calls[0].confidence == 0.70
+        (stub,) = [e for e in call_edges if "writeMessage" in e.dst]
+        assert not stub.is_resolved
+        assert stub.meta == {"callee_name": "writeMessage", "call_construct": "method"}
 
     def test_inferred_method_no_fanout(self, tmp_path: Path) -> None:
         """Bare name fallback emits at most one edge, not N edges for N candidates.
@@ -3823,8 +3847,10 @@ class TestReexportResolution:
             import { helper } from './utils';
             function caller() { helper(); }
 
-        The call edge from caller -> helper should be created, pointing to
-        the real symbol in helper.js, not a placeholder.
+        ADR-0064: the import names ``utils/index.js``, which declares no
+        ``helper``; the shared pass does not follow a re-export (yet), so the
+        call stays an unresolved stub naming the binding. It was bound by the
+        name lookup (the only ``helper`` of the repository).
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -3873,15 +3899,12 @@ class TestReexportResolution:
         call_edges = [e for e in result.edges
                       if e.edge_type == "calls" and e.src == caller_id]
 
-        # There should be a call edge to helper
-        assert len(call_edges) >= 1, \
-            f"Expected call edge from caller to helper, got: {call_edges}"
-
-        # The call edge should point to the real helper
-        helper_id = helper_sym.id
-        call_dsts = {e.dst for e in call_edges}
-        assert helper_id in call_dsts, \
-            f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+        (stub,) = call_edges
+        assert not stub.is_resolved
+        assert stub.dst == "javascript:utils:0-0:helper:unresolved"
+        # The table records the binding as written: the barrel file.
+        assert result.import_scopes["main.js"].named("helper").module == "utils/index.js"
+        assert helper_sym.id not in {e.dst for e in call_edges}
 
 
 class TestJsTsSignatureExtraction:
@@ -4365,12 +4388,11 @@ function run() {
         )
 
     def test_same_package_preference_no_import(self, tmp_path: Path) -> None:
-        """Direct calls without imports prefer symbols from the same package.
+        """Direct calls without imports are not bound by the package they sit in.
 
-        When ``error()`` is called without any import in two different packages,
-        each should resolve to their own package's ``error()`` function.
-        ``global_symbols`` is last-one-wins, so resolving through it alone
-        sends one of the two callers to the other package's function.
+        ``error()`` is called without any import in two different packages,
+        each of which declares an ``error()`` in another file. Before ADR-0064
+        each bound to its own package's ``error`` (a nearness pick).
 
         Uses two packages (each with its own package.json) and two callers
         to make the test filesystem-order-independent.
@@ -4407,29 +4429,14 @@ function run() {
 
         result = analyze_javascript(tmp_path)
 
+        # ADR-0064: the same npm package is a nearness heuristic, not a scope
+        # of the language: a name the file neither declares nor imports is not
+        # bound to a declaration of another file. Both calls stay unresolved
+        # (they were bound to their own package's ``error``).
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-
-        # Server handler should resolve to server's error
-        handler_error = next(
-            (e for e in call_edges if "handleRequest" in e.src and "error" in e.dst),
-            None,
-        )
-        assert handler_error is not None, "Expected call edge from handleRequest to error"
-        assert "server" in handler_error.dst, (
-            f"handleRequest is in server/ but call resolves to {handler_error.dst}. "
-            "Same-package preference should pick the same-package symbol."
-        )
-
-        # Client app should resolve to client's error
-        client_error = next(
-            (e for e in call_edges if "showError" in e.src and "error" in e.dst),
-            None,
-        )
-        assert client_error is not None, "Expected call edge from showError to error"
-        assert "client" in client_error.dst, (
-            f"showError is in client/ but call resolves to {client_error.dst}. "
-            "Same-package preference should pick the same-package symbol."
-        )
+        for caller in ("handleRequest", "showError"):
+            (edge,) = [e for e in call_edges if caller in e.src and "error" in e.dst]
+            assert edge.dst == "javascript:external:0-0:error:unresolved"
 
     def test_same_package_candidate_no_package_json(self, tmp_path: Path) -> None:
         """_same_package_candidate returns None when no package.json exists."""
@@ -4734,7 +4741,7 @@ function run() {
         assert inst_edge is not None, "Expected instantiates edge for namespace.EmailClient"
 
     def test_parameter_type_inference_typescript(self, tmp_path: Path) -> None:
-        """TypeScript function parameter types should enable method call resolution."""
+        """A TypeScript parameter's type rides the call to the shared pass."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Service class with methods
@@ -4796,14 +4803,20 @@ function process(db: Database, data: string): void {
             None,
         )
 
-        assert save_edge is not None, "Expected call edge for db.save() via param type inference"
-        assert commit_edge is not None, "Expected call edge for db.commit() via param type inference"
-        # Both should use type inference evidence
-        assert save_edge.evidence_type == "ast_method_type_inferred"
-        assert commit_edge.evidence_type == "ast_method_type_inferred"
+        # ADR-0064: Database is declared in another file and handler.ts does
+        # not import it, so the analyzer does not bind ``db.save()`` (it was
+        # bound by the run-wide lookup of "Database.save", right only while one
+        # Database exists): the stub carries the parameter's type, and the
+        # shared pass finds no Database visible from handler.ts.
+        assert save_edge is None and commit_edge is None
+        stubs = {
+            e.dst.split(":")[-2]: e.meta for e in call_edges if e.src == process_func.id
+        }
+        assert stubs["save"]["receiver_type_hint"] == "Database"
+        assert stubs["commit"]["receiver_type_hint"] == "Database"
 
     def test_this_property_method_call_nestjs_pattern(self, tmp_path: Path) -> None:
-        """this.property.method() calls via constructor injection should resolve.
+        """this.property.method() calls via constructor injection carry the type.
 
         This tests the NestJS/Angular pattern where services are injected via constructor:
             constructor(private readonly catsService: CatsService) {}
@@ -4889,21 +4902,16 @@ class CatsController {
             None,
         )
 
-        assert create_edge is not None, (
-            "Expected call edge for this.catsService.create() via constructor injection. "
-            f"Edges from ctrl_create: {[e.dst for e in call_edges if e.src == ctrl_create.id]}"
-        )
-        assert find_all_edge is not None, (
-            "Expected call edge for this.catsService.findAll() via constructor injection. "
-            f"Edges from ctrl_find_all: {[e.dst for e in call_edges if e.src == ctrl_find_all.id]}"
-        )
-
-        # Both should use this_property evidence type
-        assert create_edge.evidence_type == "ast_method_this_property"
-        assert find_all_edge.evidence_type == "ast_method_this_property"
-        # Confidence should be 0.90 * resolver confidence (typically 1.0)
-        assert create_edge.confidence == 0.90
-        assert find_all_edge.confidence == 0.90
+        # ADR-0064: CatsService is declared in another file that the
+        # controller does not import; the calls were bound by the run-wide
+        # lookup of "CatsService.create". Now each stub carries the injected
+        # property's type for the shared pass, which sees no CatsService from
+        # here. The importing form is pinned in test_js_ts_call_facts.py.
+        assert create_edge is None and find_all_edge is None
+        for caller in (ctrl_create, ctrl_find_all):
+            (stub,) = [e for e in call_edges if e.src == caller.id]
+            assert stub.meta["receiver_type_hint"] == "CatsService"
+            assert stub.meta["call_construct"] == "method"
 
     def test_this_property_disambiguates_via_named_import(self, tmp_path: Path) -> None:
         """this.property.method() should resolve to the correct class via named import.
@@ -4955,44 +4963,17 @@ class CatsController {
 """)
 
         result = analyze_javascript(tmp_path)
-
-        ctrl_create = next(
-            (s for s in result.symbols if s.name == "CatsController.create"), None
-        )
-        assert ctrl_create is not None, "Expected CatsController.create symbol"
-
-        # Find both CatsService.create symbols
         svc_creates = [s for s in result.symbols if s.name == "CatsService.create"]
         assert len(svc_creates) == 2, f"Expected 2 CatsService.create symbols, got {len(svc_creates)}"
 
-        svc_create_correct = next(
-            (s for s in svc_creates if "dir_b" in s.path), None
-        )
-        svc_create_decoy = next(
-            (s for s in svc_creates if "dir_a" in s.path), None
-        )
-        assert svc_create_correct is not None
-        assert svc_create_decoy is not None
-
-        # Should have an edge to dir_b's CatsService.create (same directory import)
-        call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        correct_edge = next(
-            (e for e in call_edges if e.src == ctrl_create.id and e.dst == svc_create_correct.id),
-            None,
-        )
-        assert correct_edge is not None, (
-            "Expected call edge to dir_b/CatsService.create (via named import), "
-            f"got edges: {[(e.dst, e.evidence_type) for e in call_edges if e.src == ctrl_create.id]}"
-        )
-
-        # Should NOT have an edge to dir_a's CatsService.create
-        wrong_edge = next(
-            (e for e in call_edges if e.src == ctrl_create.id and e.dst == svc_create_decoy.id),
-            None,
-        )
-        assert wrong_edge is None, (
-            "Should NOT have edge to dir_a/CatsService.create — wrong disambiguation"
-        )
+        # ADR-0064: the analyzer hands the call over with the property's type;
+        # the shared pass follows the controller's import to dir_b (same
+        # expectation as before, now read from the pipeline's map).
+        creates = {
+            (callee_path, mark) for caller, callee, callee_path, mark in _pipeline_calls(tmp_path)
+            if caller == "CatsController.create" and callee == "CatsService.create"
+        }
+        assert creates == {("dir_b/cats.service.ts", "receiver_type")}
 
     def test_variable_method_disambiguates_via_named_import(self, tmp_path: Path) -> None:
         """variable.method() (Case 3) should also use import-path disambiguation."""
@@ -5018,22 +4999,13 @@ class CatsController {
             "}\n"
         )
 
-        result = analyze_javascript(tmp_path)
-        run_fn = next((s for s in result.symbols if s.name == "run"), None)
-        assert run_fn is not None
-        svc_creates = [s for s in result.symbols if s.name == "CatsService.create"]
-        assert len(svc_creates) == 2
-        correct = next((s for s in svc_creates if "dir_b" in s.path), None)
-        assert correct is not None
-
-        type_edges = [
-            e for e in result.edges
-            if e.src == run_fn.id and e.evidence_type == "ast_method_type_inferred"
-        ]
-        assert any(e.dst == correct.id for e in type_edges), (
-            f"Expected Case 3 edge to dir_b/CatsService.create, got: "
-            f"{[(e.dst, e.evidence_type) for e in type_edges]}"
-        )
+        # ADR-0064: same expectation, now the shared pass's (read from the
+        # pipeline's map): the receiver's type follows the import to dir_b.
+        creates = {
+            (callee_path, mark) for caller, callee, callee_path, mark in _pipeline_calls(tmp_path)
+            if caller == "run" and callee == "CatsService.create"
+        }
+        assert creates == {("dir_b/cats.service.ts", "receiver_type")}
 
     def test_import_alias_tracked_in_named_imports(self, tmp_path: Path) -> None:
         """import { Foo as Bar } from './module' should track alias 'Bar'."""
@@ -7424,7 +7396,7 @@ function setup() {
     def test_non_shadowed_call_still_resolves(
         self, tmp_path: Path
     ) -> None:
-        """Calls to names NOT shadowed by params still resolve correctly."""
+        """Calls to names NOT shadowed by params are still calls."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "utils.js").write_text(
@@ -7439,18 +7411,18 @@ function doWork() {
 }
 """)
         result = analyze_javascript(tmp_path)
-        # helper() should still resolve (not shadowed by params)
+        # helper() is not shadowed, so it is still a call: one edge. ADR-0064:
+        # utils.js is not imported, so the edge is the unresolved placeholder
+        # (it was bound by the name lookup to utils.js's helper).
         helper_edges = [
             e for e in result.edges if e.edge_type == "calls"
-            and "helper" in e.dst
+            and (e.meta or {}).get("callee_name", e.dst.split(":")[-2]) == "helper"
         ]
-        assert len(helper_edges) == 1, (
-            f"helper() should still resolve, got: {helper_edges}"
-        )
-        # resolve() should NOT resolve to global
+        assert [e.dst for e in helper_edges] == ["javascript:external:0-0:helper:unresolved"]
+        # resolve() is a parameter: no edge at all
         resolve_edges = [
             e for e in result.edges if e.edge_type == "calls"
-            and "resolve" in e.dst
+            and e.dst.split(":")[-2] == "resolve"
         ]
         assert len(resolve_edges) == 0
 
@@ -7689,15 +7661,9 @@ class TestCrossPackageGuardAllPaths:
         (tmp_path / "pkg" / "helpers.js").write_text(
             "export function doWork(x) { return x; }\n"
         )
-        result = analyze_javascript(tmp_path)
-        ns_edges = [
-            e for e in result.edges
-            if e.evidence_type == "ast_call_namespace"
-            and "doWork" in e.dst
-        ]
-        assert len(ns_edges) >= 1, (
-            "Namespace call within same package should resolve"
-        )
+        # ADR-0064: the analyzer hands ``helpers.doWork()`` over with its
+        # qualifier; the shared pass binds it through the namespace binding.
+        assert ("handler", "doWork", "pkg/helpers.js", "import") in _pipeline_calls(tmp_path)
 
     def test_method_inferred_no_cross_package(
         self, tmp_path: Path
@@ -8611,12 +8577,20 @@ class TestJsxRouteMarkers:
         self, tmp_path: Path,
     ) -> None:
         """``Users()`` and ``register(Users)`` in a file that imports nothing
-        resolved to the marker on the ``<Route>`` line."""
+        resolved to the marker on the ``<Route>`` line. The value reference
+        still reaches the component by its name; ADR-0064: the CALL is no
+        longer bound by a name looked up among the repository's declarations
+        (the file neither declares nor imports ``Users``), so it is the
+        unresolved placeholder and reaches no marker either."""
         result = self._jsx_marker_tree(tmp_path)
         by_id = {s.id: s for s in result.symbols}
         hits = [(e.edge_type, by_id[e.dst]) for e in result.edges
                 if e.src.endswith(":boot:function") and e.dst in by_id]
-        assert sorted(t for t, _ in hits) == ["calls", "references"], hits
+        assert sorted(t for t, _ in hits) == ["references"], hits
+        assert sorted(e.dst for e in result.edges
+                      if e.src.endswith(":boot:function") and e.edge_type == "calls") == [
+            "javascript:external:0-0:Users:unresolved",
+            "javascript:external:0-0:register:unresolved"]
         for edge_type, target in hits:
             assert (target.name, target.span.start_line) == ("Users", 3), (edge_type, target.id)
             assert (target.meta or {}).get("framework_role") is None
@@ -11111,19 +11085,15 @@ class TestJsTsUnresolvedExternalInheritance:
 
 
 class TestJsTsBareMethodMagnetGate:
-    """INV-fahub: a bare / untyped-receiver call must not confidently bind to
-    an UNRELATED class's same-named method on weak short-name evidence.
+    """INV-fahub: a bare / untyped-receiver call must not bind to an UNRELATED
+    class's same-named method on short-name evidence.
 
-    Two magnet paths are gated via ``defer_bare_method_call``:
-      * a bare function call (``persist()``) resolving through the suffix
-        ``resolver``, and
-      * the untyped ``obj.method()`` fallback (``method_resolver``) fanout, the
-        "every class with the same method name gets linked" case (conf 0.60).
-
-    A weak cross-class match is WITHHELD and stamped with ``enclosing_class`` so
-    the inherited_calls Site-1 walker can later recover a genuine *inherited*
-    implicit-``this`` call; a same-enclosing-class method (implicit ``this``) and
-    a single-candidate (strong, ``exact``) match still bind directly.
+    ADR-0064 removed both magnet paths rather than gating them: neither a bare
+    call nor a method on an untyped receiver is looked up by its name among the
+    repository's declarations any more, so there is no weak match to withhold.
+    JavaScript has no implicit ``this``: a bare ``persist()`` inside a class
+    never calls the class's method, so the stub carries no ``enclosing_class``
+    (the deferral used to stamp one, and a same-class method used to bind).
     """
 
     @pytest.fixture(autouse=True)
@@ -11165,13 +11135,15 @@ class TestJsTsBareMethodMagnetGate:
         assert len(deferred) == 1, [
             e.dst for e in result.edges if "boot" in e.src
         ]
-        assert (deferred[0].meta or {}).get("enclosing_class") == "Alpha"
+        assert deferred[0].meta == {"callee_name": "persist"}
 
     def test_bare_function_call_same_class_method_still_resolves(
         self, tmp_path: Path
     ) -> None:
-        """Path 1 recall guard: a bare call to a method of the SAME enclosing
-        class (implicit ``this``) still binds directly (owner == enclosing)."""
+        """A bare call to a name that is a method of the SAME enclosing class
+        is no call of that method: JavaScript has no implicit ``this``, and
+        ``helper()`` here is a global. It was bound to ``Calc.helper`` (a wrong
+        edge, ``own_type``); ADR-0064: the unresolved placeholder."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "calc.ts").write_text(
@@ -11190,14 +11162,9 @@ class TestJsTsBareMethodMagnetGate:
             if e.edge_type == "calls" and e.dst == calc_helper.id
             and "total" in e.src and e.is_resolved
         ]
-        assert len(resolved) == 1, [
-            (e.dst, e.is_resolved) for e in result.edges if "total" in e.src
-        ]
-        assert not any(
-            e.edge_type == "calls" and "total" in e.src
-            and e.dst.endswith(":helper:unresolved")
-            for e in result.edges
-        )
+        assert resolved == []
+        assert [e.dst for e in result.edges if e.edge_type == "calls" and "total" in e.src] == [
+            "typescript:external:0-0:helper:unresolved"]
 
     def test_untyped_receiver_two_class_method_fanout_deferred(
         self, tmp_path: Path
@@ -11233,7 +11200,8 @@ class TestJsTsBareMethodMagnetGate:
         assert len(deferred) == 1, [
             e.dst for e in result.edges if "process" in e.src
         ]
-        assert (deferred[0].meta or {}).get("enclosing_class") == "Handler"
+        # The receiver is an untyped parameter: nothing names its type.
+        assert deferred[0].meta == {"callee_name": "compute", "call_construct": "method"}
 
     def test_bare_call_tie_among_methods_is_deferred(self, tmp_path: Path) -> None:
         """A bare ``compute()`` that two OTHER classes' methods could answer is
@@ -11252,13 +11220,14 @@ class TestJsTsBareMethodMagnetGate:
         assert not [e for e in calls if e.is_resolved], calls
         deferred = [e for e in calls if e.dst.endswith(":compute:unresolved")]
         assert len(deferred) == 1, [e.dst for e in calls]
-        assert (deferred[0].meta or {}).get("enclosing_class") == "Handler"
+        assert deferred[0].meta == {"callee_name": "compute"}
 
     def test_untyped_receiver_single_class_method_still_resolves(
         self, tmp_path: Path
     ) -> None:
-        """Path 2 recall guard: a single-candidate (``exact``) method match is
-        strong evidence and still binds, even across classes."""
+        """A single-candidate method match on an untyped receiver was bound
+        (``name``: the only ``load`` of the repository). ADR-0064: an untyped
+        receiver's method is not looked up by its name; unresolved."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "s.ts").write_text(
@@ -11276,9 +11245,7 @@ class TestJsTsBareMethodMagnetGate:
             if e.edge_type == "calls" and e.dst == repo_load.id
             and "run" in e.src and e.is_resolved
         ]
-        assert len(resolved) == 1, [
-            (e.dst, e.is_resolved) for e in result.edges if "run" in e.src
-        ]
+        assert resolved == []
 
 
 class TestTypeScriptAbstractModifier:

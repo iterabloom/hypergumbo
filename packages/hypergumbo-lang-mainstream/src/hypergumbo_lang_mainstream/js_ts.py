@@ -116,10 +116,11 @@ extract:
   separate ``type_ref`` edge type.
 
 ``Edge.dst_ref`` on UNRESOLVED call edges is populated only on some
-paths. A call to a named import sets it explicitly to the canonical
-``(lang, module_path, name)`` triple resolved through the per-file import
-scope's ``named_import_originals`` map, so renamed imports
-(``import { foo as bar }``) attribute to ``foo``, not ``bar``; a bare
+paths. A call to a name imported from outside the repository sets it
+explicitly to the canonical ``(lang, module_path, name)`` triple resolved
+through the per-file ``named_import_originals`` map, so renamed imports
+(``import { foo as bar }``) attribute to ``foo``, not ``bar`` (a name
+imported from a repository file goes to the shared pass under ``bar``); a bare
 known-global call (``fetch``) sets it too. Edges built by
 ``make_unresolved_edge`` get one derived from their module hint unless
 that hint is the ``external`` placeholder, in which case ``dst_ref`` is
@@ -131,48 +132,58 @@ target.
 
 Call-Site Resolution
 --------------------
-- **Bare identifiers** (``helper()``, ``xs.map(helper)``, ``{onClick: h}``):
-  ``_ScopeBinder`` walks the scopes enclosing the identifier (parameters,
-  ``catch`` and loop bindings, each block's declarations with ``var``
-  hoisted, then the file's module scope and imports) and resolves a
-  declaration by POSITION. A declaration in scope wins outright (an exact
-  grade, ``resolution_score`` 1.0, which is the ast_call_direct ceiling); a
-  parameter or local value is a callee nothing can name and emits nothing;
-  only a name bound by an import, or by nothing in the file, reaches the
-  import, same-package and repo-wide name lookups (WI-sofuh). A name
-  imported from a module shown external (a Node core module, or a declared
-  registry dependency the repo does not define;
-  ``_bare_specifier_is_external``) skips all three and takes the named-import unresolved edge, so an in-repo
-  namesake never claims it. A called module binding
-  (``import m from 'x'; m()``) emits ``x``'s ``default``; a name nothing binds
-  and nothing in the repo carries emits the ``external`` placeholder
-  (WI-fahod).
-- **Member-call cascade** (``obj.m()``): ``this.m()`` against the enclosing
-  class; a typed ``this.prop`` receiver; a
-  namespace-import alias (an external module's alias makes no name lookup
-  and goes straight to its module's unresolved edge); a variable whose
-  ``var_types`` type is a named import from an external module, which gets an
-  unresolved edge to that module with ``receiver_type_hint`` and
-  ``call_construct="method"`` unless a catalogued constructor types it; a
-  variable typed by ``var_types``; a bare
-  ``JS_KNOWN_GLOBALS`` receiver (``console``, ``process``, ...); a receiver
-  whose catalogue module is in ``var_ctor_modules`` (filled from
-  ``new X()`` or a TypeScript-declared type when ``X`` is in
-  ``JS_CONSTRUCTOR_TYPES``, which is derived from the io-boundary
-  catalogue); a ``<mod>.promises`` chain; an inline ``new X().m()``; then a
-  low-confidence method-name match. A non-``this`` receiver none of these
-  type still gets an unresolved edge to the ``external`` placeholder with
-  ``call_construct="method"``. A computed key spelled by a literal
-  (``ws['send'](x)``) runs the same cascade; any other key (``obj[k](x)``)
-  emits that placeholder named ``<computed>`` (WI-vipos).
-- **INV-fahub deferral** (``defer_bare_method_call``): a bare ``foo()`` or
-  untyped ``obj.m()`` whose only match is a weak short-name hit on a
-  DIFFERENT class's method is not bound; an unresolved edge stamped with the
-  enclosing class is emitted instead for inherited-call recovery. A lookup
-  that ties between two or more same-named candidates, at least one of them
-  a method, binds nothing and is deferred the same way
-  (``defer_unresolved_tie``); unlike the weak-hit rule, this has no
-  same-class exemption.
+ADR-0064 (shared call resolution): the analyzer binds a call only on evidence
+JavaScript itself gives and that it has in hand, and hands every other call to
+the shared pass (the ``inherited_calls`` linker) with facts. No route looks a
+callee up by its name among the repository's declarations, by the npm package
+it sits in, or by a file's table of short names: those were the guesses.
+
+- **The table** (``_import_scopes``): per file an ``ImportScope`` whose
+  modules are FILES of the repository, the file the js-module linker's own
+  ``SpecifierResolver`` says a specifier names (one resolver for both). A
+  named or destructured import is ``add_named``; ``import * as m`` and
+  ``const m = require(..)`` (the module object) are ``add_namespace``; a
+  default import is ``add_named`` of the declaration the file's
+  ``export default`` names. A binding to a library, a Node core module, a
+  path that does not exist or a file no JS/TS parse produced is left out.
+  Returned in ``AnalysisResult.import_scopes``.
+- **Bare identifiers** (``helper()``): ``_ScopeBinder`` walks the scopes
+  enclosing the identifier (parameters, ``catch`` and loop bindings, each
+  block's declarations with ``var`` hoisted, then the file's module scope and
+  imports) and binds a declaration found by POSITION (``lexical_scope``); a
+  parameter or local value is a callee nothing can name and emits nothing. A
+  name an import of a repository file binds goes out unresolved under its
+  LOCAL name, which the table is keyed by (the shared pass binds it,
+  ``import``). A name imported from elsewhere keeps the named-import
+  unresolved edge (the original name, the module as hint, for the
+  io-boundary catalogue); a called library module binding emits the
+  module's ``default``; a name nothing binds emits the ``external``
+  placeholder (WI-fahod). JavaScript has no implicit ``this``: a bare call
+  inside a class is never a call of the class's method.
+- **Member calls** (``obj.m()``): ``this.m()`` binds the enclosing class's
+  member declared in this file (``own_type``); otherwise, and for
+  ``super.m()`` (``super_receiver``), the stub carries the enclosing class's
+  name and id for the shared pass's ancestor walk. A receiver typed by a
+  constructor-injected property (``this.prop``), a ``new``, a parameter
+  annotation or a declared return type binds the type's member when this
+  file declares the type (``receiver_type``), and otherwise carries
+  ``receiver_type_hint`` (``ns.K`` for ``new ns.K()`` through a repository
+  namespace binding). A namespace or default binding of a repository file
+  (``util.f()``), a class this file declares or imports by name
+  (``Util.f()``) and a namespace binding's class (``ns.Util.f()``) go out
+  with ``qualifier``. Unchanged: a library namespace's member, a receiver
+  typed by a named import of an external module (``receiver_type_hint`` and
+  the module), a bare ``JS_KNOWN_GLOBALS`` receiver, a catalogued
+  constructor's module (``var_ctor_modules``), a ``<mod>.promises`` chain and
+  an inline ``new X().m()`` take their module's unresolved edge. Anything
+  else takes the ``external`` placeholder with ``call_construct="method"``.
+  A computed key spelled by a literal (``ws['send'](x)``) runs the same
+  cascade; any other key (``obj[k](x)``) emits that placeholder named
+  ``<computed>`` (WI-vipos).
+- **``new``** (``instantiates``; the shared pass reads no ``instantiates``
+  stub, so the analyzer binds these): a class the call site sees in scope
+  (``lexical_scope``), else the class the table's binding names in its file
+  (``import``), else the run-wide class table by name, as before.
 - **Enclosing function**: ``_get_enclosing_function`` finds the caller by
   ``symbol_by_position`` (path, line, column), so duplicate names across
   files do not collide. The function-declaration and method branches still
@@ -221,8 +232,11 @@ How It Works
 2. If not available, return empty result with skip reason
 3. Three-pass analysis:
    - Pass 1: Parse all JS/TS files plus the <script> blocks of Svelte / Vue
-     files, and extract all symbols into the global registry
-   - Pass 2: Detect calls and resolve against global symbol registry. A
+     files, and extract all symbols into the global registry; then build
+     each file's import table (``_import_scopes``, ADR-0064)
+   - Pass 2: Detect calls; bind those the file's own evidence settles and
+     emit the rest with facts for the shared pass (see Call-Site
+     Resolution). A
      call that hands a LOCAL function to a library call is also recorded
      as a registration UsageContext (WI-movur; ``_record_registrations``):
      kind ``call``; ``context_name`` the callee as written, a chained
@@ -308,7 +322,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
@@ -321,22 +335,17 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.supply_chain import own_package_name
 from hypergumbo_core.taxonomy import get_language
 from hypergumbo_core.js_package_entry import (
-    is_node_core_module, nearest_package_root, package_entry, probe_file,
+    is_node_core_module, nearest_package_root,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
-from hypergumbo_core.symbol_resolution import (
-    ListNameResolver,
-    LookupResult,
-    NameResolver,
-)
+from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.import_scope import MODULES_ARE_FILES, ImportScope
+from hypergumbo_core.linkers.js_module import SpecifierResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
-    defer_bare_method_call,
-    resolved_by_for_bare_call,
-    defer_unresolved_tie,
     emit_module_attribute_refs,
     stamp_io_mode_from_call,
     symbols_by_path_index,
@@ -1201,58 +1210,87 @@ def _retarget_in_tree_module_attrs(
         )
 
 
-class _InTreeDefaultExports:
-    """A default import of an in-tree package is its entry's default export (WI-halol).
+def _import_scopes(
+    parsed_files: "list[_ParsedFile]", repo_root: Path,
+) -> "tuple[dict[str, ImportScope], dict[str, str]]":
+    """What each file's imports bind: the table the shared call-resolution
+    pass reads (ADR-0064, piece b), keyed by the file's repo-relative path;
+    and, per such path, the absolute spelling this analyzer's symbols carry
+    until the run relativises them.
 
-    ``import x from '@ws/c'; x()`` calls whatever ``@ws/c``'s entry file
-    exports as default -- the local name ``x`` says nothing about it. The
-    entry is the file Node loads (``js_package_entry.package_entry``, the same
-    rule the js_module linker resolves the import edge with), or for a subpath
-    the file it names; the callee is that file's ``export default``
-    declaration; a relative specifier names the file its path does. A package
-    the tree does not define, a package importing itself, an absolute path, or
-    an entry with no named default declaration answers None.
+    A module of the table is a FILE of the repository, spelled as its symbols'
+    ``path`` is once relativised: the file the js-module linker's own
+    ``SpecifierResolver`` says the specifier names (relative paths with
+    extension and index probing, a directory's package entry, tsconfig /
+    jsconfig and Vite aliases, workspace packages; one resolver for both
+    callers), when it is a file this analyzer read. A binding to anything
+    else (an npm package, a Node core module, a path that does not exist, a
+    file no JS/TS parse produced) is left out: a name the table does not
+    bind is, correctly, no declaration of the repository.
+
+    - ``import {a as b} from './m'``, ``const {a: b} = require('./m')``:
+      ``add_named(m, "a", alias="b")``.
+    - ``import * as m from './m'``, ``const m = require('./m')``: the module
+      object, ``add_namespace(m, "m")``.
+    - ``import d from './m'``: the default export's VALUE, which is the
+      declaration ``m``'s ``export default`` names (``export default
+      function f``, ``export default C``): ``add_named(m, "f", alias="d")``.
+      An anonymous default export names no declaration and is left out.
+    A binding whose file does not declare the name (a re-export) is recorded
+    as written; the lookup finds nothing there. Every file read gets a
+    table, an empty one too: its presence tells the linkers this analyzer
+    hands its calls over. A Svelte / Vue component's ``<script>`` blocks
+    share their file's table.
     """
+    def relative(path: Path) -> str:
+        try:
+            return str(path.relative_to(repo_root))
+        except ValueError:  # pragma: no cover - every file is found under the root
+            return str(path)
 
-    def __init__(
-        self, parsed_files: "list[_ParsedFile]", symbols_by_name: dict[str, list["Symbol"]],
-    ) -> None:
-        self._default_by_path = {
-            str(pf.path): pf.default_export for pf in parsed_files if pf.default_export
-        }
-        self._symbols_by_name = symbols_by_name
-        self._roots: dict[str, Path | None] = {}
-        for pf in parsed_files:
-            root = nearest_package_root(pf.path)
-            name = _package_json_name(root) if root is not None else None
-            if name is not None:
-                # Two roots declaring one name: no way to choose.
-                self._roots[name] = root if self._roots.get(name, root) == root else None
+    scopes: dict[str, ImportScope] = {}
+    absolute: dict[str, str] = {}
+    by_resolved: dict[Path, str] = {}
+    for pf in parsed_files:
+        rel = relative(pf.path)
+        scopes.setdefault(rel, ImportScope(module_kind=MODULES_ARE_FILES))
+        absolute[rel] = str(pf.path)
+        by_resolved[pf.path.resolve()] = rel
+    default_by_file = {
+        relative(pf.path): pf.default_export for pf in parsed_files if pf.default_export
+    }
+    specifiers = SpecifierResolver(repo_root)
+    files: dict[tuple[Path, str], str | None] = {}
 
-    def __call__(self, specifier: str, importer: Path) -> "Symbol | None":
-        entry: Path | None
-        if specifier.startswith("."):
-            # A relative default import names the file the path does.
-            entry = probe_file((importer.parent / specifier).resolve())
-        elif specifier.startswith("/"):
-            return None
-        else:
-            package = _js_package_name(specifier)
-            root = self._roots.get(package)
-            if root is None or root == nearest_package_root(importer):
-                return None
-            subpath = specifier[len(package):].lstrip("/")
-            entry = (
-                (probe_file(root / subpath) or probe_file(root / "src" / subpath))
-                if subpath else package_entry(root)
-            )
-        name = self._default_by_path.get(str(entry)) if entry is not None else None
-        if name is None:
-            return None
-        return next(
-            (s for s in self._symbols_by_name.get(name, []) if s.path == str(entry)),
-            None,
-        )
+    def file_of(importer: Path, specifier: str) -> str | None:
+        key = (importer.parent, specifier)
+        if key not in files:
+            resolved, _ = specifiers.resolve(str(importer), specifier)
+            files[key] = by_resolved.get(resolved) if resolved is not None else None
+        return files[key]
+
+    for pf in parsed_files:
+        scope = scopes[relative(pf.path)]
+        originals = pf.named_import_originals or {}
+        for local, specifier in (pf.named_imports or {}).items():
+            module = file_of(pf.path, specifier)
+            if module is not None:
+                scope.add_named(module, originals.get(local, local), alias=local)
+        module_objects = pf.module_objects
+        if pf.path.suffix in (".svelte", ".vue"):
+            # A component's blocks are read without their module objects.
+            found: set[str] = set()
+            _extract_namespace_imports(pf.tree, pf.source, found)
+            module_objects = frozenset(found)
+        for alias, specifier in (pf.namespace_imports or {}).items():
+            module = file_of(pf.path, specifier)
+            if module is None:
+                continue
+            if alias in module_objects:
+                scope.add_namespace(module, alias)
+            elif module in default_by_file:
+                scope.add_named(module, default_by_file[module], alias=alias)
+    return scopes, absolute
 
 
 @functools.lru_cache(maxsize=4096)
@@ -4531,27 +4569,6 @@ def jsts_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return f"{class_name}.{name}" if class_name else name
 
 
-def _get_jsts_class_ancestors(
-    node: "tree_sitter.Node", source: bytes
-) -> list[str]:
-    """Walk up the tree collecting all enclosing class names.
-
-    Returns the chain from outermost to innermost (excluding the current
-    node itself). The implicit-``this`` owner of a call site is its last
-    entry (:func:`_jsts_enclosing_class`); qualified names also carry the
-    enclosing namespaces (:func:`_jsts_qualified_ancestors`).
-    """
-    chain: list[str] = []
-    current = node.parent
-    while current is not None:
-        if current.type in ("class_declaration", "abstract_class_declaration"):
-            name = _find_name_in_children(current, source)
-            if name:
-                chain.append(name)
-        current = current.parent
-    return list(reversed(chain))
-
-
 def _jsts_qualified_ancestors(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
@@ -4559,9 +4576,7 @@ def _jsts_qualified_ancestors(
     of ``node``, outermost first: the chain its ``qualified_name`` carries.
 
     A ``namespace A { namespace B { class C`` is a source-level namespace, so
-    ``C``'s qualified name is ``A.B.C``, not the class chain alone
-    (:func:`_get_jsts_class_ancestors`, which serves the implicit-``this``
-    owner lookup). Functions are not namespaces and stay out, as does an
+    ``C``'s qualified name is ``A.B.C``, not the class chain alone. Functions are not namespaces and stay out, as does an
     ambient ``declare module "m"``, whose string names a module specifier.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
@@ -4696,22 +4711,6 @@ def _jsts_chain(node: "tree_sitter.Node", source: bytes, name: str, lang: str) -
     """``name`` qualified by :func:`_jsts_scope`: the qualified name a JS/TS
     callable or member hashes."""
     return _make_jsts_qualified_name(_jsts_scope(node, source), name, lang)
-
-
-def _jsts_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """The innermost enclosing class name of a call site, or None (INV-fahub).
-
-    Used by the bare-/untyped-receiver -> method magnet gate
-    (``defer_bare_method_call``) to decide whether a weak short-name resolver
-    hit is an implicit-``this`` call to the call site's OWN class (bind) or a
-    cross-class magnet (withhold + stamp ``enclosing_class`` for Site-1).
-    ``_get_jsts_class_ancestors`` returns outermost -> innermost, so the
-    innermost enclosing class (the implicit-``this`` owner) is the last entry —
-    the same short name a ``method`` Symbol carries as its ``Owner.method``
-    prefix (``full_name = f"{_get_class_context(...)}.{name}"``).
-    """
-    ancestors = _get_jsts_class_ancestors(node, source)
-    return ancestors[-1] if ancestors else None
 
 
 def _make_jsts_qualified_name(
@@ -6475,15 +6474,10 @@ _BOUND_SYMBOL = "symbol"
 _BOUND_LOCAL = "local"
 _BOUND_IMPORT = "import"
 
-#: ADR-0039 ruling 6 match grades for a bare call's resolution routes. A
-#: declaration the call site sees in scope, or an explicit-import match, is
-#: exact. The same-package preference is a path hint, graded as the resolver
-#: grades one (0.90). The repo-wide resolver fallback runs only after those
-#: routes failed, so its own grade is discounted by the same 0.90 and an exact
-#: fallback hit never outranks a same-package match.
+#: ADR-0039 ruling 6 match grade of a call this analyzer binds: every bind is
+#: on evidence in hand (a declaration the call site sees in scope, a member
+#: of the enclosing class), which is exact (ADR-0064).
 _JS_ROUTE_SCORE_EXACT = 1.0
-_JS_ROUTE_SCORE_SAME_PACKAGE = 0.90
-_JS_ROUTE_SCORE_RESOLVER = 0.90
 
 _JS_FUNCTION_SCOPES: frozenset[str] = frozenset({
     "function_declaration", "generator_function_declaration",
@@ -7119,12 +7113,10 @@ def _extract_edges(
     lang: str,
     run: AnalysisRun,
     global_symbols: dict[str, Symbol],
-    global_methods: dict[str, list[Symbol]],
     global_classes: dict[str, Symbol],
     line_offset: int = 0,
     namespace_imports: dict[str, str] | None = None,
     resolver: NameResolver | None = None,
-    method_resolver: ListNameResolver | None = None,
     class_resolver: NameResolver | None = None,
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
     named_imports: dict[str, str] | None = None,
@@ -7132,10 +7124,11 @@ def _extract_edges(
     module_symbol: Symbol | None = None,
     named_import_originals: dict[str, str] | None = None,
     file_symbols: list[Symbol] | None = None,
-    default_export_of: "Callable[[str, Path], Symbol | None] | None" = None,
     module_objects: frozenset[str] = frozenset(),
     package_index: "_JsPackageIndex | None" = None,
     registration_contexts: list[UsageContext] | None = None,
+    import_scope: ImportScope | None = None,
+    files_by_rel: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -7143,9 +7136,12 @@ def _extract_edges(
     function to a library call a ``usage:`` row names is also recorded there
     as a registration UsageContext (``_record_registrations``, WI-movur).
 
-    Uses global symbol registries to resolve cross-file references.
+    Binds a call only on this file's own evidence and emits every other
+    call unresolved with the facts the shared pass reads (ADR-0064; the
+    module docstring's Call-Site Resolution). ``import_scope`` is the file's
+    table (``_import_scopes``); ``files_by_rel`` maps a table module to the
+    path this analyzer's symbols carry, for ``new`` through an import.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
-    Optionally uses NameResolver for suffix-based matching and confidence tracking.
     Uses symbol_by_position to attribute calls inside callback arrow functions.
 
     Handles:
@@ -7161,28 +7157,23 @@ def _extract_edges(
       when the in-repo callee is a function/method whose return-type
       annotation names a known class
 
-    Import-path disambiguation (INV-013):
-    When multiple files define the same class name (e.g., NestJS monorepos),
-    ``named_imports`` and ``symbols_by_name`` are used to pick the correct
-    symbol by matching the relative import path against candidate file paths.
-    This applies to Cases 1b (this.property.method()) and 3 (variable.method()).
+    Import-path disambiguation (INV-013): when several files declare one
+    class name (NestJS monorepos), the import names the file; for a call that
+    is the shared pass's to read from the table, for ``new`` the analyzer's.
 
     External bindings (WI-jomik): a callee reached through a binding of a
     module ``package_index`` positively shows external (a Node core module or a
     declared registry package, ``_bare_specifier_is_external``) is that
-    module's and never an in-repo symbol: a namespace or default import's
-    member (``path.join``), a named or destructured import (``const {resolve}
-    = require('node:path')``), and a method on a receiver whose type is a named
-    import from one (``new Subject()`` from ``rxjs``). Each gets the
-    unresolved edge with the module as hint that the module's unmatched
-    members already got. Without the index nothing is shown external.
+    module's and never an in-repo symbol: a method on a receiver whose type
+    is a named import from one (``new Subject()`` from ``rxjs``) gets the
+    unresolved edge with the module as hint. A binding of any module that is
+    no file of the repository is absent from the table, so nothing binds its
+    members in-repo either.
     """
     if namespace_imports is None:
         namespace_imports = {}
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
-    if method_resolver is None:  # pragma: no cover - defensive
-        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     _caller_path = str(file_path)
@@ -7212,6 +7203,40 @@ def _extract_edges(
         if _fs.path == _caller_path:
             _file_symbols_by_name.setdefault(_fs.name, []).append(_fs)
     binder = _ScopeBinder(source, _file_symbols_by_name, line_offset)
+    # ADR-0064: what this file's imports bind, by file (``_import_scopes``).
+    # A single-file caller hands none: no name is then bound to another file.
+    scope = (
+        import_scope if import_scope is not None
+        else ImportScope(module_kind=MODULES_ARE_FILES)
+    )
+
+    def _file_classes(name: str) -> list[Symbol]:
+        return [s for s in _file_symbols_by_name.get(name, ()) if s.kind == "class"]
+
+    def _enclosing_class_symbol(name: str, line: int) -> Symbol | None:
+        """The innermost class of this file named ``name`` whose body holds
+        ``line``: the class a ``this`` / ``super`` call is written in."""
+        around = [
+            c for c in _file_classes(name)
+            if c.span is not None and c.span.start_line <= line <= c.span.end_line
+        ]
+        return max(around, key=lambda c: c.span.start_line) if around else None  # type: ignore[union-attr]
+
+    def _member_of(cls: Symbol, member: str) -> Symbol | None:
+        """The member ``member`` declared in the body of ``cls`` (this file),
+        found by position: the evidence a call on that type has in hand."""
+        span = cls.span
+        found = [
+            s for s in _file_symbols_by_name.get(f"{cls.name}.{member}", ())
+            if span is not None and s.span is not None
+            and span.start_line <= s.span.start_line <= span.end_line
+        ]
+        return found[0] if len(found) == 1 else None
+
+    def _member_of_file_type(type_name: str, member: str) -> Symbol | None:
+        """``member`` of the one class of this file named ``type_name``."""
+        classes = _file_classes(type_name)
+        return _member_of(classes[0], member) if len(classes) == 1 else None
 
     def _resolve_value_ref(ref: "tree_sitter.Node", name: str) -> Symbol | None:
         """The symbol a bare identifier used as a VALUE names (WI-sofuh).
@@ -7586,125 +7611,22 @@ def _extract_edges(
                         pass
                     elif (current_function := (_get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol)):
                         callee = None
-                        _by: str | None = None
-                        # ADR-0039 ruling 6: each route below grades its
-                        # match, and Edge.create interpolates the grade in
-                        # the ast_call_direct band.
-                        resolution_score = _JS_ROUTE_SCORE_EXACT
                         if _binding is not None and _binding[0] == _BOUND_SYMBOL:
                             # Proven by position: the declaration this call
-                            # site sees. Stronger than every name heuristic
-                            # below, including an explicit-import match.
+                            # site sees (hoisting, nested functions, the
+                            # file's module scope).
                             callee = _binding[1]
-                            _by = resolved_by.LEXICAL_SCOPE
-                        # Otherwise: import-path disambiguation first
-                        # (cross-package same-name functions, e.g. two packages
-                        # both export ``process()`` but main.js imports from one
-                        # specific module).  Falls back to resolver if no named
-                        # import exists for this function name.
-                        import_module = (named_imports or {}).get(func_name)
-                        # WI-jomik: a name imported from an external module is
-                        # that module's; no name lookup may hand it a same-named
-                        # in-repo symbol (``const {resolve} =
-                        # require('node:path')`` -> express's ``var resolve``).
-                        # It falls to the named-import unresolved edge below.
-                        _import_external = (
-                            callee is None and _external_module(import_module)
+                        # ADR-0064: a name the file imports from a file of
+                        # the repository is the shared pass's to bind: the
+                        # table (``_import_scopes``) says which file and
+                        # which name. Nothing here looks a callee up by its
+                        # name among the repository's declarations: the
+                        # same npm package, the run-wide resolver and the
+                        # import-path match are gone as reasons to bind.
+                        _in_table = (
+                            callee is None and _bound_kind == _BOUND_IMPORT
+                            and scope.named(func_name) is not None
                         )
-                        if (
-                            callee is None and import_module and symbols_by_name
-                            and not _import_external
-                        ):
-                            callee = _disambiguate_by_import(
-                                import_module, file_path, func_name, symbols_by_name,
-                            )
-                            if callee is not None:
-                                # An explicit-import match is exact too.
-                                resolution_score = _JS_ROUTE_SCORE_EXACT
-                                _by = resolved_by.IMPORT
-                        # Try same-package preference (avoids cross-package
-                        # false positives for common names like error,
-                        # resolve, reject when there's no import).
-                        if callee is None and symbols_by_name and not _import_external:
-                            callee = _same_package_candidate(
-                                file_path, func_name, symbols_by_name,
-                            )
-                            if callee is not None:
-                                resolution_score = _JS_ROUTE_SCORE_SAME_PACKAGE
-                                # The same npm package is a nearness
-                                # heuristic, not a language scope.
-                                _by = resolved_by.NAME
-                        # INV-fahub: a bare ``foo()`` that resolves only via a
-                        # weak short-name SUFFIX to a DIFFERENT class's method is
-                        # the magnet (dozens of call sites -> one arbitrary
-                        # ``Beta.persist``). Withhold that bind and stamp the
-                        # enclosing class so the inherited_calls Site-1 walker can
-                        # recover a genuine inherited implicit-``this`` call; free
-                        # functions, same-class methods, and exact matches bind.
-                        magnet_deferred = False
-                        if callee is None and not _import_external:
-                            lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                # Cross-package guard: the resolver fallback
-                                # should not cross npm packages (import-path
-                                # and same-package checks above already had
-                                # their chance to find a valid callee).
-                                if not _is_cross_package(
-                                    file_path, lookup_result.symbol.path,
-                                ):
-                                    _sym = lookup_result.symbol
-                                    _enclosing_type = _jsts_enclosing_class(node, source)
-                                    if defer_bare_method_call(
-                                        _sym.kind, _sym.name,
-                                        lookup_result.match_type, _enclosing_type,
-                                    ):
-                                        edges.append(make_unresolved_edge(
-                                            lang, current_function.id, func_name,
-                                            node.start_point[0] + 1 + line_offset,
-                                            PASS_ID, run.execution_id,
-                                            enclosing_class=_enclosing_type,
-                                        ))
-                                        magnet_deferred = True
-                                    else:
-                                        callee = _sym
-                                        resolution_score = (
-                                            _JS_ROUTE_SCORE_RESOLVER
-                                            * lookup_result.confidence
-                                        )
-                                        _by = resolved_by_for_bare_call(
-                                            _sym.kind, _sym.name,
-                                            lookup_result.resolved_by,
-                                            _enclosing_type,
-                                        )
-                            elif defer_unresolved_tie(lookup_result):
-                                # A tie among methods (WI-jomik: no guess) is
-                                # deferred exactly as a weak pick is.
-                                edges.append(make_unresolved_edge(
-                                    lang, current_function.id, func_name,
-                                    node.start_point[0] + 1 + line_offset,
-                                    PASS_ID, run.execution_id,
-                                    enclosing_class=_jsts_enclosing_class(node, source),
-                                ))
-                                magnet_deferred = True
-                        if (
-                            callee is not None
-                            and _called_module is not None
-                            and callee.kind == "variable"
-                        ):
-                            # The name lookup found a module-binding VARIABLE
-                            # (``const express = require('express')`` mints one)
-                            # rather than a function: that is the import
-                            # binding itself, not a callee.
-                            callee = None
-                        if (
-                            callee is None and _called_module is not None
-                            and default_export_of is not None
-                        ):
-                            # WI-halol: a called default binding of an
-                            # in-tree package is its entry's default export.
-                            callee = default_export_of(_called_module, file_path)
-                            resolution_score = _JS_ROUTE_SCORE_EXACT
-                            _by = resolved_by.IMPORT
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -7714,15 +7636,24 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                resolution_score=resolution_score,
-                                resolved_by=_by,
+                                resolution_score=_JS_ROUTE_SCORE_EXACT,
+                                resolved_by=resolved_by.LEXICAL_SCOPE,
                             )
                             edges.append(edge)
-                        elif magnet_deferred:
-                            # Deferred to Site-1 above (unresolved edge already
-                            # emitted with the enclosing_class hint); do not also
-                            # emit a named-import / known-global fallback edge.
-                            pass
+                        elif _in_table:
+                            # The LOCAL name: the table is keyed by it
+                            # (``import {helper as h}``; ``h()``), and a
+                            # default import's binding names the default
+                            # export's declaration.
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, func_name,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                module_hint=_normalize_import_module_hint(
+                                    (named_imports or {}).get(func_name)
+                                    or namespace_imports[func_name]
+                                ),
+                            ))
                         elif (named_imports or {}).get(func_name):
                             # WI-banaf: when a named-imported function is
                             # called but doesn't resolve to an intra-repo
@@ -7803,8 +7734,9 @@ def _extract_edges(
                                 ),
                             ))
                         elif _binding is None:
-                            # A name no scope in this file binds, not imported,
-                            # and carried by no in-repo symbol (WI-fahod).
+                            # A name no scope in this file binds and nothing
+                            # imports (WI-fahod): a global, or a declaration
+                            # of another script the analyzer cannot see.
                             # Emitting nothing would make the ADR-0017 walk
                             # record an escape where a call stands (no
                             # ``callees_at`` entry). The ``external`` placeholder is python's
@@ -7876,29 +7808,60 @@ def _extract_edges(
                             ))
 
                     if method_name:
-                        is_this_call = obj_node and obj_node.type == "this"
                         current_class_name = _get_class_context(node, source)
                         obj_name = _node_text(obj_node, source) if obj_node and obj_node.type == "identifier" else None
                         edge_added = False
 
-                        # Case 1: this.method()
-                        if is_this_call and current_class_name:
-                            full_name = f"{current_class_name}.{method_name}"
-                            lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                edge = Edge.create(
+                        _line = node.start_point[0] + 1 + line_offset
+                        # ADR-0064: a call is bound here only on evidence
+                        # JavaScript itself gives and this file holds: a
+                        # member of the enclosing class (``this.m()``) or of
+                        # the receiver's type, declared in this file. Any
+                        # other call goes out with its facts and the shared
+                        # pass (inherited_calls) decides from this file's
+                        # import table: the type's file, its ancestors.
+                        _own_class = (
+                            _enclosing_class_symbol(current_class_name, _line)
+                            if current_class_name else None
+                        )
+
+                        # Case 1: this.method(), super.method()
+                        if (
+                            obj_node is not None and obj_node.type in ("this", "super")
+                            and _own_class is not None
+                        ):
+                            _own_member = (
+                                _member_of(_own_class, method_name)
+                                if obj_node.type == "this" else None
+                            )
+                            if _own_member is not None:
+                                edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=_own_member.id,
                                     edge_type="calls",
-                                    line=node.start_point[0] + 1 + line_offset,
+                                    line=_line,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_this",
-                                    resolution_score=lookup_result.confidence,
+                                    resolution_score=_JS_ROUTE_SCORE_EXACT,
                                     resolved_by=resolved_by.OWN_TYPE,
+                                ))
+                            else:
+                                # Inherited, or written on the parent: the
+                                # walk starts at exactly this class (its id,
+                                # found by position), at its parents for
+                                # ``super``.
+                                _stub = make_unresolved_edge(
+                                    lang, current_function.id, method_name, _line,
+                                    PASS_ID, run.execution_id,
+                                    enclosing_class=_own_class.name,
+                                    super_receiver=obj_node.type == "super",
+                                    call_construct="method",
                                 )
-                                edges.append(edge)
-                                edge_added = True
+                                if _stub.meta is not None:
+                                    _stub.meta["enclosing_class_id"] = _own_class.id
+                                edges.append(_stub)
+                            edge_added = True
 
                         # Case 1b: this.property.method() via constructor injection
                         # Handles NestJS/Angular patterns like this.catsService.create()
@@ -7915,109 +7878,44 @@ def _extract_edges(
                             # If we have this.propertyName and propertyName has a known type
                             if this_node and property_name and property_name in property_types:
                                 type_class_name = property_types[property_name]
-                                full_name = f"{type_class_name}.{method_name}"
-                                # Try import-path disambiguation first (monorepo duplicate names)
-                                import_module = (named_imports or {}).get(type_class_name)
-                                callee = None
-                                if import_module and symbols_by_name:
-                                    callee = _disambiguate_by_import(
-                                        import_module, file_path, full_name, symbols_by_name,
-                                    )
-                                if callee is None:
-                                    lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
-                                    if lookup_result.found and lookup_result.symbol is not None:
-                                        callee = lookup_result.symbol
+                                callee = _member_of_file_type(type_class_name, method_name)
                                 if callee is not None:
-                                    edge = Edge.create(
+                                    edges.append(Edge.create(
                                         src=current_function.id,
                                         dst=callee.id,
                                         edge_type="calls",
-                                        line=node.start_point[0] + 1 + line_offset,
+                                        line=_line,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type="ast_method_this_property",
                                         resolved_by=resolved_by.RECEIVER_TYPE,
-                                    )
-                                    edges.append(edge)
-                                    edge_added = True
-
-                        # Case 2: alias.func() via namespace import
-                        elif obj_name and obj_name in namespace_imports:
-                            # This is a namespace call: alias.func() or alias.Class()
-                            # Resolve via global symbols using import path as hint
-                            # to disambiguate when same name exists in multiple modules
-                            import_path = namespace_imports[obj_name]
-                            # WI-jomik: a member of an external module is the
-                            # module's; a lone same-named in-repo symbol is a
-                            # namesake (knex ``path.join`` -> ``Builder.join``:
-                            # NameResolver applies a hint only AMONG candidates).
-                            _ns_external = _external_module(import_path)
-                            # WI-halol: a member of an in-tree package's module
-                            # object (``const b = require('@ws/b'); b.helper()``,
-                            # ``import * as C from '@ws/c'; C.shout()``) takes
-                            # the answer a named binding of it takes (WI-rilof),
-                            # before the cross-package guard below refuses it.
-                            # WI-povub: a RELATIVE one names the file, so of
-                            # several same-named functions the call is that
-                            # file's; the name-keyed table keeps only the one
-                            # enumerated last.
-                            ns_target = (
-                                _disambiguate_by_import(
-                                    import_path, file_path, method_name, symbols_by_name,
-                                )
-                                if symbols_by_name and not _ns_external
-                                and (import_path.startswith(".") or obj_name in module_objects)
-                                else None
-                            )
-                            _by = resolved_by.IMPORT
-                            lookup_result = (
-                                LookupResult(symbol=None) if _ns_external
-                                else resolver.lookup(
-                                    method_name, path_hint=import_path,
-                                    caller_path=_caller_path,
-                                )
-                            )
-                            if ns_target is None and lookup_result.found and lookup_result.symbol is not None:
-                                # Cross-package guard: block resolution when
-                                # the target lives in a different npm package.
-                                if not _is_cross_package(file_path, lookup_result.symbol.path):
-                                    ns_target = lookup_result.symbol
-                                    # The import path is the hint; a lone
-                                    # candidate outside it is a name match.
-                                    _by = lookup_result.resolved_by
-                            if ns_target is not None:
-                                # The in-tree candidate is an exact package
-                                # match; the resolver's grade is for its own.
-                                ns_conf = (
-                                    lookup_result.confidence
-                                    if lookup_result.symbol is ns_target else 1.0
-                                )
-                                is_class = ns_target.kind == "class"
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=ns_target.id,
-                                    edge_type="instantiates" if is_class else "calls",
-                                    line=node.start_point[0] + 1 + line_offset,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                    resolution_score=(
-                                        ns_conf if is_class else None
-                                    ),
-                                    # ADR-0039 caller-valued: ast_call_namespace is a
-                                    # pending-classification placeholder with no seeded
-                                    # band (its cluster-D audit may fold it into
-                                    # ast_call_direct), so it keeps this value until then.
-                                    confidence=(
-                                        None if is_class
-                                        else 0.90 * ns_conf
-                                    ),
-                                    resolved_by=_by,
-                                )
-                                edges.append(edge)
+                                    ))
+                                else:
+                                    edges.append(make_unresolved_edge(
+                                        lang, current_function.id, method_name, _line,
+                                        PASS_ID, run.execution_id,
+                                        receiver_type_hint=type_class_name,
+                                        call_construct="method",
+                                    ))
                                 edge_added = True
-                            if not edge_added:
-                                # WI-vurop: fall back to an unresolved-call
+
+                        # Case 2: alias.func() via a namespace or default import
+                        elif obj_name and obj_name in namespace_imports:
+                            import_path = namespace_imports[obj_name]
+                            if scope.namespace(obj_name) is not None or scope.named(obj_name) is not None:
+                                # A module object (``import * as util``) or a
+                                # default export (``import Util from``) of a
+                                # file of the repository: the call names its
+                                # owner, and the table says which file's.
+                                edges.append(make_unresolved_edge(
+                                    lang, current_function.id, method_name, _line,
+                                    PASS_ID, run.execution_id,
+                                    module_hint=_normalize_import_module_hint(import_path),
+                                    qualifier=obj_name,
+                                    call_construct="method",
+                                ))
+                            else:
+                                # WI-vurop: a library's member: an unresolved
                                 # edge so io-boundaries can match the catalog
                                 # against Node built-ins and third-party HTTP
                                 # clients imported via ``import * as fs`` or
@@ -8028,14 +7926,14 @@ def _extract_edges(
                                     src=current_function.id,
                                     dst=dst_id,
                                     edge_type="calls",
-                                    line=node.start_point[0] + 1 + line_offset,
+                                    line=_line,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_inferred",
                                     is_resolved=False,
                                 )
                                 edges.append(edge)
-                                edge_added = True
+                            edge_added = True
 
                         # WI-jomik: a receiver whose TYPE is a named import
                         # from an external module (``new Subject()`` from
@@ -8055,7 +7953,7 @@ def _extract_edges(
                         ):
                             edges.append(make_unresolved_edge(
                                 lang, current_function.id, method_name,
-                                node.start_point[0] + 1 + line_offset,
+                                _line,
                                 PASS_ID, run.execution_id,
                                 module_hint=_normalize_import_module_hint(
                                     (named_imports or {})[var_types[obj_name]],
@@ -8065,27 +7963,19 @@ def _extract_edges(
                             ))
                             edge_added = True
 
-                        # Case 3: variable.method() via type inference
+                        # Case 3: variable.method() via type inference. A
+                        # type of another file, or a member this file's class
+                        # inherits, goes out on the terminal placeholder
+                        # below with ``receiver_type_hint`` (after the
+                        # catalogue routes have had their look).
                         elif obj_name and obj_name in var_types:
-                            type_class_name = var_types[obj_name]
-                            full_name = f"{type_class_name}.{method_name}"
-                            # Try import-path disambiguation first (monorepo duplicate names)
-                            import_module = (named_imports or {}).get(type_class_name)
-                            callee = None
-                            if import_module and symbols_by_name:
-                                callee = _disambiguate_by_import(
-                                    import_module, file_path, full_name, symbols_by_name,
-                                )
-                            if callee is None:
-                                lookup_result = resolver.lookup(full_name, caller_path=_caller_path)
-                                if lookup_result.found and lookup_result.symbol is not None:
-                                    callee = lookup_result.symbol
+                            callee = _member_of_file_type(var_types[obj_name], method_name)
                             if callee is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
                                     dst=callee.id,
                                     edge_type="calls",
-                                    line=node.start_point[0] + 1 + line_offset,
+                                    line=_line,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
@@ -8218,64 +8108,40 @@ def _extract_edges(
                                 ))
                                 edge_added = True
 
-                        # Case 4: Fallback - method name match with low confidence.
-                        # Emit only one edge to the best candidate (not all
-                        # candidates) to avoid name-collision fanout where
-                        # every class with the same method name gets linked.
-                        # Skip built-in method names (get, set, forEach, etc.)
-                        # that exist on Array/Map/Set/Object — resolving these
-                        # to user-defined classes inflates in-degree.
-                        if not edge_added and method_name not in JS_BUILTIN_METHODS:
-                            lookup_result = method_resolver.lookup(method_name, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                # Cross-package guard: low-confidence method
-                                # inference should not cross npm packages.
-                                if not _is_cross_package(file_path, lookup_result.symbol.path):
-                                    _sym = lookup_result.symbol
-                                    _enclosing_type = _jsts_enclosing_class(node, source)
-                                    # INV-fahub: the untyped ``obj.method()``
-                                    # fanout — an AMBIGUOUS (2-way) short-name
-                                    # match to an UNRELATED class's method is the
-                                    # magnet. Withhold it and stamp the enclosing
-                                    # class for Site-1 recovery; a single-candidate
-                                    # (``exact``) match and a same-class method
-                                    # still bind.
-                                    if defer_bare_method_call(
-                                        _sym.kind, _sym.name,
-                                        lookup_result.match_type, _enclosing_type,
-                                    ):
-                                        edges.append(make_unresolved_edge(
-                                            lang, current_function.id, method_name,
-                                            node.start_point[0] + 1 + line_offset,
-                                            PASS_ID, run.execution_id,
-                                            enclosing_class=_enclosing_type,
-                                        ))
-                                        edge_added = True
-                                    else:
-                                        edge = Edge.create(
-                                            src=current_function.id,
-                                            dst=_sym.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1 + line_offset,
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            evidence_type="ast_method_inferred",
-                                            resolution_score=lookup_result.confidence,
-                                            # ``obj.m()`` on an untyped receiver
-                                            # that is not ``this``: found by its
-                                            # name, whoever owns the method.
-                                            resolved_by=lookup_result.resolved_by,
-                                        )
-                                        edges.append(edge)
-                                        edge_added = True
-                            elif defer_unresolved_tie(lookup_result):
-                                # A tie among methods (WI-jomik: no guess) is
-                                # deferred exactly as a weak pick is.
+                        # A receiver that NAMES a type or a module: a class
+                        # this file declares or imports by name
+                        # (``Util.helper()``), or a namespace binding's member
+                        # (``ns.Util.helper()``). The owner goes out as
+                        # ``qualifier``; which declaration it is, and its
+                        # member, are the shared pass's to find. A variable
+                        # (anything ``var_types`` types, any local) is no
+                        # qualifier.
+                        if not edge_added and obj_node is not None:
+                            _qualifier: str | None = None
+                            if obj_name and obj_name not in var_types:
+                                _owner = binder.bind(obj_node, obj_name)
+                                if (
+                                    (_owner is not None and _owner[0] == _BOUND_SYMBOL
+                                     and _owner[1] is not None and _owner[1].kind == "class")
+                                    or (_owner is not None and _owner[0] == _BOUND_IMPORT
+                                        and scope.named(obj_name) is not None)
+                                ):
+                                    _qualifier = obj_name
+                            elif obj_node.type == "member_expression":
+                                _head = obj_node.child_by_field_name("object")
+                                _prop = obj_node.child_by_field_name("property")
+                                if (
+                                    _head is not None and _prop is not None
+                                    and _head.type == "identifier"
+                                    and scope.namespace(_node_text(_head, source)) is not None
+                                ):
+                                    _qualifier = _node_text(obj_node, source)
+                            if _qualifier is not None:
                                 edges.append(make_unresolved_edge(
-                                    lang, current_function.id, method_name,
-                                    node.start_point[0] + 1 + line_offset,
+                                    lang, current_function.id, method_name, _line,
                                     PASS_ID, run.execution_id,
-                                    enclosing_class=_jsts_enclosing_class(node, source),
+                                    qualifier=_qualifier,
+                                    call_construct="method",
                                 ))
                                 edge_added = True
 
@@ -8292,15 +8158,12 @@ def _extract_edges(
                         # blind to such calls.
                         # It reaches no catalogue row (``gate_named_entry`` refuses
                         # a method-kind hit with no module hint), so it is
-                        # disclosure and walk coverage, not recall. ``this`` and a
-                        # ``this.prop`` receiver keep their Site-1 / Site-1b
-                        # paths; a typed receiver whose class the analyzer knows
-                        # still carries ``receiver_type_hint`` for the linkers.
-                        if (
-                            not edge_added
-                            and obj_node is not None
-                            and not is_this_call
-                        ):
+                        # disclosure and walk coverage, not recall. A typed
+                        # receiver carries ``receiver_type_hint`` (the type as
+                        # the analyzer knows it) for the shared pass, which
+                        # finds the type through this file's imports (ADR-0064).
+                        # ``this`` outside every class lands here too.
+                        if not edge_added and obj_node is not None:
                             edges.append(make_unresolved_edge(
                                 lang, current_function.id, method_name,
                                 node.start_point[0] + 1 + line_offset,
@@ -8446,11 +8309,19 @@ def _extract_edges(
             _by = None
             lookup_confidence = 1.0  # Default for exact match
             ns_import_path: str | None = None  # Path hint for namespace imports
+            ns_alias: str | None = None
 
             for child in node.children:
                 if child.type == "identifier":
                     # new ClassName()
                     class_name = _node_text(child, source)
+                    # A class this call site sees in scope is the one meant.
+                    _seen = binder.bind(child, class_name)
+                    if (
+                        _seen is not None and _seen[0] == _BOUND_SYMBOL
+                        and _seen[1] is not None and _seen[1].kind == "class"
+                    ):
+                        target_sym, _by = _seen[1], resolved_by.LEXICAL_SCOPE
                     break
                 elif child.type == "member_expression":
                     # new namespace.ClassName()
@@ -8465,30 +8336,32 @@ def _extract_edges(
                         class_name = cls_name
                         # Track import path for disambiguation
                         ns_import_path = namespace_imports[ns_name]
+                        ns_alias = ns_name
                     break
 
-            # A RELATIVE import names the file, so of several same-named
-            # classes the instantiation is that file's: ``new ns.Client()``
-            # under a namespace import, or ``new Client()`` under a named import
-            # or destructured require (``import { Client as C }`` looks up the
-            # original name). The name-keyed class table keeps only the one
-            # enumerated last, so a path hint on it alone cannot pick the other
-            # (as for calls, WI-povub).
-            import_hint = ns_import_path
-            imported_name = class_name
-            if class_name and ns_import_path is None:
-                import_hint = (named_imports or {}).get(class_name)
-                imported_name = (named_import_originals or {}).get(class_name, class_name)
-            if (
-                imported_name and import_hint and import_hint.startswith(".")
-                and symbols_by_name
-            ):
-                target_sym = _disambiguate_by_import(
-                    import_hint, file_path, imported_name,
-                    {imported_name: [s for s in symbols_by_name.get(imported_name, ())
-                                     if s.kind == "class"]},
-                )
-                _by = resolved_by.IMPORT
+            # An import names a FILE (the table, ``_import_scopes``): of
+            # several same-named classes the instantiation is the one that
+            # file declares: ``new ns.Client()`` under a namespace binding,
+            # ``new Client()`` under a named import, a destructured require
+            # (``import { Client as C }`` looks up the original name) or a
+            # default import. The shared pass reads no ``instantiates`` stub
+            # (ADR-0064's known gap), so the analyzer follows the import here.
+            if class_name and target_sym is None:
+                if ns_alias is not None:
+                    _module, _declared = scope.namespace(ns_alias), class_name
+                else:
+                    _bound = scope.named(class_name)
+                    _module, _declared = (
+                        (_bound.module, _bound.name) if _bound is not None else (None, "")
+                    )
+                _file = (files_by_rel or {}).get(_module or "")
+                _classes = [
+                    s for s in (symbols_by_name or {}).get(_declared, ())
+                    if s.kind == "class" and s.path == _file
+                ]
+                if _file is not None and len(_classes) == 1:
+                    target_sym = _classes[0]
+                    _by = resolved_by.IMPORT
             # Otherwise resolve via class_resolver, using the import path as a hint
             if class_name and target_sym is None:
                 lookup_result = class_resolver.lookup(class_name, path_hint=ns_import_path)
@@ -8529,7 +8402,16 @@ def _extract_edges(
                     for pc in parent.children:
                         if pc.type == "identifier":
                             var_name = _node_text(pc, source)
-                            var_types[var_name] = class_name
+                            # The type as written: ``new ns.K()`` through a
+                            # namespace binding of a repository file is
+                            # ``ns.K``, which the shared pass reads through
+                            # the table (ADR-0064); a library's keeps the
+                            # bare name the catalogue routes key on.
+                            var_types[var_name] = (
+                                f"{ns_alias}.{class_name}"
+                                if ns_alias is not None and scope.namespace(ns_alias) is not None
+                                else class_name
+                            )
                             # INV-misup: a namespace-constructed class keeps
                             # its module (``new net.Socket()`` -> ``net.Socket``)
                             # so the call site can name the row the catalogue
@@ -8739,17 +8621,11 @@ def _extract_symbols_and_edges(
 
     # Build local symbol registry
     global_symbols: dict[str, Symbol] = {}
-    global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
 
     for sym in symbols:
         global_symbols[sym.name] = sym
-        if sym.kind == "method":
-            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            if method_name not in global_methods:
-                global_methods[method_name] = []
-            global_methods[method_name].append(sym)
-        elif sym.kind == "class":
+        if sym.kind == "class":
             global_classes[sym.name] = sym
 
     # INV-kokaj: find the file pseudo-node (kind="file") for top-level
@@ -8759,7 +8635,7 @@ def _extract_symbols_and_edges(
         (s for s in symbols if s.kind == "file" and s.language == lang),
         None,
     )
-    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_methods, global_classes,
+    edges = _extract_edges(tree, source, file_path, lang, run, global_symbols, global_classes,
                            module_symbol=mod_sym)
     return symbols, edges
 
@@ -8897,14 +8773,10 @@ def _analyze_sfc_file(
         file_path, _extract_sfc_scripts(source_text), run,
     )
     local_symbols: dict[str, Symbol] = {}
-    local_methods: dict[str, list[Symbol]] = {}
     local_classes: dict[str, Symbol] = {}
     for sym in symbols:
         local_symbols[sym.name] = sym
-        if sym.kind == "method":
-            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            local_methods.setdefault(method_name, []).append(sym)
-        elif sym.kind == "class":
+        if sym.kind == "class":
             local_classes[sym.name] = sym
     file_symbol = next((s for s in symbols if s.kind == "file"), None)
 
@@ -8912,7 +8784,7 @@ def _analyze_sfc_file(
     for pf in parsed:
         edges.extend(_extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
-            local_symbols, local_methods, local_classes, pf.line_offset,
+            local_symbols, local_classes, pf.line_offset,
             module_symbol=file_symbol,
         ))
     return symbols, edges, True
@@ -9060,7 +8932,6 @@ def _analyze_javascript_impl(
 
     # Build global symbol registries
     global_symbols: dict[str, Symbol] = {}
-    global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
     # All symbols indexed by name (supports multiple with same name for disambiguation)
     # INV-fafol: path -> that file's symbols, built once. Symbols carry a
@@ -9083,19 +8954,13 @@ def _analyze_javascript_impl(
         # back to name-based lookup in global_symbols.
         if sym.span is not None:
             symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
-        if sym.kind == "method":
-            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            if method_name not in global_methods:
-                global_methods[method_name] = []
-            global_methods[method_name].append(sym)
-        elif sym.kind == "class":
+        if sym.kind == "class":
             global_classes[sym.name] = sym
 
     # Pass 2: Extract edges using global symbol registry
     resolver = NameResolver(global_symbols)
-    method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     class_resolver = NameResolver(global_classes)
-    default_export_of = _InTreeDefaultExports(parsed_files, symbols_by_name)
+    import_scopes, files_by_rel = _import_scopes(parsed_files, repo_root)
     package_index = _JsPackageIndex([pf.path for pf in parsed_files])
     all_edges: list[Edge] = []
     # Registration usage contexts, recorded while the edges are resolved
@@ -9112,17 +8977,18 @@ def _analyze_javascript_impl(
         file_mod_sym = global_symbols.get(pf_name)
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, pf.lang, run,
-            global_symbols, global_methods, global_classes, pf.line_offset,
+            global_symbols, global_classes, pf.line_offset,
             pf.namespace_imports or {},
-            resolver, method_resolver, class_resolver,
+            resolver, class_resolver,
             symbol_by_position,
             pf.named_imports or {},
             symbols_by_name,
             module_symbol=file_mod_sym,
             named_import_originals=pf.named_import_originals or {},
             file_symbols=symbols_for_path(_symbols_by_path, str(pf.path), pf_name),
-            default_export_of=default_export_of,
             module_objects=pf.module_objects,
+            import_scope=import_scopes[pf_name],
+            files_by_rel=files_by_rel,
             package_index=package_index,
             registration_contexts=registration_contexts,
         )
@@ -9284,4 +9150,5 @@ def _analyze_javascript_impl(
         usage_contexts=all_usage_contexts,
         run=run,
         dependency_manifest=npm_manifest if npm_manifest.scoped else None,
+        import_scopes=import_scopes,
     )
