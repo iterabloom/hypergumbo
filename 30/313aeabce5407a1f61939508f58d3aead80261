@@ -1,0 +1,41 @@
+Original commit body from 9d236307b13b0dca44b250de1d4be6cd3dd428fc:
+
+A variable's type now belongs to the function that binds it. A type written for a same-named variable in another function of the file no longer types it. Ten languages: Java, Kotlin, JavaScript, TypeScript, C#, Groovy, Scala, Rust, Ruby, Lua. Addresses INV-zabud (owner ruling 2026-11-24; the owner saw the counts below before the merge and ruled "merge as built").
+
+WHAT WAS WRONG
+One variable-type dict per file, kept in one of two ways. Filled during the edge walk (JavaScript, TypeScript, Scala, C#, Groovy; Java and Kotlin for parameters): a later function's untyped `db` kept the type the previous function gave its own `db`. Filled by a walk of its own, first writer wins (Rust, Ruby, Lua): the first `db` in the file typed every `db`, one constructed on the line above its call included.
+
+WHAT CHANGED
+- hypergumbo_core/analyze/var_scope.py, ScopedVarTypes: the same dict, whose bindings close with their function. One class, ten users. Java and Kotlin each had a hand-written copy of the mechanism for locals; both are deleted.
+- JavaScript / TypeScript: `this.<name>` receivers read a table filled from constructor parameters only.
+- ADR-0006: the Scope Handling section, the table's Scope column, limitation 1 and future-work 9.
+- One commit per language.
+
+SCOREBOARD
+Fixture (one program, 17 languages), the two new columns before -> after:
+- scope_own (a function constructs its own `h`, another function binds an `h` of the decoy class): lua, ruby, rust `order:right/decoy` -> `right`.
+- scope_ext (`h` comes from outside the repository): java, kotlin `order:unresolved/picked` -> `unresolved`; javascript, typescript, lua, rust, scala `picked` -> `unresolved`; ruby `picked` -> `no_edge`. csharp and groovy read `picked` before and after: they also bind an untyped receiver by name alone (WI-dovoz, WI-tiluh); test_var_types_per_function.py asks them directly.
+- ruby amb_param `no_edge` -> `unresolved`.
+
+Resolved call edges on 28 real repositories (one arm each, base = dev 5db33d7f6), keyed (src, dst):
+
+| language | base | dropped | re-pointed | new |
+|---|---|---|---|---|
+| kotlin | 11,982 | 330 | 1 | 8 |
+| rust | 7,277 | 107 | 23 | 50 |
+| typescript | 7,833 | 75 | 5 | 0 |
+| scala | 5,112 | 23 | 0 | 0 |
+| java | 34,283 | 10 | 0 | 0 |
+| lua | 3,608 | 4 | 0 | 0 |
+| ruby | 1,965 | 1 | 0 | 0 |
+| javascript 5,495, csharp 189, groovy 207 | | 0 | 0 | 0 |
+
+Eleven languages this PR does not touch: 0 changed call edges.
+
+THE COST, STATED
+80 dropped edges were read in the calling function's source: about 70 pointed at the right method, 5 at a wrong one, the rest not judged. On real code the per-file dict mostly acted as "a variable called `call` is a `Call` everywhere in this file". Those edges had no evidence in their own function and were labelled as typed. What they covered for: a local bound to a call result the analyzer does not type (`val call = client.newCall(r)`, `let printer = StandardBuilder::new().build(w)`), an untyped lambda or loop variable, a declared type the analyzer does not read (TypeScript `let target: T;` in an enclosing closure, Scala `fa: A Ior B`), and a field reached through a same-named constructor parameter. Rust: of 10 new edges read, 10 right; of 8 re-pointed, 6 now right, 1 now wrong, 1 not judged.
+
+NOT DONE
+- Dart, D, Solidity (other packages) are not probed. Objective-C and PHP cannot be read from the fixture.
+- An untyped local does not hide an outer binding of its name. Fields are per file, not per class. A Ruby `def` and a nested Rust `fn` see outer locals.
+- Unresolved edges whose module slot changed (kotlin 333, rust 210, java 120, ruby 106, typescript 90, scala 86 new keys) were not sampled, except on the recorded Rust fixture, where 20 changed and the old slots read were wrong.
