@@ -33,12 +33,13 @@ cell are not right, and they are kept apart on purpose:
 
 WHAT THE SECOND LAYOUT SHOWED (2026-11-25). Go, Rust, Swift, C++, Java,
 Kotlin, Scala, JavaScript, TypeScript, Python, Ruby, PHP, Lua and Perl answer
-the same in both layouts. C#, Groovy and Objective-C do not: every bind they
+the same in both layouts. Groovy and Objective-C do not: every bind they
 made through a same-file name table (marked ``same_file``) is ``unresolved``
-across files, Objective-C resolves no method call across files at all, and C#
-loses the one typed bind whose return type is declared in another file. Their
-one-file guesses are real, and a tree laid out one class per file does not
-reach them.
+across files, and Objective-C resolves no method call across files at all.
+Their one-file guesses are real, and a tree laid out one class per file does
+not reach them. C# did the same until it handed its calls to the shared pass
+(ADR-0064): it binds only its own file's declarations on C#'s own evidence and
+reports the rest with facts, and its rows are now one row in both layouts.
 
 HOW TO CHANGE IT. A fix moves a cell: the test for that language and layout
 fails and shows the measured row. Edit the row, its marks, and when a guess is
@@ -84,8 +85,7 @@ SHAPES = [shape for shape, _, _ in fx.SHAPES]
 MATRIX: dict[str, tuple[str, ...]] = {
     "cpp": ("unresolved", "unresolved", "right", "right", "unresolved", "n/a", "order:right/decoy", "right",
             "unresolved", "order:right/decoy"),
-    "csharp": ("right", "unresolved", "right", "order:decoy/right", "picked", "n/a", "order:decoy/right",
-               "right", "picked", "unresolved"),
+    "csharp": ("right", "right", "right", "right", "unresolved", "n/a", "right", "right", "unresolved", "right"),
     "go": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right", "unresolved",
            "n/a"),
     "groovy": ("order:decoy/right", "unresolved", "right", "order:decoy/right", "picked", "picked",
@@ -122,8 +122,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
 MATRIX_SPLIT: dict[str, tuple[str, ...]] = {
     "cpp": ("unresolved", "unresolved", "right", "right", "unresolved", "n/a", "order:right/decoy", "right",
             "unresolved", "order:right/decoy"),
-    "csharp": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "n/a", "order:decoy/right",
-               "right", "unresolved", "unresolved"),
+    "csharp": ("right", "right", "right", "right", "unresolved", "n/a", "right", "right", "unresolved", "right"),
     "go": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right", "unresolved",
            "n/a"),
     "groovy": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved",
@@ -160,8 +159,8 @@ MATRIX_SPLIT: dict[str, tuple[str, ...]] = {
 #: over its four arms; ``-`` where no edge was resolved.
 MARKS: dict[str, tuple[str, ...]] = {
     "cpp": ("-", "-", "receiver_type", "receiver_type", "-", "-", "name", "receiver_type", "-", "name"),
-    "csharp": ("receiver_type", "-", "receiver_type", "same_file", "same_file", "-", "qualified",
-               "receiver_type", "same_file", "-"),
+    "csharp": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "qualified",
+               "receiver_type", "-", "qualified"),
     "go": ("receiver_type", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-", "-"),
     "groovy": ("same_file", "-", "receiver_type", "same_file", "same_file", "same_file", "name",
                "receiver_type", "same_file", "-"),
@@ -190,7 +189,8 @@ MARKS: dict[str, tuple[str, ...]] = {
 #: The same for ``MATRIX_SPLIT``.
 MARKS_SPLIT: dict[str, tuple[str, ...]] = {
     "cpp": ("-", "-", "receiver_type", "receiver_type", "-", "-", "name", "receiver_type", "-", "name"),
-    "csharp": ("-", "-", "receiver_type", "-", "-", "-", "qualified", "receiver_type", "-", "-"),
+    "csharp": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "qualified",
+               "receiver_type", "-", "qualified"),
     "go": ("receiver_type", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-", "-"),
     "groovy": ("-", "-", "receiver_type", "-", "-", "-", "name", "receiver_type", "-", "-"),
     "java": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "qualified",
@@ -217,10 +217,6 @@ MARKS_SPLIT: dict[str, tuple[str, ...]] = {
 #: (layout, language, shape) -> the cell measured with a THIRD same-named candidate, where it differs from
 #: the two-candidate cell. Every other cell is the same with three candidates as with two.
 THIRD: dict[tuple[str, str, str], str] = {
-    ("one_file", "csharp", "amb_ext"): "unresolved",
-    ("one_file", "csharp", "import"): "unresolved",
-    ("one_file", "csharp", "inherited"): "unresolved",
-    ("one_file", "csharp", "scope_ext"): "unresolved",
     ("one_file", "groovy", "amb_ext"): "no_edge",
     ("one_file", "groovy", "amb_param"): "no_edge",
     ("one_file", "groovy", "chain"): "no_edge",
@@ -228,7 +224,6 @@ THIRD: dict[tuple[str, str, str], str] = {
     ("one_file", "groovy", "scope_ext"): "no_edge",
     ("one_file", "groovy", "var"): "no_edge",
     ("one_file", "ruby", "import"): "unresolved",
-    ("split", "csharp", "import"): "unresolved",
     ("split", "groovy", "amb_ext"): "no_edge",
     ("split", "groovy", "amb_param"): "no_edge",
     ("split", "groovy", "chain"): "no_edge",
@@ -249,7 +244,6 @@ TABLES = {"one_file": (MATRIX, MARKS), "split": (MATRIX_SPLIT, MARKS_SPLIT)}
 #: crosses functions there: ``test_var_types_per_function.py`` does.
 GUESSES: dict[tuple[str, str], str] = {
     **{("cpp", shape): "WI-joniz" for shape in ("import", "qual")},
-    **{("csharp", shape): "WI-dovoz" for shape in ("inherited", "amb_ext", "import", "scope_ext")},
     **{("groovy", shape): "WI-tiluh" for shape in ("var", "inherited", "amb_ext", "amb_param", "import",
        "scope_ext")},
     **{("java", shape): "WI-mugon" for shape in ("import", "qual")},

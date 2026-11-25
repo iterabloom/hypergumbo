@@ -10,8 +10,11 @@ name, and the mark says ``name`` (audit-findings 0030; the census counts
 ``name`` as the population that rests on a name alone, so ``own_type`` here
 would hide those edges from it).
 
-C#'s six ``calls`` routes are pinned here too: they were the worked example
-the other analyzers followed.
+C#'s ``calls`` routes are pinned here too: they were the worked example
+the other analyzers followed. Since C# hands the calls it cannot bind from its
+own file to the shared pass (ADR-0064), two of them are bound by the
+``inherited_calls`` linker, so the C# routes are read from the whole
+pipeline's map.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/php.py
@@ -19,10 +22,12 @@ the other analyzers followed.
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
+from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Edge
-from hypergumbo_lang_mainstream.csharp import analyze_csharp
 from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 from hypergumbo_lang_mainstream.lua import analyze_lua
 from hypergumbo_lang_mainstream.php import analyze_php
@@ -111,13 +116,30 @@ _CSHARP = {
 }
 
 
+def _map_mark(edges: list[dict[str, Any]], caller: str, callee: str) -> str | None:
+    """``_mark`` over a behavior map's edges, a superseded stub left out."""
+    found = [
+        e for e in edges
+        if e["type"] == "calls" and e.get("is_resolved")
+        and not (e.get("meta") or {}).get("superseded_by")
+        and e["src"].split(":")[-2] == caller and e["dst"].split(":")[-2] == callee
+    ]
+    assert len(found) == 1, (caller, callee, [(e["src"], e["dst"]) for e in edges if e["type"] == "calls"])
+    return (found[0].get("meta") or {}).get("resolved_by")
+
+
 def test_csharp_routes(tmp_path: Path) -> None:
-    _write(tmp_path, _CSHARP)
-    edges = analyze_csharp(tmp_path).edges
-    assert _mark(edges, "Main.Typed", "Near.Poke") == "receiver_type"
-    assert _mark(edges, "Main.Chain", "Near.Poke") == "receiver_type"
-    assert _mark(edges, "Main.Bare", "Main.Own") == "own_type"
-    assert _mark(edges, "Main.QualifiedHere", "Near.Hit") == "qualified"
-    # Found through the repository-wide resolver, in another file: the owner is
-    # still the one the call site names, not the enclosing type.
-    assert _mark(edges, "Main.QualifiedThere", "Helper.Process") == "qualified"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write(repo, _CSHARP)
+    out = tmp_path / "map.json"
+    run_behavior_map(repo_root=repo, out_path=out, include_sketch_precomputed=False)
+    edges = json.loads(out.read_text())["edges"]
+    assert _map_mark(edges, "Main.Typed", "Near.Poke") == "receiver_type"
+    assert _map_mark(edges, "Main.Chain", "Near.Poke") == "receiver_type"
+    assert _map_mark(edges, "Main.Bare", "Main.Own") == "own_type"
+    # A type the call site names, bound by the shared pass from the caller's
+    # namespace (``Near`` in ``A``) and from its ``using B;`` (``Helper``):
+    # the owner is the one the call site names, not the enclosing type.
+    assert _map_mark(edges, "Main.QualifiedHere", "Near.Hit") == "qualified"
+    assert _map_mark(edges, "Main.QualifiedThere", "Helper.Process") == "qualified"

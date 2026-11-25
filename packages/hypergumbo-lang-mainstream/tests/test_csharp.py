@@ -4,9 +4,13 @@
 Tests for the tree-sitter-based C# analyzer, verifying symbol extraction,
 edge detection, and graceful degradation when tree-sitter is unavailable.
 """
+import json
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch
+
+from hypergumbo_core.cli import run_behavior_map
 
 import hypergumbo_lang_mainstream.csharp as csharp_module
 from hypergumbo_lang_mainstream.csharp import (
@@ -542,10 +546,18 @@ public class Handler {
             None,
         )
 
-        assert save_edge is not None, "Expected call edge for db.Save() via param type inference"
-        assert commit_edge is not None, "Expected call edge for db.Commit() via param type inference"
-        assert (save_edge.evidence_type == "ast_call" and save_edge.meta.get("call_construct") == "method" and save_edge.meta.get("resolution_quality") == "type_inferred")
-        assert (commit_edge.evidence_type == "ast_call" and commit_edge.meta.get("call_construct") == "method" and commit_edge.meta.get("resolution_quality") == "type_inferred")
+        # Database is declared in another file: the analyzer does not look
+        # ``Database.Save`` up among every declaration of the run any more
+        # (ADR-0064). It hands the parameter's type to the shared pass, which
+        # binds it from the caller's file (test_csharp_call_facts.py).
+        assert save_edge is None and commit_edge is None
+        stubs = {
+            e.meta["callee_name"]: e for e in call_edges
+            if e.src == process_method.id and not e.is_resolved
+        }
+        for callee in ("Save", "Commit"):
+            assert stubs[callee].meta.get("receiver_type_hint") == "Database"
+            assert stubs[callee].meta.get("call_construct") == "method"
 
     def test_constructor_type_inference(self, tmp_path: Path) -> None:
         """Constructor assignments should enable method call resolution."""
@@ -754,10 +766,16 @@ public class Outer {
             ),
             None,
         )
-        assert call_edge is not None, (
-            f"Expected chained field call edge for this._inner._db.Save(). "
-            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        # Db is declared in another file: the chain's type is handed to the
+        # shared pass (ADR-0064), not looked up among every ``Db.Save`` of the
+        # run, and nothing is bound to Cache.Save or Store.Save.
+        assert call_edge is None
+        stub = next(
+            e for e in result.edges
+            if e.src == run_method.id and e.edge_type == "calls" and not e.is_resolved
         )
+        assert stub.meta.get("receiver_type_hint") == "Db"
+        assert not any(e.src == run_method.id and e.is_resolved for e in result.edges)
 
     def test_non_this_receiver_falls_through(self, tmp_path: Path) -> None:
         """receiver.field.Method() without ``this`` falls through to fallback."""
@@ -1873,7 +1891,7 @@ class TestUsingAliasExtraction:
     def test_extracts_aliased_using(self, tmp_path: Path) -> None:
         """Extracts aliased using directives like 'using Svc = MyApp.Services;'."""
         from hypergumbo_lang_mainstream.csharp import (
-            _extract_using_aliases,
+            _csharp_usings,
             is_csharp_tree_sitter_available,
         )
 
@@ -1901,7 +1919,7 @@ public class Program
         source = cs_file.read_bytes()
         tree = parser.parse(source)
 
-        aliases = _extract_using_aliases(tree, source)
+        aliases = _csharp_usings(tree, source).path_hints
 
         # Check regular using extracts last component
         assert "System" in aliases
@@ -1914,7 +1932,7 @@ public class Program
     def test_extracts_simple_namespace_using(self, tmp_path: Path) -> None:
         """Extracts simple using directives as name -> full path."""
         from hypergumbo_lang_mainstream.csharp import (
-            _extract_using_aliases,
+            _csharp_usings,
             is_csharp_tree_sitter_available,
         )
 
@@ -1937,7 +1955,7 @@ public class Test {}
         source = cs_file.read_bytes()
         tree = parser.parse(source)
 
-        aliases = _extract_using_aliases(tree, source)
+        aliases = _csharp_usings(tree, source).path_hints
 
         # Last component of qualified name
         assert "Linq" in aliases
@@ -2644,13 +2662,13 @@ class TestCSharpBareMethodMagnetGate:
     """INV-fahub: a BARE call must not confidently bind to an unrelated
     class's same-named method via a weak short-name suffix match.
 
-    The fallback simple-name resolver path (``resolver.lookup(callee_name)``)
-    is the magnet: many bare call sites can collapse onto one arbitrary
-    ``Owner.method`` def. The gate defers such a cross-class suffix match to
-    the inherited_calls Site-1 walker by emitting an unresolved edge that
-    carries ``meta.enclosing_class`` — while still binding implicit-``this``
-    (same enclosing class, incl. cross-file ``partial`` halves) and non-method
-    targets directly.
+    The simple-name resolver path (``resolver.lookup(callee_name)``) was the
+    magnet: many bare call sites could collapse onto one arbitrary
+    ``Owner.method`` def. Since ADR-0064 there is no such path for a call: a
+    bare call binds only the enclosing type's own method in its file, and
+    every other one is emitted unresolved with ``meta.enclosing_class`` for
+    the inherited_calls Site-1 walker (which also reaches a cross-file
+    ``partial`` half).
     """
 
     def test_bare_cross_class_method_is_withheld_not_bound(
@@ -2724,8 +2742,10 @@ public class Bravo {
         self, tmp_path: Path
     ) -> None:
         """A bare implicit-``this`` call to a same-class method defined in the
-        OTHER half of a ``partial class`` still binds resolved through the
-        resolver path (owner == enclosing_type => defer returns False)."""
+        OTHER half of a ``partial class`` still binds. The analyzer sees only
+        its own file's half and hands the call over with ``enclosing_class``;
+        the shared pass starts at every declaration of the caller's own type
+        (ADR-0064), so the edge is read from the pipeline's map."""
         (tmp_path / "WidgetA.cs").write_text("""
 public partial class Widget {
     public void Run() {
@@ -2739,40 +2759,30 @@ public partial class Widget {
 }
 """)
 
-        result = analyze_csharp(tmp_path)
-
-        run_method = next(
-            (s for s in result.symbols if s.name == "Widget.Run"), None
-        )
-        cfg_method = next(
-            (s for s in result.symbols if s.name == "Widget.ConfigureThing"),
-            None,
-        )
-        assert run_method is not None
-        assert cfg_method is not None
-
+        out = tmp_path / "map.json"  # written after the analysis has read the tree
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        ids = {n["name"]: n["id"] for n in data["nodes"]}
         call_edge = next(
             (
-                e
-                for e in result.edges
-                if e.src == run_method.id
-                and e.dst == cfg_method.id
-                and e.edge_type == "calls"
+                e for e in data["edges"]
+                if e["type"] == "calls" and e["src"] == ids["Widget.Run"]
+                and e["dst"] == ids["Widget.ConfigureThing"]
             ),
             None,
         )
-        assert call_edge is not None, (
-            "Same-class bare call (partial class) must still resolve. "
-            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
-        )
-        assert call_edge.is_resolved is True
+        assert call_edge is not None, "Same-class bare call (partial class) must still resolve."
+        assert call_edge["is_resolved"] is True
+        assert call_edge["meta"]["resolved_by"] == "own_type"
 
     def test_deferred_bare_call_carries_import_hint_ref(
         self, tmp_path: Path
     ) -> None:
-        """A withheld bare magnet whose short name matches a ``using`` alias
-        carries that alias as the unresolved edge's structured module ref —
-        exercising the ``import_hint`` -> ``ExternalRef`` branch of the gate."""
+        """A withheld bare magnet whose short name matches the last segment
+        of a ``using`` namespace carries NO module ref: ``using
+        Beta.ComputeMagnet;`` brings in a namespace, it does not name the
+        method (the old ``import_hint`` -> ``ExternalRef`` branch read it as
+        if it did, and is gone with the run-wide lookup, ADR-0064)."""
         (tmp_path / "Alpha.cs").write_text("""
 using Beta.ComputeMagnet;
 
@@ -2822,9 +2832,7 @@ public class Bravo {
         assert deferred is not None
         assert deferred.meta is not None
         assert deferred.meta.get("enclosing_class") == "Alpha"
-        # import_hint -> structured ExternalRef with the using-alias path.
-        assert deferred.dst_ref is not None
-        assert deferred.dst_ref.module_path == "Beta.ComputeMagnet"
+        assert deferred.dst_ref is None
 
 
 class TestCSharpInterfaceInheritance:
@@ -2914,7 +2922,10 @@ class TestCSharpRecords:
         assert any(s.name == "Inner.Go" for s in result.symbols if s.kind == "method")
 
     def test_a_type_qualified_call_reaches_that_type(self, tmp_path: Path) -> None:
-        result, names = self._analyze(tmp_path, (
+        """``Other.Helper()`` names its owner: never the record's own
+        ``Helper``. The analyzer hands the owner over as ``qualifier`` and the
+        shared pass binds it (ADR-0064), so the edge is read from the map."""
+        (tmp_path / "A.cs").write_text(
             "public static class Other {\n"
             "    public static int Helper() { return 2; }\n"
             "}\n"
@@ -2922,9 +2933,13 @@ class TestCSharpRecords:
             "    public int M() { return Other.Helper(); }\n"
             "    int Helper() { return 1; }\n"
             "}\n"
-        ))
-        calls = {(names.get(e.src), names.get(e.dst))
-                 for e in result.edges if e.edge_type == "calls"}
+        )
+        out = tmp_path / "map.json"  # written after the analysis has read the tree
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        names = {n["id"]: n["name"] for n in data["nodes"]}
+        calls = {(names.get(e["src"]), names.get(e["dst"])) for e in data["edges"]
+                 if e["type"] == "calls" and e.get("is_resolved")}
         assert ("Point.M", "Other.Helper") in calls
         assert ("Point.M", "Point.Helper") not in calls
 

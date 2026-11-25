@@ -29,7 +29,7 @@
       "resolution_quality=ambiguous": 3
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py": {
-      "resolution_quality=type_inferred": 2
+      "resolution_quality=type_inferred": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py": {
       "receiver=typed_field": 1,
