@@ -57,7 +57,8 @@ Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 Call resolution in ``extract_edges_from_file`` adds three guards:
 - Receiver-type inference: typed parameters and ``def x = new T()``
   assignments populate ``var_types``, so ``x.m()`` is tried as ``T.m``
-  first.
+  first. A local or a parameter closes with the method or closure that binds
+  it (``ScopedVarTypes``, INV-zabud); a field is bound for the file.
 - AMB-METHOD suppression: when 3+ classes define the called method
   name (``ListNameResolver`` with ``ambiguity_threshold=3``), no edge
   is emitted.
@@ -116,6 +117,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_lang_mainstream.jvm_implicit_imports import groovy_default_spellings
 
@@ -123,6 +125,11 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("groovy")
+
+#: What a local variable or a parameter is scoped to (INV-zabud).
+_GROOVY_VARIABLE_SCOPE_NODES = frozenset({
+    "method_declaration", "constructor_declaration", "function_definition", "closure",
+})
 
 
 def find_groovy_files(repo_root: Path) -> Iterator[Path]:
@@ -930,9 +937,14 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         _caller_path = str(file_path)
         file_id = make_file_id("groovy", str(file_path))
-        var_types: dict[str, str] = {}
+        # A local or a parameter closes with the method or closure that binds
+        # it (``ScopedVarTypes``, INV-zabud).
+        var_types = ScopedVarTypes()
 
         for node in iter_tree(tree.root_node):
+            var_types.close_scopes_before(node)
+            if node.type in _GROOVY_VARIABLE_SCOPE_NODES:
+                var_types.open_scope(node)
             # Track param types: formal_parameter → type_identifier + identifier
             if node.type == "formal_parameter":
                 type_node = find_child_by_type(node, "type_identifier")
