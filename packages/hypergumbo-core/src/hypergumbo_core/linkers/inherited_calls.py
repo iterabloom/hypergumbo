@@ -175,7 +175,7 @@ from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import (
-    dotted, visible_types, without_type_arguments, written_arity,
+    call_language, dotted, visible_types, without_type_arguments, written_arity,
 )
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
@@ -1073,6 +1073,10 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         if (
             scope is not None and scope.module_kind == MODULES_ARE_FILES
             and not (receiver_type_hint or inherited_field_receiver)
+            # A call written on a receiver (``x.merge()``) is not a call of
+            # the function a same-named import binds; a qualifier is read as
+            # the namespace binding it may be.
+            and (qualifier or (edge.meta or {}).get("call_construct") != "method")
         ):
             imported = _imported_function(
                 parse_unresolved_name(edge.dst) or "", qualifier, scope,
@@ -1122,6 +1126,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
                 # which the caller's own qualified name identifies.
                 settled_type_ids = _enclosing_type_ids(
                     src_sym, enclosing_class, class_ids_by_name, class_symbols,
+                    one_file=scope.module_kind == MODULES_ARE_FILES,
                 )
         if not (receiver_type_hint or inherited_field_receiver or enclosing_class):
             continue
@@ -1185,7 +1190,10 @@ def _imported_function(
     else:
         bound = scope.named(callee)
         key = (bound.module, bound.name) if bound is not None else None
-    found = [f for f in functions_in_file.get(key, ()) if f.language == language] if key else []
+    found = [
+        f for f in functions_in_file.get(key, ())
+        if call_language(f.language or "") == call_language(language)
+    ] if key else []
     return found[0] if len(found) == 1 else None
 
 
@@ -1270,10 +1278,14 @@ def _enclosing_type_ids(
     enclosing_class: str,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
+    one_file: bool = False,
 ) -> list[str] | None:
     """The declarations of the type ``caller`` is a member of: the classes
     named ``enclosing_class`` whose qualified name is the caller's own minus
-    its last segment. ``None`` when the caller or a candidate records no
+    its last segment. ``one_file``: in a language whose imports name files a
+    type is one file's declaration, so a namesake class of another file is
+    another type however equal its qualified name (in a language of declared
+    names it is a part of the same type: a C# partial class). ``None`` when the caller or a candidate records no
     qualified name, or none matches: the name walk is then all there is."""
     owner = dotted(caller.qualified_name or "").rpartition(".")[0]
     candidates = [
@@ -1283,7 +1295,11 @@ def _enclosing_type_ids(
     ]
     if not owner or any(not c.qualified_name for c in candidates):
         return None
-    parts = [c for c in candidates if dotted(c.qualified_name or "") == owner]
+    parts = [
+        c for c in candidates
+        if dotted(c.qualified_name or "") == owner
+        and (not one_file or c.path == caller.path)
+    ]
     # A generic type and its non-generic namesake share the qualified name.
     # The caller is written inside one of them: that declaration's arity says
     # which type the others must be parts of.
@@ -1329,7 +1345,7 @@ def _same_language_class_ids(
     return [
         cid
         for cid in class_ids_by_name.get(name, [])
-        if class_symbols[cid].language == src_lang
+        if call_language(class_symbols[cid].language or "") == call_language(src_lang)
     ]
 
 
@@ -1471,7 +1487,7 @@ def _resolve_site1(
     elif (
         enclosing_class_id is not None
         and enclosing_class_id in class_symbols
-        and class_symbols[enclosing_class_id].language == src_lang
+        and call_language(class_symbols[enclosing_class_id].language or "") == call_language(src_lang)
     ):
         start_class_ids = [enclosing_class_id]
     else:
@@ -1596,7 +1612,7 @@ def _resolve_site2(
     elif (
         receiver_type_id is not None
         and receiver_type_id in class_symbols
-        and class_symbols[receiver_type_id].language == src_lang
+        and call_language(class_symbols[receiver_type_id].language or "") == call_language(src_lang)
     ):
         type_class_ids = [receiver_type_id]
     else:
@@ -1733,7 +1749,7 @@ def _resolve_site3(
     if (
         enclosing_class_id is not None
         and enclosing_class_id in class_symbols
-        and class_symbols[enclosing_class_id].language == src_lang
+        and call_language(class_symbols[enclosing_class_id].language or "") == call_language(src_lang)
     ):
         encl_class_ids = [enclosing_class_id]
     else:
@@ -1774,7 +1790,7 @@ def _resolve_site3(
     if (
         field_type_id is not None
         and field_type_id in class_symbols
-        and class_symbols[field_type_id].language == src_lang
+        and call_language(class_symbols[field_type_id].language or "") == call_language(src_lang)
     ):
         field_type_class_ids = [field_type_id]
     else:
