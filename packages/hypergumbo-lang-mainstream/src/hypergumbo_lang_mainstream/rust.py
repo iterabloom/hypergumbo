@@ -175,7 +175,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyzer_disclosure import SUPPRESSED_METHOD_NAMES
 from hypergumbo_core.ir import (
@@ -2878,19 +2878,52 @@ _RUST_ABSOLUTE_PATH_ROOTS: frozenset[str] = frozenset({"std", "core", "alloc"})
 _PLAIN_RUST_PATH = re.compile(r"(?:::)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+")
 
 
+def _cargo_manifest(manifest: Path) -> "dict[str, Any]":
+    """A ``Cargo.toml`` as a table. The file is one ``own_package_name``
+    has just read a package name from, so it parses."""
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - Python 3.10 fallback
+        try:
+            import tomli as tomllib
+        except ImportError:
+            return {}
+    try:
+        return tomllib.loads(manifest.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):  # pragma: no cover - parsed a moment ago
+        return {}
+
+
+#: Cargo's target kinds other than the library: the manifest's array key,
+#: the directory it discovers that kind in, and the key that turns that
+#: discovery off.
+_CARGO_TARGET_KINDS = (
+    ("bin", "src/bin", "autobins"),
+    ("example", "examples", "autoexamples"),
+    ("test", "tests", "autotests"),
+    ("bench", "benches", "autobenches"),
+)
+
+
 class _InTreeCrates:
     """Where a ``use`` path that starts inside the tree lands (WI-rilof).
 
-    Built once per run from the files the symbol pass saw. A crate is a
+    Built once per run from the files the symbol pass saw. A package is a
     ``Cargo.toml`` with a ``[package] name`` (read by
-    ``supply_chain.own_package_name``); its root file is ``src/lib.rs``, else
-    ``src/main.rs``, and its modules are files under ``src/`` in the standard
-    layout (``a.rs`` or ``a/mod.rs``). A path's first segment selects where
-    to start: ``crate`` (this file's crate), ``self`` / ``super`` (this
-    file's module and its parents), or a crate name -- any in-tree package,
-    ``-`` read as ``_``, which covers a workspace sibling and an integration
-    test reaching its own library. Every other first segment (``std``, a
-    registry crate) is outside the tree and gets None.
+    ``supply_chain.own_package_name``). Each of its Cargo TARGETS is a crate
+    with a root file and a module tree (``_targets``): the library
+    (``src/lib.rs``), the binaries (``src/main.rs``, ``src/bin/*.rs``), the
+    examples, integration tests and benches (``examples/``, ``tests/``,
+    ``benches/``: ``x.rs`` or ``x/main.rs``), ``build.rs``, and every
+    ``[[bin]]`` / ``[[example]]`` / ``[[test]]`` / ``[[bench]]`` the manifest
+    names. A root's modules are files in the standard layout below the
+    root's directory (``a.rs`` or ``a/mod.rs``). A path's first segment
+    selects where to start: ``crate`` (the root of this file's target),
+    ``self`` / ``super`` (this file's module and its parents), or a crate
+    name -- any in-tree package's library, ``-`` read as ``_``, which covers
+    a workspace sibling and an integration test reaching its own library.
+    Every other first segment (``std``, a registry crate) is outside the tree
+    and gets None.
 
     The answer is the DEEPEST module file the path walks through: ``use
     crate_b::net::conn::Conn`` imports ``net/conn.rs``; a path whose next
@@ -2902,17 +2935,37 @@ class _InTreeCrates:
     them names code in the current file. ``#[path]`` attributes are not read,
     and an inline module's children are items of its file, so a path through
     one stops at that file.
+
+    TWO LAYOUTS. The import table and the calls read the targets
+    (``by_target=True``, ``locate``'s default). The ``imports`` edges,
+    function-value references and return-type lookups (``resolve``) read
+    the package layout they were built on, in which every file of a package
+    is in the library's module tree under ``src/``; their edges stay as they
+    were.
     """
 
     def __init__(self, files: "dict[str, Path]") -> None:
         self._files = set(files)
         self._crate_dir_of: dict[str, Optional[Path]] = {}
         self.by_name: dict[str, Path] = {}
+        manifests: dict[Path, Path] = {}
         for rel, abs_path in sorted(files.items()):
-            crate_dir = self._find_crate_dir(Path(rel), abs_path)
+            crate_dir = self._find_crate_dir(Path(rel), abs_path, manifests)
             self._crate_dir_of[rel] = crate_dir
+        # Each file's crate root, as ``(directory of the root, root file)``.
+        # The file is None when two roots share the deepest directory above
+        # the file (two integration tests that both declare ``mod common;``):
+        # the module tree below that directory is known, the root is not.
+        self._root_of: dict[str, tuple[Path, Optional[Path]]] = {}
+        for package, manifest in manifests.items():
+            self._assign_targets(
+                [rel for rel, crate_dir in self._crate_dir_of.items() if crate_dir == package],
+                self._targets(package, _cargo_manifest(manifest)), package,
+            )
 
-    def _find_crate_dir(self, rel: Path, abs_path: Path) -> Optional[Path]:
+    def _find_crate_dir(
+        self, rel: Path, abs_path: Path, manifests: "dict[Path, Path]",
+    ) -> Optional[Path]:
         from hypergumbo_core.supply_chain import own_package_name
 
         repo_root = abs_path.parents[len(rel.parts) - 1]
@@ -2924,8 +2977,72 @@ class _InTreeCrates:
             if name is None:
                 continue  # a virtual workspace manifest: keep walking up
             self.by_name.setdefault(name.replace("-", "_"), parent)
+            manifests.setdefault(parent, manifest)
             return parent
         return None
+
+    def _targets(self, package: Path, manifest: "dict[str, Any]") -> "list[Path]":
+        """The root files of ``package``'s targets that the run has, the
+        library first: the ones the manifest names, and the ones Cargo
+        discovers by itself unless the manifest turns that off."""
+        roots: list[Path] = []
+
+        def add(candidate: Path) -> None:
+            if str(candidate) in self._files and candidate not in roots:
+                roots.append(candidate)
+
+        lib = manifest.get("lib")
+        add(package / (lib.get("path") or "src/lib.rs") if isinstance(lib, dict)
+            else package / "src/lib.rs")
+        options = manifest.get("package")
+        options = options if isinstance(options, dict) else {}
+        if options.get("autobins", True) is not False:
+            add(package / "src/main.rs")
+        for kind, directory, auto in _CARGO_TARGET_KINDS:
+            entries = manifest.get(kind)
+            for entry in entries if isinstance(entries, list) else ():
+                if not isinstance(entry, dict):
+                    continue
+                if isinstance(entry.get("path"), str):
+                    add(package / entry["path"])
+                elif isinstance(entry.get("name"), str):
+                    add(package / directory / f"{entry['name']}.rs")
+                    add(package / directory / entry["name"] / "main.rs")
+            if options.get(auto, True) is not False:
+                for rel in sorted(self._files):
+                    here = Path(rel)
+                    if here.suffix == ".rs" and (
+                        here.parent == package / directory
+                        or (here.name == "main.rs" and here.parent.parent == package / directory)
+                    ):
+                        add(here)
+        build = options.get("build", True)
+        if isinstance(build, str):
+            add(package / build)
+        elif build is not False:
+            add(package / "build.rs")
+        return roots
+
+    def _assign_targets(
+        self, files: "list[str]", roots: "list[Path]", package: "Path | None",
+    ) -> None:
+        """Put every file of a package in the module tree of the root whose
+        directory is the deepest one above it; the library (the first root)
+        wins over a binary in the same directory (``src/``). A root in the
+        package's own directory (``build.rs``) holds itself only: its
+        directory is above every other file of the package."""
+        for rel in files:
+            here = Path(rel)
+            if here in roots:
+                self._root_of[rel] = (here.parent, here)
+                continue
+            above = [r for r in roots if r.parent != package and r.parent in here.parents]
+            if not above:
+                continue
+            deepest = max(len(r.parent.parts) for r in above)
+            sharing = [r for r in above if len(r.parent.parts) == deepest]
+            root = sharing[0] if len(sharing) == 1 or sharing[0] == roots[0] else None
+            self._root_of[rel] = (sharing[0].parent, root)
 
     def crate_dir(self, rel: str) -> Optional[Path]:
         """The directory of the in-tree crate ``rel`` belongs to, if any."""
@@ -2938,10 +3055,30 @@ class _InTreeCrates:
                 return candidate
         return None
 
-    def _module_file(self, module_dir: Path, crate_dir: Path) -> Optional[Path]:
+    def _package_root(self, crate_dir: "Path | None") -> "tuple[Path, Optional[Path]] | None":
+        """The package layout's crate root: ``src/`` and its lib.rs, else main.rs."""
+        return (crate_dir / "src", self._root_file(crate_dir)) if crate_dir is not None else None
+
+    def _own_root(self, rel: str, by_target: bool) -> "tuple[Path, Optional[Path]] | None":
+        if by_target:
+            return self._root_of.get(rel)
+        return self._package_root(self._crate_dir_of.get(rel))
+
+    def _children_dir(self, rel: str, root: "tuple[Path, Optional[Path]]") -> Path:
+        """Where the modules a file declares live: beside a crate root, a
+        ``mod.rs`` (and a ``lib.rs`` / ``main.rs``), else in the directory
+        named after the file."""
+        here = Path(rel)
+        if here == root[1] or here.name in ("lib.rs", "main.rs", "mod.rs"):
+            return here.parent
+        return here.parent / here.stem
+
+    def _module_file(
+        self, module_dir: Path, root: "tuple[Path, Optional[Path]]",
+    ) -> Optional[Path]:
         """The file that declares the module whose children live in ``module_dir``."""
-        if module_dir == crate_dir / "src":
-            return self._root_file(crate_dir)
+        if module_dir == root[0]:
+            return root[1]
         for candidate in (module_dir / "mod.rs", module_dir.with_suffix(".rs")):
             if str(candidate) in self._files:
                 return candidate
@@ -2950,15 +3087,16 @@ class _InTreeCrates:
     def resolve(
         self, rel: str, import_path: str, inline_depth: int = 0,
     ) -> Optional[str]:
-        """The repo-relative file ``import_path`` imports from ``rel``, or None.
+        """The repo-relative file ``import_path`` imports from ``rel``, or
+        None, in the PACKAGE layout (the class docstring).
 
         ``rel`` itself is returned for a path that stays in the current file
         (``self::`` / ``super::`` inside an inline module)."""
-        located = self.locate(rel, import_path, inline_depth)
+        located = self.locate(rel, import_path, inline_depth, by_target=False)
         return located[0] if located is not None else None
 
     def locate(
-        self, rel: str, import_path: str, inline_depth: int = 0,
+        self, rel: str, import_path: str, inline_depth: int = 0, by_target: bool = True,
     ) -> "tuple[str, list[str], int] | None":
         """Where ``import_path`` lands from ``rel``: the file (``resolve``),
         the segments left after the module files the path walked through
@@ -2970,18 +3108,14 @@ class _InTreeCrates:
         segments = [s for s in import_path.split("::") if s and s != "*"]
         if not segments:
             return None
-        own_crate = self._crate_dir_of.get(rel)
+        own = self._own_root(rel, by_target)
         head = segments[0]
-        if head == "crate" and own_crate is not None:
-            crate_dir, rest = own_crate, segments[1:]
-            module_dir = crate_dir / "src"
-        elif head in ("self", "super") and own_crate is not None:
-            crate_dir = own_crate
-            here = Path(rel)
-            module_dir = (
-                here.parent if here.name in ("lib.rs", "main.rs", "mod.rs")
-                else here.parent / here.stem
-            )
+        if head == "crate" and own is not None:
+            root, rest = own, segments[1:]
+            module_dir = root[0]
+        elif head in ("self", "super") and own is not None:
+            root = own
+            module_dir = self._children_dir(rel, root)
             rest = segments
             if rest[0] == "self":
                 rest = rest[1:]
@@ -2991,38 +3125,56 @@ class _InTreeCrates:
                 # Still inside this file's inline modules.
                 return rel, rest, inline_depth
             while rest and rest[0] == "super":
-                if module_dir == crate_dir / "src":
+                if module_dir == root[0]:
                     return None  # above the crate root
                 module_dir, rest = module_dir.parent, rest[1:]
         elif head in self.by_name:
-            crate_dir, rest = self.by_name[head], segments[1:]
-            module_dir = crate_dir / "src"
-        elif own_crate is not None and inline_depth == 0:
+            root = self._package_root(self.by_name[head])  # type: ignore[assignment]
+            rest, module_dir = segments[1:], root[0]
+        elif own is not None and inline_depth == 0:
             # ``use util::helper;`` beside ``mod util;``: since the 2018
             # edition a path may start at a child module of the module it is
             # written in. Positive evidence only -- the child module has a
             # file -- so ``use serde::Serialize`` still resolves to nothing
             # (INV-hupis).
-            crate_dir, rest = own_crate, segments
-            here = Path(rel)
-            module_dir = (
-                here.parent if here.name in ("lib.rs", "main.rs", "mod.rs")
-                else here.parent / here.stem
-            )
-            if self._module_file(module_dir / head, crate_dir) is None:
+            root, rest = own, segments
+            module_dir = self._children_dir(rel, root)
+            if self._module_file(module_dir / head, root) is None:
                 return None
         else:
             return None
-        best = self._module_file(module_dir, crate_dir)
-        if best is None:
-            return None
+        best = self._module_file(module_dir, root)
+        if best is None and not by_target:
+            return None  # the package layout stops at a crate with no root file
+        return self._walk(best, module_dir, root, rest)
+
+    def _walk(
+        self, best: Optional[Path], module_dir: Path,
+        root: "tuple[Path, Optional[Path]]", rest: list[str],
+    ) -> "tuple[str, list[str], int] | None":
+        """From the module file ``best`` (children in ``module_dir``), down
+        through the module files ``rest`` names, as far as they go. None when
+        that ends at a crate root that is not known (``_root_of``)."""
         walked = 0
         for segment in rest:
-            nxt = self._module_file(module_dir / segment, crate_dir)
+            nxt = self._module_file(module_dir / segment, root)
             if nxt is None:
                 break
             best, module_dir, walked = nxt, module_dir / segment, walked + 1
-        return str(best), rest[walked:], 0
+        return (str(best), rest[walked:], 0) if best is not None else None
+
+    def descend(self, module_file: str, segments: list[str]) -> "tuple[str, list[str]] | None":
+        """Where ``segments`` lead from the module FILE ``module_file`` (a
+        namespace binding's file: ``use crate::db;`` then ``db::pool::take``
+        walks ``pool`` from ``db.rs``): the deepest module file reached and
+        the segments left, as ``locate`` answers. None for a file in no crate."""
+        root = self._root_of.get(module_file)
+        if root is None:
+            return None
+        located = self._walk(
+            Path(module_file), self._children_dir(module_file, root), root, segments,
+        )
+        return (located[0], located[1]) if located is not None else None
 
 
 def _inline_mod_depth(node: "tree_sitter.Node") -> int:
@@ -3208,6 +3360,61 @@ def _rust_path_target(
         if s.kind in _RUST_PATH_CALLABLE_KINDS
     ]
     return found[0] if len(found) == 1 else None
+
+
+def _rust_path_module(
+    path: str,
+    rel: str,
+    mod_path: list[str],
+    scope: ImportScope,
+    crates: "_InTreeCrates",
+) -> "tuple[str, list[str]] | None":
+    """The module FILE a path written in ``rel`` walks to, and the segments
+    left after it: ``crate::db::Conn::new`` is ``("src/db.rs", ["Conn",
+    "new"])``. A path starts at a namespace binding of the file (``use
+    crate::db;`` or ``mod db;``, walked on from that file:
+    ``db::pool::take``), or is rooted where the layout reads it (``crate`` /
+    ``self`` / ``super`` / an in-tree crate the file does not bind to
+    something else). None otherwise: a library, an explicit binding (a type
+    or item the table names, which the shared pass reads by itself), a path
+    that stays in this file's inline modules."""
+    head, _, tail = path.partition("::")
+    bound = scope.namespace(head)
+    if bound is not None:
+        return crates.descend(bound, tail.split("::")) if tail else None
+    if scope.named(head) is not None or not (
+        head in ("crate", "self", "super") or head in crates.by_name
+    ):
+        return None
+    located = crates.locate(rel, path, len(mod_path))
+    if located is None or located[2]:
+        return None
+    return located[0], located[1]
+
+
+def _rust_owner_namespace(
+    path: str,
+    items: int,
+    rel: str,
+    mod_path: list[str],
+    scope: ImportScope,
+    crates: "_InTreeCrates | None",
+) -> "tuple[str, str] | None":
+    """The namespace record that lets the shared pass read a path it could
+    not otherwise follow: ``(dotted path, module file)`` when ``path`` walks
+    to a module file (``_rust_path_module``) and what is left after that file
+    is one item, or, with ``items=2``, a type and its member. ``crate::f``
+    (re-exported by lib.rs) gives ``("crate", "src/lib.rs")``: the linker asks
+    the binding ``crate`` for ``f`` and follows the ``pub use``.
+    ``crate::pg::Conn::new`` gives ``("crate.pg", "src/pg.rs")``, which is
+    also what a receiver typed ``crate::pg::Conn`` needs (``items=1``)."""
+    if crates is None:
+        return None
+    reached = _rust_path_module(path, rel, mod_path, scope, crates)
+    if reached is None or not 1 <= len(reached[1]) <= items:
+        return None
+    owner = path.split("::")[: -len(reached[1])]
+    return ".".join(owner), reached[0]
 
 
 def _rust_in_file_globs(
@@ -4067,6 +4274,21 @@ def _extract_edges_from_file(
     _method_owner: dict[str, tuple[str, str]] = (
         getattr(analyzer, "_method_owner", None) or {}
     )
+    # Paths this file writes that the analyzer followed to a module file and
+    # the table cannot read by their head alone (``crate::db::f()``, a
+    # receiver typed ``crate::db::Conn``): the dotted path before the item and
+    # the files it reached here, added to the table as namespace bindings
+    # when the file is walked (one file per path; ``super`` can reach two
+    # from two inline modules, and then neither is recorded).
+    _owner_paths: dict[str, set[str]] = {}
+
+    def _follow(path: str, items: int, at: "tree_sitter.Node") -> bool:
+        record = _rust_owner_namespace(
+            path, items, file_path, _get_rust_mod_path(at, source), import_scope, crates,
+        )
+        if record is not None:
+            _owner_paths.setdefault(record[0], set()).add(record[1])
+        return record is not None
 
     for node in iter_tree(tree.root_node):
         # Detect trait implementations: impl Trait for Struct → implements edge
@@ -4305,6 +4527,7 @@ def _extract_edges_from_file(
                         # The type is also kept in ``field_receiver_type`` for the module slot of an
                         # external call (WI-dizag).
                         qualifier: str | None = None
+                        followed = False
                         receiver_hint: str | None = None
                         field_receiver_type: str | None = None
                         _line = node.start_point[0] + 1
@@ -4375,6 +4598,11 @@ def _extract_edges_from_file(
                                 resolved = True
                             else:
                                 qualifier = full_scoped_name.rpartition("::")[0]
+                                # The path reaches a module file that does not
+                                # declare the item (a ``pub use`` passes it on), or
+                                # goes through a namespace binding further than the
+                                # table reads: reported in the shared pass's terms.
+                                followed = _follow(full_scoped_name, 2, node)
 
                         # A METHOD call on a receiver whose type is known: ``self`` and a
                         # ``self``-rooted field chain (the impl's type, the struct field
@@ -4421,6 +4649,8 @@ def _extract_edges_from_file(
                                     written = _var_type_paths.get(recv_name)
                                     look_here = not (written and "::" in written)
                                     receiver_hint = written or recv_type
+                                    if not look_here:
+                                        _follow(written, 1, node)
                                 elif value_node.type == "call_expression":
                                     # ``Cmd::parse().run()``: the receiver ``Cmd::parse()`` yields
                                     # ``Cmd`` (associated-fn path); ``get_db().execute()`` the
@@ -4529,18 +4759,19 @@ def _extract_edges_from_file(
                                     analyzer, free_fn_return_type,
                                 )
                             )
-                            if qualifier is not None and import_scope.namespace(qualifier) is not None:
-                                # ``m::f()`` through ``mod m;``: the shared pass looks up the
-                                # callee by its own name in the module's file.
+                            if followed:
+                                # ``m::f()`` through ``mod m;``, ``crate::f()``: the shared
+                                # pass looks up the callee by its own name in the file the
+                                # path reaches.
                                 unresolved_name = callee_name
                             _bound_head = (
                                 qualifier.split("::", 1)[0] if qualifier is not None
                                 else callee_name if inner.type == "identifier" else None
                             )
-                            if _bound_head is not None and (
+                            if followed or (_bound_head is not None and (
                                 import_scope.named(_bound_head) is not None
                                 or import_scope.namespace(_bound_head) is not None
-                            ):
+                            )):
                                 # The import table binds it to a file of this tree: no
                                 # library module is named, whatever the ``use`` path spells
                                 # (``crate_b::helper`` is a crate of this workspace), and the
@@ -4736,6 +4967,9 @@ def _extract_edges_from_file(
         enclosing_symbols=list(local_symbols.values()),
     )
 
+    for owner, reached in _owner_paths.items():
+        if len(reached) == 1 and import_scope.namespace(owner) is None:
+            import_scope.add_namespace(next(iter(reached)), owner)
     return edges
 
 
