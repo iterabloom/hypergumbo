@@ -2,7 +2,7 @@
 # 6. Variable Type Inference for Method Call Resolution
 
 Date: 2025-01-21
-Updated: 2026-04-07
+Updated: 2026-11-24
 Status: Accepted
 
 ## Context
@@ -45,18 +45,18 @@ Nine analyzers implement variable type inference. The original six (Python, Java
 | Analyzer | Constructor | Parameter | Field | Return | Chained | Scope |
 |----------|:-----------:|:---------:|:-----:|:------:|:-------:|:------|
 | Python   | ✅ | ✅ | ✅ (`__init__` field scanning, `py.py::_compute_shape_id`; repo-wide by class-symbol id via `_collect_class_field_maps`, so a caller in another file types `obj.field.method()` — INV-mumov) | ✅ (`py.py`) | ❌ (Phase 4) | Method-scoped (`py.py::_compute_value_shape_id`) |
-| Java     | ✅ | ✅ | ✅ (`field_declaration`, `java.py::_extract_symbols`) | ✅ (`java.py::_extract_java_signature`, `1197-1210`) | ✅ (WI-gajuh, WI-halin: `method_return_type_registry` consumed at the assignment, typed-receiver and chained sites, the chain walked link by link from a typed variable, `this`, a constructor or a static type such as `Cipher.getInstance(..)`; values qualified through the declaring file's imports; library rows keyed by the fully-qualified owner) | Method-scoped locals (declared / constructed / inferred, INV-vugon); fields and parameters file-scoped |
-| Kotlin   | ✅ | ✅ | Partial (constructor params = fields, `kotlin.py::_extract_kotlin_return_type_name`) | ✅ (`kotlin.py::_KOTLIN_MODIFIER_NODE_TYPES`) | ❌ (Phase 2) | File-scoped |
-| TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py::_extract_named_imports`, `2514-2528`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
-| C#       | ✅ | ✅ | ✅ (`field_declaration`, `csharp.py::_extract_symbols_from_file`) | ✅ (`csharp.py::_extract_csharp_signature`, `327-362`) | ❌ (Phase 2) | File-scoped |
-| Dart     | ✅ | ✅ | ❌ | ✅ (`dart.py::_extract_dart_signature`, `539-601`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
-| Go       | ✅ (short var, var spec, `go.py::_parse_require_line`) | ✅ (`go.py::_external_package_for_type`) | ❌ | ✅ (`go.py::_go_return_type_from_signature`) | ✅ (Phase 1, WI-kuroj; plain-function calls and package-qualified return types added by WI-doluf) | File-scoped |
-| Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
-| Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
-| Scala    | ✅ (`new`, `scala.py::_declared_type_name`; a case-class `Foo(..)` with no registered `apply` is a `Foo`) | ✅ (`scala.py::_extract_param_types_scala`; class parameters) | ✅ (a typed member `val` or class parameter registers as a parameterless member, read for `a.b.m()` and walked through `base_classes`) | ✅ (`scala.py::_extract_scala_return_type_name`; `this.type` resolves to the owner; a type parameter and every implicitly-imported name are refused; a wrapper — `Future[T]`, `Try[T]` — registers as the wrapper, never as `T`) | ✅ (WI-gokop: a call result, a chained receiver, a parameterless member, `this` and `asInstanceOf[T]`; one level down, an ELEMENT type — from a declared `Seq[T]` / `Option[T]` / `Future[T]` or a parallel element registry — types a `for` generator, a one-parameter lambda / `case` / `_` passed to an element-passing call, and a `.get` / `.head` / `.getOrElse` projection; `scala.py::_ScalaReceiverTyper`) | Lexical: the binder in scope answers first, and one of unknown type shadows; the file-wide declared map answers only when no binder is in scope |
+| Java     | ✅ | ✅ | ✅ (`field_declaration`, `java.py::_extract_symbols`) | ✅ (`java.py::_extract_java_signature`, `1197-1210`) | ✅ (WI-gajuh, WI-halin: `method_return_type_registry` consumed at the assignment, typed-receiver and chained sites, the chain walked link by link from a typed variable, `this`, a constructor or a static type such as `Cipher.getInstance(..)`; values qualified through the declaring file's imports; library rows keyed by the fully-qualified owner) | Method-scoped locals and parameters (`ScopedVarTypes`; INV-vugon, INV-zabud); fields file-scoped |
+| Kotlin   | ✅ | ✅ | Partial (constructor params = fields, `kotlin.py::_extract_kotlin_return_type_name`) | ✅ (`kotlin.py::_KOTLIN_MODIFIER_NODE_TYPES`) | ❌ (Phase 2) | Function-scoped locals and parameters (`ScopedVarTypes`); constructor properties and properties outside every function file-scoped |
+| TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py::_extract_named_imports`, `2514-2528`) | ❌ (n/a, no INV-dihos signal yet) | Function-scoped (`ScopedVarTypes`), JavaScript too; a constructor's parameters also type `this.<name>` for the file |
+| C#       | ✅ | ✅ | ✅ (`field_declaration`, `csharp.py::_extract_symbols_from_file`) | ✅ (`csharp.py::_extract_csharp_signature`, `327-362`) | ❌ (Phase 2) | Member-scoped locals and parameters, local functions and lambdas too (`ScopedVarTypes`); fields file-scoped |
+| Dart     | ✅ | ✅ | ❌ | ✅ (`dart.py::_extract_dart_signature`, `539-601`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped (not probed for INV-zabud) |
+| Go       | ✅ (short var, var spec, `go.py::_parse_require_line`) | ✅ (`go.py::_external_package_for_type`) | ❌ | ✅ (`go.py::_go_return_type_from_signature`) | ✅ (Phase 1, WI-kuroj; plain-function calls and package-qualified return types added by WI-doluf) | Function-scoped (`go.py::_extract_go_var_types`, keyed by the enclosing function) |
+| Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | Method-scoped (`ScopedVarTypes`); an assignment outside every method is seen by all |
+| Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | Function-scoped (`ScopedVarTypes`); a chunk-level `local` is seen by every function after it |
+| Scala    | ✅ (`new`, `scala.py::_declared_type_name`; a case-class `Foo(..)` with no registered `apply` is a `Foo`) | ✅ (`scala.py::_extract_param_types_scala`; class parameters) | ✅ (a typed member `val` or class parameter registers as a parameterless member, read for `a.b.m()` and walked through `base_classes`) | ✅ (`scala.py::_extract_scala_return_type_name`; `this.type` resolves to the owner; a type parameter and every implicitly-imported name are refused; a wrapper — `Future[T]`, `Try[T]` — registers as the wrapper, never as `T`) | ✅ (WI-gokop: a call result, a chained receiver, a parameterless member, `this` and `asInstanceOf[T]`; one level down, an ELEMENT type — from a declared `Seq[T]` / `Option[T]` / `Future[T]` or a parallel element registry — types a `for` generator, a one-parameter lambda / `case` / `_` passed to an element-passing call, and a `.get` / `.head` / `.getOrElse` projection; `scala.py::_ScalaReceiverTyper`) | Lexical: the binder in scope answers first; otherwise the declared map, which holds what is in scope where the walk stands (`ScopedVarTypes`): the enclosing functions' parameters and `val`s, class parameters, template `val`s |
 | Obj-C    | ✅ (declared local `T *x`, `objc.py::_objc_declared_receiver_types`) | ✅ (`(T *)x` parameter, same walker) | ❌ | ✅ (`objc.py::_objc_return_class`; `instancetype` resolves to the owner) | ✅ (WI-higob: a nested send `[[obj sel] frob]` types the outer receiver from the inner one's registered return, `objc.py::_objc_send_result_class`) | File-scoped |
 | Swift    | ✅ (`swift.py::_extract_var_type`; a `Type.member` singleton or enum case names `Type`) | ✅ (`swift.py::_swift_param_name_and_type`) | ✅ (class-level properties repo-wide, walked through `base_classes`, `swift.py::_inherited_field_type`) | ✅ (`swift.py::_swift_return_type_name`; `-> Self` resolves to the enclosing type and a generic parameter is refused) | ✅ (WI-higob: a receiver EXPRESSION — call result recursively, constructor, cast, parenthesised, under `try`/`await` — carries its type, `swift.py::_swift_receiver_expr_type`) | Function-scoped by parent chain; file-level declarations stay visible |
-| Rust     | ✅ (let-binding constructor / struct-expression / type-annotated let, `rust.py:_extract_var_types_rust`) | ✅ (`rust.py:_extract_param_types_rust`) | Partial (via `field_type_registry`, `self.field` only) | ✅ (`rust.py:_extract_rust_return_type_name` — Result/Option/Box/Rc/Arc unwrap, impl/dyn Trait opaque) | ✅ (Phase 3 / WI-titor) | File-scoped |
+| Rust     | ✅ (let-binding constructor / struct-expression / type-annotated let, `rust.py:_extract_var_types_rust`) | ✅ (`rust.py:_extract_param_types_rust`) | Partial (via `field_type_registry`, `self.field` only) | ✅ (`rust.py:_extract_rust_return_type_name` — Result/Option/Box/Rc/Arc unwrap, impl/dyn Trait opaque) | ✅ (Phase 3 / WI-titor) | Function-scoped (`ScopedVarTypes`), the first writer in the function wins |
 
 **Three analyzers were absent from this table entirely** until WI-doluf, and absence read as "no gap" rather than "no answer". Scala, Obj-C and Swift carry **244 method-kind `io_primitives` rows between them** — 89%, 95% and 93% of their catalogues respectively — every one of which needs a typed receiver before it can match. Assessing them was filed as WI-higob and is now done for Obj-C and Swift, whose rows above are measured rather than asserted, and for Scala under WI-gokop (measured on sbt and lila; the numbers are on that item). A support table that does not enumerate the tree's own analyzers is the same decayed-inventory failure one level up from the row gaps it describes.
 
@@ -86,26 +86,44 @@ if receiver_name in var_types:
 
 ### Scope Handling
 
-Most analyzers use **file-scoped** tracking — a single `var_types` dict per file:
+**A variable's type belongs to the function that binds it (owner ruling, 2026-11-24; INV-zabud).**
+A type written for a same-named variable in another function of the file does not type it:
 
 ```python
 def method_a():
-    client = Client()     # var_types["client"] = "Client"
-    client.send()         # ✓ Correctly resolved
+    client = Client()     # typed Client inside method_a
+    client.send()         # resolved to Client.send
 
 def method_b(other: str):
-    client.receive()      # ⚠️ Also resolved to Client.receive (might be wrong!)
+    client.receive()      # NOT resolved to Client.receive: method_b binds no client
 ```
 
-This can cause false positives when different methods use the same variable name for
-different types. However:
+The mechanism is one class, `hypergumbo_core/analyze/var_scope.py::ScopedVarTypes`: it is the
+`var_types` dict the analyzers already pass around, and a binding written while a function's
+scope is open goes away when the walk leaves the function. Scopes nest and are transparent: a
+closure sees the locals of the function around it, and a binding made outside every function
+(a field, a class or constructor parameter, a module-level variable) is seen by every function
+after it. Its module docstring is the authoritative description, including what it does not do
+(an untyped local does not hide an outer binding of its name; fields are per file, not per
+class).
 
-- Variable name collisions across methods are rare in practice
-- False positives (extra edges) are preferable to false negatives (missing edges)
+**What this replaced.** Until 2026-11-24 this section prescribed one dict per FILE, on two
+grounds: that name collisions across methods are rare, and that "false positives (extra edges)
+are preferable to false negatives (missing edges)". Both are withdrawn. Measured on one small
+program written in 17 languages (`_call_matrix_fixture.py`, columns `scope_own` and
+`scope_ext`), the per-file dict did not add an edge beside the right one, it REPLACED the right
+edge with a wrong one in three languages (the first `db` in the file typed every `db`, one
+constructed on the line above its call included) and bound a call nothing in the repository
+answers in ten (C# and Groovy among them, which also bind such a call by name alone). An
+unresolved call says nothing false; a call bound to a method of a type the caller never held
+does.
 
-**Exception: Python is method-scoped.** Each function gets a fresh `param_types` dict
-(seeded from parameter annotations + class field types) passed to `process_code_block()`.
-The dict does not leak across function boundaries (`py.py::_compute_value_shape_id`).
+**Which analyzers.** The Scope column above is per language. Python, Go, Swift, C++ and Perl
+showed no leak in the same probe, each scoped by its own means; Java and Kotlin scoped locals
+but not parameters.
+Not examined: Dart, D and Solidity (their own packages), and Objective-C and PHP, where the
+fixture cannot tell (Objective-C binds by selector whatever the type; PHP's typed receivers
+resolve by another path).
 
 ### Return-Type Registry Pre-Pass (INV-dihos)
 
@@ -299,7 +317,7 @@ analyzer(s).
 
 ### Limitations
 
-1. **Mostly file-scoped**: Python is method-scoped; all others use a single file-level dict (potential for false positives)
+1. **Scope is the function, nothing finer**: a variable is typed for the whole function that binds it (no block scope, no flow sensitivity), an untyped local does not hide an outer binding of the same name, and fields are kept per file, not per class
 2. **Only first-party types**: External library types (Pydantic, SQLAlchemy) won't resolve
 3. **No inheritance awareness**: `SubClass` parameters won't resolve `ParentClass.method()`
 4. **Generics stripped**: `List<T>` → `List` (adequate for method resolution but insufficient for typed `stable_id`; see the typed tier in `docs/hypergumbo-spec.md` §6)
@@ -314,7 +332,7 @@ analyzer(s).
 6. **Return-Type Registry Pre-Pass — Phase 3: Rust + C++ + Scala**: requires bootstrapping `var_types` infrastructure for these analyzers first (see §Analyzers Without Type Tracking). Tier 2 escape hatches: Rust `Result<T, E>` / `Option<T>` unwrapping and `impl Trait` opacity; C++ pointer/reference stripping; Scala implicits left as future work.
 7. **Return-Type Registry Pre-Pass — Phase 4: Type-annotated Python**: PEP 484 makes this tractable for code that uses type hints. Untyped Python remains `n/a`. The existing local return-type extraction in `py.py::_extract_flask_usage_contexts` is promoted to a global registry entry.
 8. **Return-Type Registry Pre-Pass — Phase 5 (follow-on): cross-linker integration**: type_hierarchy.py fallback for ambiguous receiver types in the registry; dataflow.py refinement for chained method-call `access_mode` annotations. Optional, only after Phases 1–4 are validated against deep-bakeoff metrics.
-9. **Consider method-scoped tracking for non-Python analyzers** (if false positives become a problem)
+9. ~~**Consider method-scoped tracking for non-Python analyzers**~~ — Done for the mainstream analyzers (INV-zabud, 2026-11-24; §Scope Handling)
 10. **Add Rust type tracking** (medium effort, good value for trait-based dispatch) — superseded by Phase 3 above; this entry is kept for the constructor/parameter portion which is a prerequisite for Phase 3.
 11. **Preserve generic type parameters** (needed for the typed `stable_id` tier, spec §6; currently stripped)
 12. **Extract visibility modifiers** (needed for the typed `stable_id` tier, spec §6; not currently tracked)
