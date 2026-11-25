@@ -556,7 +556,7 @@ class TestSameSiteSupersessionOnBothArms:
     def test_only_the_same_callee_is_superseded(self) -> None:
         """The resolution verdict is imitated as finalize does it
         (a dst that is a real node -> resolved, else a stub), then the rule
-        runs. Three stubs are genuinely superseded; twenty-four share a line
+        runs. Three stubs are genuinely superseded; twenty-three share a line
         and type with a resolved call to a DIFFERENT callee and stay (WI-lihis)."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)

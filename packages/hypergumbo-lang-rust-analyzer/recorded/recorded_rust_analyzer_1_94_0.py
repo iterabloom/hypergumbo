@@ -294,10 +294,16 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # `SocketAddr` / `Ipv4Addr` / `Ipv6Addr` constants in src/server/serve.rs
     # and src/test/test.rs), anchored on the file rather than dropped
     # (INV-bamij). Those are file-sourced, so AARDVARK_DNS_EDGE_OVERLAP, which
-    # pairs records by symbol, does not see them (245 there).
-    "stub_calls": 256,
+    # pairs records by symbol, does not see them (236 there).
+    # 256 until INV-zabud: twenty stubs carried a module slot taken from a
+    # same-named variable of ANOTHER function (`err.into()` in
+    # `impl From<nix::Error>` read `std::io::Error`; `ctrs.push(..)` on a Vec
+    # read `std::collections::HashMap`). Each function's own binding now
+    # answers: eleven keep a slot of their own or the `external` placeholder,
+    # nine fold into a stub of the same name the caller already had.
+    "stub_calls": 247,
     "superseded_stubs": 3,
-    "co_located_same_type_not_superseded": 24,
+    "co_located_same_type_not_superseded": 23,
 }
 
 # What `hypergumbo backend-agreement` (ADR-0057 §5, WI-dajif) reads off the
@@ -346,7 +352,7 @@ AARDVARK_DNS_EDGE_OVERLAP = {
     # The harness's dedup drops self-loops as a survey's does (WI-vosop), and
     # test.rs:37 binds config/mod.rs, corroborated by SCIP (WI-lirik).
     ("calls", True): (94, 16, 6),
-    ("calls", False): (0, 245, 0),  # see stub_calls
+    ("calls", False): (0, 236, 0),  # see stub_calls
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
     ("module_attr_ref", False): (0, 26, 0),
