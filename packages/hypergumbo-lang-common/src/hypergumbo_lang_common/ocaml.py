@@ -77,6 +77,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -505,8 +506,10 @@ def _extract_edges_from_tree(
                         lookup_result = resolver.lookup(
                             f"{module_prefix}.{callee_name}", allow_suffix=False,
                         ) if module_prefix else None
+                        _by = resolved_by.QUALIFIED
                         if lookup_result is None or not lookup_result.found:
                             lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                            _by = lookup_result.resolved_by
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             edge = Edge.create(
@@ -519,6 +522,7 @@ def _extract_edges_from_tree(
                                 evidence_type="ast_call",
                                 resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "application"},
+                                resolved_by=_by,
                             )
                             edges.append(edge)
                         else:
@@ -533,6 +537,9 @@ def _extract_edges_from_tree(
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
                                 meta={"call_construct": "application"},
+                                # A synthetic ``?`` target: no in-repository
+                                # target was chosen.
+                                resolved_by=None,
                             )
                             edges.append(edge)
 

@@ -59,6 +59,7 @@ from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -539,9 +540,13 @@ class _PureScriptExtractor:
                     if caller_id:
                         # Try qualified name first
                         callee_id = self._symbol_registry.get(call_name)
+                        # The run-wide table: ``Mod.f`` as written names its
+                        # module; a bare name scoped nothing.
+                        _by = resolved_by.QUALIFIED if "." in call_name else resolved_by.NAME
                         if callee_id is None and self._current_module:
                             qualified = f"{self._current_module}.{call_name}"
                             callee_id = self._symbol_registry.get(qualified)
+                            _by = resolved_by.SAME_MODULE
 
                         # ADR-0039: a registry hit derives the ast_call_direct base and a miss
                         # is unresolved (ADR-0037), deriving the unresolved base. The old
@@ -561,6 +566,7 @@ class _PureScriptExtractor:
                             evidence_type="ast_call_direct",
                             is_resolved=resolved,
                             evidence_lang="purescript",
+                            resolved_by=_by if resolved else None,
                         )
                         self.edges.append(edge)
 

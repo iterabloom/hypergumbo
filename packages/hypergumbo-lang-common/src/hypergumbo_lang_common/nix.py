@@ -570,6 +570,10 @@ def _extract_nix_edges(
                             origin=PASS_ID,
                             evidence_type="ast_call_direct",
                             origin_run_id=run_id,
+                            resolved_by=(
+                                lookup_result.resolved_by
+                                if resolution_score is not None else None
+                            ),
                         ))
 
     return edges

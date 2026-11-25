@@ -53,6 +53,7 @@ from typing import Any, Iterator, Optional, ClassVar, TYPE_CHECKING
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, StableId, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -446,6 +447,8 @@ class _RacketExtractor:
                             evidence_type="ast_call_direct",
                             is_resolved=resolved,
                             evidence_lang="racket",
+                            # The run-wide name table, last declaration winning.
+                            resolved_by=resolved_by.NAME if resolved else None,
                         )
                         self.edges.append(edge)
 
