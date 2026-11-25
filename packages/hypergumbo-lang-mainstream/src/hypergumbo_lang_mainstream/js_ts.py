@@ -1253,7 +1253,11 @@ def _import_scopes(
     by_resolved: dict[Path, str] = {}
     for pf in parsed_files:
         rel = relative(pf.path)
-        scopes.setdefault(rel, ImportScope(module_kind=MODULES_ARE_FILES))
+        scopes.setdefault(rel, ImportScope(
+            module_kind=MODULES_ARE_FILES,
+            # JS_BUILTIN_METHODS names go out marked ``stdlib_member_name``.
+            library_names_screened=True,
+        ))
         absolute[rel] = str(pf.path)
         by_resolved[pf.path.resolve()] = rel
     default_by_file = {

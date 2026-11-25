@@ -3141,7 +3141,9 @@ def _rust_import_scope(
     to a file that only re-exports the name (``pub use``) is recorded as
     written: the lookup finds no declaration there.
     """
-    scope = ImportScope(module_kind=MODULES_ARE_FILES)
+    # Library names are screened: no stub is made for a
+    # SUPPRESSED_METHOD_NAMES name on an untyped receiver.
+    scope = ImportScope(module_kind=MODULES_ARE_FILES, library_names_screened=True)
     bound: dict[str, tuple[str, str]] = {}
     conflicted: set[str] = set()
     for kind, local, path, mods in bindings:

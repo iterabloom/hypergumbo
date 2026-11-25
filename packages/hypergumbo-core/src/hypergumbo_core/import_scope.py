@@ -126,6 +126,13 @@ class ImportScope:
     """
 
     module_kind: str = MODULES_ARE_NAMESPACES  # axis: bounded-enum
+    #: The analyzer of this file says: a call whose name the language's own
+    #: library defines on its types is either not handed over at all or
+    #: handed over marked (the stub fact ``stdlib_member_name``). The
+    #: single-holder name linker binds by name only for such a file: without
+    #: the screen, ``task.AsTask()`` or ``items.push(x)`` on a receiver of
+    #: unknown type is bound to the repository's one method of that name.
+    library_names_screened: bool = False
     _named: dict[str, CanonicalName] = field(default_factory=dict)
     _modules: dict[str, str] = field(default_factory=dict)
     _wildcards: list[str] = field(default_factory=list)
