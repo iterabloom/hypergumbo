@@ -1,0 +1,22 @@
+- op: create  # 5656
+  at: '2026-11-25T02:15:23Z'  # 5656
+  by: agent  # 5656
+  actor: jgstern_agent  # 5656
+  clock: 1  # 5656
+  nonce: '5656'  # 5656
+  data:  # 5656
+    kind: work_item  # 5656
+    title: "Mark every resolved call edge with what scoped the choice of its target, from one declared vocabulary, and count by mark"  # 5656
+    status: todo_hard  # 5656
+    priority: 2  # 5656
+    parent:  # 5656
+    tags:  # 5656
+    - call_graph  # 5656
+    - analysis_quality  # 5656
+    - call_matrix  # 5656
+    isbefore: []  # 5656
+    duplicate_of: []  # 5656
+    not_duplicate_of: []  # 5656
+    pr_ref:  # 5656
+    description: "WHAT. Stamp every resolved `calls` edge with ONE mark saying what evidence scoped the choice of its target, from one\ndeclared vocabulary, and count edges by mark over the corpus. No behaviour change: nothing reads the mark in this\nitem except the census; every existing field keeps its value.\n\nWHY. Owner ruling 2026-11-24 (shared_resolution_design_11242026.md, ruling 4): \"A name-only match keeps its number\nfor now; first MARK how every edge was resolved, count, sample, then decide.\" Audit docs/audits/0030 (2026-11-25)\nfound the question written in eight places, none total: on 28 repositories 39,223 of 95,105 resolved call edges say\nnothing about how their target was chosen, and 14,273 of those had another in-repository symbol of the same name\nand kind.\n\nTHE MARK (audit 0030, proposal A). Axiom: it names the evidence that scoped the choice of a call edge's\nin-repository target (\"why this declaration and not another of the same name\"). Values: receiver_type, own_type,\nqualified, import, lexical_scope, same_file, same_module, name, class_hint, key_match, semantic_backend. It does\nnot hold the number of candidates (derivable from the nodes) or a grade (confidence).\n\nDONE WHEN.\n1. The vocabulary is declared in one core module with an allowlist test (the call_constructs.py pattern), and the\n   key is registered in axis_meta_keys.\n2. Every Edge.create(..., edge_type=\"calls\") site in packages/*/src passes the mark; an AST test fails on a site\n   that does not.\n3. After finalization a calls edge carries the mark if and only if is_resolved is true.\n4. symbol_resolution declares LookupResult.match_type's values as constants and maps them to the mark in one place.\n5. A census script counts resolved call edges by (language, mark) and by candidate count, and reports the unmarked\n   count, which is zero on the full repository set.\n6. A before/after pass over the pared repository set shows no edge changed except for the new key.\n\nNOT IN THIS ITEM. Any reader of the mark; any fold of the old spellings; unresolved edges; `instantiates`."  # 5656
+    fields: {}  # 5656

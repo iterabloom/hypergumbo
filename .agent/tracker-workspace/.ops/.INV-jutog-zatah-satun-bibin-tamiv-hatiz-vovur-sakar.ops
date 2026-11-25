@@ -43,3 +43,10 @@
   clock: 4  # 11a8
   nonce: 11a8  # 11a8
   message: "OWNER RULINGS, in session 2026-11-24 (late), verbatim: \"declared names for Groovy, Scala, C++ and Swift inside the next stable-id bump, or kept out of the hash. -- inside the next stable-id bump / in-place fixes for the eight guessing languages meanwhile: none, or cheap ones only -- cheap ones only / whether to cut 11.0.0 before step 4 -- no\". For this item: the eight languages that still bind by declaration order get an in-place fix ahead of the shared pass only where it is cheap (my reading of cheap: a refusal of a few lines, no new resolution machinery in the analyzer; the owner did not define the word). Which of the eight have such a fix is not known: causes are traced for Rust only. Recorded in ~/hypergumbo_lab_notebook/shared_resolution_design_11242026.md."  # 11a8
+- op: discuss  # 3b71
+  at: '2026-11-25T01:53:10Z'  # 3b71
+  by: agent  # 3b71
+  actor: jgstern_agent  # 3b71
+  clock: 5  # 3b71
+  nonce: 3b71  # 3b71
+  message: "PR #2385 (INV-zabud satisfied) added two columns to the fixture, scope_own and scope_ext. No cell of this item's 20 moved. The wider table has 4 more guess cells in languages already listed here: csharp scope_ext (WI-dovoz), groovy scope_ext (WI-tiluh), objc scope_own and scope_ext (WI-mokul). Still 8 languages. ruby amb_param moved no_edge -> unresolved."  # 3b71
