@@ -515,19 +515,41 @@ object Main {{
 
 
 # ---------------------------------------------------------------- c#
-def csharp(R, D, B, S, dl):
+def csharp(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, ext=""):
         return f"    public class {n}{ext}\n    {{\n        public int {m}() {{ return {v}; }}\n    }}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"    public class Child : {B}\n    {{\n    }}\n", cls(S, "ping", 2))
-    main = f"""using ExtLib;
+    child = f"    public class Child : {B}\n    {{\n    }}\n"
+    spare = ("    public class Spare\n    {\n        public int execute() { return 2; }\n\n"
+             "        public int ping() { return 2; }\n    }\n")
+    dec = ("ZDecoy" if dl else "ADecoy")
+    files = {"UtilNs/Util.cs": "namespace UtilNs\n{\n    public static class Util\n    {\n        public static int helper() { return 1; }\n    }\n}\n",
+             f"{dec}/Util.cs": f"namespace {dec}\n{{\n    public static class Util\n    {{\n        public static int helper() {{ return 2; }}\n    }}\n}}\n"}
+    if third:
+        files[f"{dec}/SpareUtil.cs"] = (f"namespace {dec}.Spare\n{{\n    public static class Util\n    {{\n"
+                                        "        public static int helper() { return 2; }\n    }\n}\n")
+    if split:
+        # One class per file, all in namespace App, which makes them visible to
+        # Program with no using directive. A namespace is not tied to a folder in
+        # C#, so the decoy classes live in the decoy folder (ADecoy sorts before
+        # App, ZDecoy after UtilNs) and keep namespace App.
+        def unit(text):
+            return f"namespace App\n{{\n{text}}}\n"
+        files |= {"App/Store.cs": unit(cls(R, "execute", 1)), f"{dec}/Store.cs": unit(cls(D, "execute", 2)),
+                  "App/Base.cs": unit(cls(B, "ping", 1)), "App/Child.cs": unit(child),
+                  f"{dec}/Stray.cs": unit(cls(S, "ping", 2))}
+        if third:
+            files[f"{dec}/Spare.cs"] = unit(spare)
+        classes = ""
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes = f"{ex}\n{pg}\n"
+    files["App/Program.cs"] = f"""using ExtLib;
 using UtilNs;
 
 namespace App
 {{
-{ex}
-{pg}
-    public static class Program
+{classes}    public static class Program
     {{
         static {R} get_db()
         {{
@@ -568,13 +590,15 @@ namespace App
         {{
             Util.helper();
         }}
+
+        static void via_qual()
+        {{
+            UtilNs.Util.helper();
+        }}
     }}
 }}
 """
-    dec = ("ZDecoy" if dl else "ADecoy")
-    return {"App/Program.cs": main,
-            "UtilNs/Util.cs": "namespace UtilNs\n{\n    public static class Util\n    {\n        public static int helper() { return 1; }\n    }\n}\n",
-            f"{dec}/Util.cs": f"namespace {dec}\n{{\n    public static class Util\n    {{\n        public static int helper() {{ return 2; }}\n    }}\n}}\n"}
+    return files
 
 
 # ---------------------------------------------------------------- go
