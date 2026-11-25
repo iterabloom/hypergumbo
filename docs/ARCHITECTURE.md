@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **396** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 138 other core modules (11 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **66512** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 15008, of which 8562 are functions, methods or classes
-- **268216** edges, test code included, by type:
-  - calls: 150233
-  - contains: 61922
-  - imports: 23873
-  - instantiates: 13791
-  - references: 13630
-  - module_attr_ref: 2763
-  - other: 2004
+- **398** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 140 other core modules (11 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **66860** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 15063, of which 8582 are functions, methods or classes
+- **269722** edges, test code included, by type:
+  - calls: 150831
+  - contains: 62218
+  - imports: 24153
+  - references: 13922
+  - instantiates: 13804
+  - module_attr_ref: 2784
+  - other: 2010
 
 ## Package Architecture
 
@@ -280,7 +280,7 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 | `node_text` | function | 1517.1 | hypergumbo_core/analyze/base.py |
 | `Span` | class | 1290.3 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
-| `Edge.create` | method | 980.9 | hypergumbo_core/ir.py |
+| `Edge.create` | method | 1011.5 | hypergumbo_core/ir.py |
 | `Edge` | class | 866.4 | hypergumbo_core/ir.py |
 | `iter_tree` | function | 854.3 | hypergumbo_core/analyze/base.py |
 | `AnalysisRun` | class | 833.4 | hypergumbo_core/ir.py |
@@ -498,6 +498,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
 | `check-recorded-producer-input` | CI / on-demand lint: a cross-backend test runs on RECORDED producer input, |
+| `check-resolved-by-sites` | Static check of the resolution mark (audit-findings 0030, WI-hirol). |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-self-claims` | Run hypergumbo against its OWN security claims and fail if the result drifts |
 | `check-self-claims-drift` | Compare a verify-claims JSON run against the checked-in self-claim snapshot. |
@@ -709,6 +710,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.reference_candidates`**: Which declarations a name written in a file can refer to.
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
+- **`hypergumbo_core.resolved_by`**: The declared vocabulary of ``Edge.meta["resolved_by"]``: what scope...
+- **`hypergumbo_core.resolved_by_sites`**: Static check of the resolution mark's two promises (audit-findings ...
 - **`hypergumbo_core.routes`**: Canonical route accessor: decides route-ness and extracts path, met...
 - **`hypergumbo_core.run_status`**: Run status for humans watching a long run: a phase line, a heartbea...
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
@@ -1028,8 +1031,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 106a233784d7
-  commit_count: 9920
+  commit: 165f4fa7546a
+  commit_count: 9969
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
