@@ -35,7 +35,9 @@ because its declarations carry no namespace:
 3. otherwise the declarations of that name in the files the caller's file
    imports wholesale (``use crate::db::*;``); two such files are a tie;
 4. ``ns.Name`` with ``ns`` a namespace binding (``import * as ns``, ``use
-   crate::db;``): the declaration ``Name`` of that file.
+   crate::db;``): the declaration ``Name`` of that file. ``ns`` is everything
+   before the last segment, looked up whole (``crate::db::Conn`` asks for the
+   binding ``crate.db``).
 
 A file that an import names and that does not declare the name is followed
 to the file that does (``declaring_files``: a barrel ``index.ts``, a crate's
@@ -260,8 +262,8 @@ def _by_file(
         ]
 
     name, _ = _written_name(written)
-    head, _, rest = name.partition(".")
-    if not rest:
+    owner, _, head = name.rpartition(".")
+    if not owner:
         own = [c for c in candidates_named(head) if c.path == caller_path]
         if own:
             return own
@@ -272,7 +274,8 @@ def _by_file(
         for module in scope.wildcard_modules:
             supplied += [c for c in declared(module, head) if c not in supplied]
         return supplied
-    module = scope.namespace(head)
-    if module is None or "." in rest:
-        return []
-    return declared(module, rest)
+    # ``owner`` is looked up WHOLE: a namespace binding is keyed by the path
+    # as the file writes it, one segment (``db``) or several (``crate.db``,
+    # which the Rust analyzer records for a path it followed to a file).
+    module = scope.namespace(owner)
+    return declared(module, head) if module is not None else []

@@ -123,10 +123,11 @@ def _holder_to_look_up(edge: Edge, scope: ImportScope) -> tuple[str, str] | None
         return None
     qualifier = meta.get("qualifier")
     if qualifier:
-        head = dotted(str(qualifier)).partition(".")[0]
-        bound_to_the_repository = (
-            scope.module_kind == MODULES_ARE_FILES
-            and (scope.named(head) is not None or scope.namespace(head) is not None)
+        owner = dotted(str(qualifier))
+        head = owner.partition(".")[0]
+        bound_to_the_repository = scope.module_kind == MODULES_ARE_FILES and (
+            scope.named(head) is not None or scope.namespace(head) is not None
+            or scope.namespace(owner) is not None
         )
         return (_ON_A_RECEIVER, callee) if bound_to_the_repository else None
     if meta.get("call_construct") == "method":
