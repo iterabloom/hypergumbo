@@ -1,0 +1,21 @@
+- op: create  # 50f5
+  at: '2026-11-25T14:33:21Z'  # 50f5
+  by: agent  # 50f5
+  actor: jgstern_agent  # 50f5
+  clock: 1  # 50f5
+  nonce: 50f5  # 50f5
+  data:  # 50f5
+    kind: work_item  # 50f5
+    title: "method-call-recovery binds more as analyzers stop guessing: class_hint edges 67 to 80 on five JS/TS trees"  # 50f5
+    status: todo_hard  # 50f5
+    priority: 3  # 50f5
+    parent:  # 50f5
+    tags:  # 50f5
+    - analysis_quality  # 50f5
+    - shared_call_resolution  # 50f5
+    isbefore: []  # 50f5
+    duplicate_of: []  # 50f5
+    not_duplicate_of: []  # 50f5
+    pr_ref:  # 50f5
+    description: "STATEMENT: a stub on any receiver is not bound to a method of a class merely because the caller instantiates that class somewhere. OBSERVED: the linker (priority 35) reads the stubs the adapters now leave; ADR-0064's sample put class_hint at 6 wrong of 15. JS/TS five trees 67 -> 80 (137 before the second round typed more receivers); C# 123 -> 47. Decide with the owner's O1 ruling whether class_hint stays a reason to bind.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # 50f5
+    fields: {}  # 50f5
