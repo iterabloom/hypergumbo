@@ -26,8 +26,10 @@ class (``new net.Socket()`` → ``net.Socket``, which the catalogue keys).
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
 from hypergumbo_core.ir import Edge
 from hypergumbo_lang_mainstream.js_ts import analyze_javascript
@@ -170,10 +172,22 @@ class TestConstructedReceiverCarriesItsModule:
             "  c.send(x);\n"
             "}\n",
         )
+        # ADR-0064: the receiver's type goes to the shared pass, which follows
+        # the destructured require to client.js (same expectation, read from
+        # the pipeline's map; the analyzer alone now emits the typed stub).
         edges = analyze_javascript(root).edges
-        sends = [e for e in edges if e.edge_type == "calls" and "send" in e.dst]
-        assert sends, [e.dst for e in edges]
-        assert all(e.is_resolved for e in sends), [e.dst for e in sends]
+        (stub,) = [e for e in edges if e.edge_type == "calls" and "send" in e.dst]
+        assert stub.meta["receiver_type_hint"] == "Client"
+        out = tmp_path / "map.json"
+        run_behavior_map(repo_root=root, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        nodes = {n["id"]: n for n in data["nodes"]}
+        sends = [
+            (nodes[e["dst"]]["name"], e["meta"]["resolved_by"]) for e in data["edges"]
+            if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+            and nodes[e["dst"]]["name"] == "Client.send"
+        ]
+        assert sends == [("Client.send", "receiver_type")]
 
 
 class TestUntypedReceiverEmitsThePlaceholder:
@@ -212,7 +226,10 @@ class TestUntypedReceiverEmitsThePlaceholder:
             assert (edge.meta or {}).get("receiver_type_hint") is None
 
     def test_this_receiver_keeps_its_site_one_path(self, tmp_path: Path) -> None:
-        """``this.m()`` that does not resolve is Site-1 territory, not a placeholder."""
+        """``this.m()`` that this file's class does not declare is Site-1
+        territory: ADR-0064, its stub names the enclosing class, by name and by
+        id, for the shared pass to walk the ancestors from (it used to emit
+        nothing when the method-name lookup found nothing)."""
         edges = _edges(
             tmp_path / "this",
             "class A {\n"
@@ -221,8 +238,10 @@ class TestUntypedReceiverEmitsThePlaceholder:
             "  }\n"
             "}\n",
         )
-        hits = [e for e in edges if e.edge_type == "calls" and e.dst.endswith(":missing:unresolved")]
-        assert hits == [], [e.dst for e in hits]
+        (hit,) = [e for e in edges if e.edge_type == "calls" and e.dst.endswith(":missing:unresolved")]
+        assert hit.meta["enclosing_class"] == "A"
+        assert hit.meta["enclosing_class_id"].endswith(":A:class")
+        assert hit.meta["call_construct"] == "method"
 
     def test_an_untyped_placeholder_reaches_no_row(self, tmp_path: Path) -> None:
         edges = _edges(

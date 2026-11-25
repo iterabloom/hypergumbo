@@ -41,8 +41,7 @@
       "evidence_type=ast_call_static": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py": {
-      "evidence_type=ast_call_namespace": 1,
-      "evidence_type=ast_method_inferred": 4,
+      "evidence_type=ast_method_inferred": 3,
       "evidence_type=ast_method_this": 1,
       "evidence_type=ast_method_this_property": 1,
       "evidence_type=ast_method_type_inferred": 1

@@ -19,7 +19,10 @@ is that module's, never an in-repo symbol. It gets the unresolved edge the
 module's other unmatched members already get, with the module as its hint, so
 io-boundaries still classifies it. A relative import, a workspace package or
 an undeclared bare specifier (a tsconfig alias looks exactly like one) is not
-shown external and keeps the in-repo resolution: the controls below.
+shown external and keeps the in-repo resolution: the controls below. Since
+ADR-0064 that resolution is the shared pass's, through the file the analyzer's
+table says the binding names (``SpecifierResolver``); a specifier that names no
+file of the repository is not bound by name either.
 """
 
 from __future__ import annotations
@@ -118,29 +121,54 @@ def test_a_call_through_an_external_binding_does_not_reach_the_repo(
 @pytest.mark.parametrize("code,caller,target", [
     ("const b = require('./builder');\n"
      "function rel(x) { const k = new b.Builder(); return k.join(x); }\n",
-     "rel", "Builder.join"),
-    ("import * as alias from '@/builder';\n"
-     "export function aliased(x) { return alias.join(x); }\n",
-     "aliased", "Builder.join"),
+     "rel", ("Builder.join", "src/builder.js", "receiver_type")),
     ("const { lookup } = require('./view');\n"
      "function local(n) { return lookup(n); }\n",
-     "local", "lookup"),
-], ids=["relative-receiver", "undeclared-bare-alias", "relative-destructured"])
+     "local", ("lookup", "src/view.js", "import")),
+], ids=["relative-receiver", "relative-destructured"])
 def test_an_in_tree_binding_still_resolves(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    code: str, caller: str, target: str,
+    code: str, caller: str, target: tuple[str, str, str],
 ) -> None:
-    calls = _calls(tmp_path, monkeypatch, {"src/caller.js": code})
-    assert any(_in_repo(d) and f":{target}:" in d
-               for d in calls.get(caller, set())), calls.get(caller)
+    """ADR-0064: the analyzer hands these calls to the shared pass, which
+    follows the binding to its file; read from the pipeline's map."""
+    from hypergumbo_core.cli import run_behavior_map
+
+    _calls(tmp_path, monkeypatch, {"src/caller.js": code})
+    out = tmp_path.parent / f"{tmp_path.name}.map.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+    nodes = {n["id"]: n for n in data["nodes"]}
+    found = {
+        (nodes[e["dst"]]["name"], nodes[e["dst"]]["path"], e["meta"]["resolved_by"])
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+        and nodes.get(e["src"], {}).get("name") == caller
+        and not e["meta"].get("superseded_by")
+    }
+    assert found == {target}
+
+
+def test_a_member_of_an_unresolvable_module_is_not_bound_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``@/builder`` names no file the resolver finds (no tsconfig declares
+    the alias): ``alias.join`` is the module's ``join``, which is not
+    ``Builder.join`` (a class's method is no module member). It was bound to
+    it by name; ADR-0064: unresolved, the specifier kept as the module."""
+    calls = _calls(tmp_path, monkeypatch, {"src/caller.js": (
+        "import * as alias from '@/builder';\n"
+        "export function aliased(x) { return alias.join(x); }\n"
+    )})
+    assert calls["aliased"] == {"javascript:@/builder:0-0:join:unresolved"}
 
 
 def test_an_untyped_receivers_weak_in_file_pick_is_still_deferred(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fallback the external rule sits in front of is unchanged (INV-fahub):
-    an untyped ``obj.run()`` whose one in-file candidate belongs to ANOTHER
-    class is withheld for the inherited-calls walker, not bound."""
+    """An untyped ``obj.run()`` whose one in-file candidate belongs to ANOTHER
+    class is not bound (ADR-0064: no route looks an untyped receiver's method
+    up by name; it was withheld by the INV-fahub gate)."""
     calls = _calls(tmp_path, monkeypatch, {
         "src/a.js": (
             "class Other { run() { return 1; } }\n"

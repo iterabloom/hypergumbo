@@ -49,7 +49,9 @@ def _mark(edges: list[Edge], caller: str, callee: str) -> str | None:
     return (found[0].meta or {}).get("resolved_by")
 
 
-def test_javascript_untyped_receiver_is_name_and_bare_this_is_own_type(tmp_path: Path) -> None:
+def test_javascript_untyped_receiver_is_unresolved_and_bare_this_is_own_type(tmp_path: Path) -> None:
+    """ADR-0064: the untyped ``other.persist()`` is no longer bound by the
+    method's name (it was ``name``); it stays unresolved."""
     _write(tmp_path, {"store.js": (
         "class Store {\n"
         "  persist() {}\n"
@@ -59,7 +61,8 @@ def test_javascript_untyped_receiver_is_name_and_bare_this_is_own_type(tmp_path:
     )})
     edges = analyze_javascript(tmp_path).edges
     assert _mark(edges, "Store.viaThis", "Store.persist") == "own_type"
-    assert _mark(edges, "Store.viaOther", "Store.persist") == "name"
+    assert [e.is_resolved for e in edges if e.edge_type == "calls" and e.src.endswith(":Store.viaOther:method")] == [
+        False]
 
 
 def test_php_untyped_receiver_is_name_and_this_is_own_type(tmp_path: Path) -> None:

@@ -12,7 +12,9 @@ innermost binding wins: a parameter or local, then the enclosing function's
 declarations, then the file's own module-scope declarations, then an import,
 then a global. The fix walks those scopes from the call site outward and
 resolves a declaration by its POSITION (INV-mozas / INV-midag), so only a name
-no scope in the file binds reaches a repo-wide lookup.
+no scope in the file binds reaches a repo-wide lookup. ADR-0064 then removed
+that lookup: such a name is the shared pass's when an import binds it, and the
+placeholder otherwise.
 
 WI-fahod. A call to a name nothing in the file binds, that is not imported and
 that no in-repo symbol carries, emitted NO EDGE of any type, so the ADR-0017
@@ -195,15 +197,19 @@ class TestOwnFileDeclarationWins:
     def test_caller_without_a_declaration_keeps_the_repo_lookup(
         self, tmp_path: Path,
     ) -> None:
-        """A file that does not declare the name falls through to today's
-        lookup: a non-module browser script shares top-level names."""
+        """A file that does not declare the name used to fall through to the
+        repo-wide lookup (a non-module browser script shares top-level names
+        with the scripts loaded beside it). ADR-0064: which scripts share a
+        page is not in the repository, so a name the file neither declares nor
+        imports is not bound to another file's declaration: the placeholder."""
         _write(tmp_path, {
             "a.js": "function f(x) { return helper(x); }\n",
             "b.js": "function helper(p) { return p; }\n",
         })
         result = analyze_javascript(tmp_path)
-        assert _calls_from(result.edges, result.symbols, "f", "a.js") == [
-            ("b.js", "helper"),
+        assert _calls_from(result.edges, result.symbols, "f", "a.js") == []
+        assert _unresolved_from(result.edges, result.symbols, "f") == [
+            "javascript:external:0-0:helper:unresolved",
         ]
 
     def test_callback_argument_binds_its_own_files_function(
@@ -362,13 +368,22 @@ class TestBindingForms:
     def test_a_non_binding_position_keeps_the_lookup(
         self, tmp_path: Path, a_js: str,
     ) -> None:
-        assert self._bound_to_other(tmp_path, a_js, "f") == [("b.js", "helper")]
+        """Not a local: the call is recorded (ADR-0064: on the placeholder; it
+        was bound to b.js's ``helper`` by the repo-wide lookup)."""
+        assert self._bound_to_other(tmp_path, a_js, "f") == []
+        result = analyze_javascript(tmp_path)
+        assert _unresolved_from(result.edges, result.symbols, "f") == [
+            "javascript:external:0-0:helper:unresolved",
+        ]
 
     def test_an_aliased_import_binds_the_alias_not_the_original(
         self, tmp_path: Path,
     ) -> None:
         """``import { helper as h }`` binds ``h``; a call to ``helper`` in the
-        same file is not that import and falls through to the lookup."""
+        same file is not that import. ADR-0064: ``h()`` goes to the shared
+        pass under the LOCAL name the file's table is keyed by (it was named
+        after the original, ``helper``), and ``helper()``, which nothing in the
+        file binds, is the placeholder (it was bound to b.js by name)."""
         _write(tmp_path, {
             "a.js": (
                 "import { helper as h } from './b';\n"
@@ -377,11 +392,9 @@ class TestBindingForms:
             **self._OTHER,
         })
         result = analyze_javascript(tmp_path)
-        assert _calls_from(result.edges, result.symbols, "f", "a.js") == [
-            ("b.js", "helper"),
+        assert _calls_from(result.edges, result.symbols, "f", "a.js") == []
+        assert sorted(_unresolved_from(result.edges, result.symbols, "f")) == [
+            "javascript:b:0-0:h:unresolved",
+            "javascript:external:0-0:helper:unresolved",
         ]
-        # ``h`` is the import (its own, pre-existing named-import arm), not a
-        # local and not the bare ``helper`` lookup.
-        assert _unresolved_from(result.edges, result.symbols, "f") == [
-            "javascript:b:0-0:helper:unresolved",
-        ]
+        assert result.import_scopes["a.js"].named("h").name == "helper"

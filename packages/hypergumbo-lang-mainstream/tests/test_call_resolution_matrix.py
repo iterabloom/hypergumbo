@@ -92,8 +92,8 @@ MATRIX: dict[str, tuple[str, ...]] = {
                "order:decoy/right", "right", "picked", "unresolved"),
     "java": ("right", "right", "right", "right", "unresolved", "n/a", "order:unresolved/right", "right",
              "unresolved", "order:unresolved/right"),
-    "javascript": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved",
-                   "order:decoy/right", "right", "unresolved", "order:decoy/right"),
+    "javascript": ("unresolved", "unresolved", "right", "right", "unresolved", "unresolved", "right", "right",
+                   "unresolved", "right"),
     "kotlin": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right",
                "unresolved", "unresolved"),
     "lua": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
@@ -114,7 +114,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
               "right"),
     "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right", "right",
               "unresolved", "unresolved"),
-    "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
+    "typescript": ("right", "unresolved", "right", "right", "unresolved", "unresolved", "right", "right",
                    "unresolved", "right"),
 }
 
@@ -129,8 +129,8 @@ MATRIX_SPLIT: dict[str, tuple[str, ...]] = {
                "order:decoy/right", "right", "unresolved", "unresolved"),
     "java": ("right", "right", "right", "right", "unresolved", "n/a", "order:unresolved/right", "right",
              "unresolved", "order:unresolved/right"),
-    "javascript": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved",
-                   "order:decoy/right", "right", "unresolved", "order:decoy/right"),
+    "javascript": ("unresolved", "unresolved", "right", "right", "unresolved", "unresolved", "right", "right",
+                   "unresolved", "right"),
     "kotlin": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right",
                "unresolved", "unresolved"),
     "lua": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
@@ -151,7 +151,7 @@ MATRIX_SPLIT: dict[str, tuple[str, ...]] = {
               "right"),
     "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right", "right",
               "unresolved", "unresolved"),
-    "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
+    "typescript": ("right", "unresolved", "right", "right", "unresolved", "unresolved", "right", "right",
                    "unresolved", "right"),
 }
 
@@ -166,7 +166,8 @@ MARKS: dict[str, tuple[str, ...]] = {
                "receiver_type", "same_file", "-"),
     "java": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "qualified",
              "receiver_type", "-", "qualified"),
-    "javascript": ("-", "-", "receiver_type", "-", "-", "-", "name", "receiver_type", "-", "name"),
+    "javascript": ("-", "-", "receiver_type", "receiver_type", "-", "-", "import", "receiver_type", "-",
+                   "import"),
     "kotlin": ("receiver_type", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-", "-"),
     "lua": ("-", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-", "-"),
     "objc": ("same_file", "same_file", "same_file", "same_file", "same_file", "same_file", "-", "same_file",
@@ -182,8 +183,8 @@ MARKS: dict[str, tuple[str, ...]] = {
               "receiver_type", "-", "qualified"),
     "swift": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "name",
               "receiver_type", "-", "-"),
-    "typescript": ("receiver_type", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-",
-                   "import"),
+    "typescript": ("receiver_type", "-", "receiver_type", "receiver_type", "-", "-", "import", "receiver_type",
+                   "-", "import"),
 }
 
 #: The same for ``MATRIX_SPLIT``.
@@ -195,7 +196,8 @@ MARKS_SPLIT: dict[str, tuple[str, ...]] = {
     "groovy": ("-", "-", "receiver_type", "-", "-", "-", "name", "receiver_type", "-", "-"),
     "java": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "qualified",
              "receiver_type", "-", "qualified"),
-    "javascript": ("-", "-", "receiver_type", "-", "-", "-", "name", "receiver_type", "-", "name"),
+    "javascript": ("-", "-", "receiver_type", "receiver_type", "-", "-", "import", "receiver_type", "-",
+                   "import"),
     "kotlin": ("receiver_type", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-", "-"),
     "lua": ("-", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-", "-"),
     "objc": ("-", "-", "-", "-", "-", "-", "-", "-", "-", "-"),
@@ -210,8 +212,8 @@ MARKS_SPLIT: dict[str, tuple[str, ...]] = {
               "receiver_type", "-", "qualified"),
     "swift": ("receiver_type", "receiver_type", "receiver_type", "receiver_type", "-", "-", "name",
               "receiver_type", "-", "-"),
-    "typescript": ("receiver_type", "-", "receiver_type", "-", "-", "-", "import", "receiver_type", "-",
-                   "import"),
+    "typescript": ("receiver_type", "-", "receiver_type", "receiver_type", "-", "-", "import", "receiver_type",
+                   "-", "import"),
 }
 
 #: (layout, language, shape) -> the cell measured with a THIRD same-named candidate, where it differs from
@@ -247,7 +249,6 @@ GUESSES: dict[tuple[str, str], str] = {
     **{("groovy", shape): "WI-tiluh" for shape in ("var", "inherited", "amb_ext", "amb_param", "import",
        "scope_ext")},
     **{("java", shape): "WI-mugon" for shape in ("import", "qual")},
-    **{("javascript", shape): "WI-lizis" for shape in ("import", "qual")},
     **{("objc", shape): "WI-mokul" for shape in ("var", "chain", "ctor", "inherited", "amb_ext", "amb_param",
        "scope_own", "scope_ext")},
     ("php", "import"): "WI-jafiz",

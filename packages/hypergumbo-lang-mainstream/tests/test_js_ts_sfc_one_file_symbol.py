@@ -161,7 +161,7 @@ def test_edges_without_a_file_symbol_anchor_on_the_minted_file_id(tmp_path: Path
     path = tmp_path / "a.js"
     tree = _get_parser_for_lang(False).parse(source)
     run = AnalysisRun.create(pass_id="test", version="test")
-    edges = _extract_edges(tree, source, path, "javascript", run, {}, {}, {})
+    edges = _extract_edges(tree, source, path, "javascript", run, {}, {})
     imports = [e for e in edges if e.edge_type == "imports"]
     assert len(imports) == 2
     assert {e.src for e in imports} == {make_file_id("javascript", str(path))}
