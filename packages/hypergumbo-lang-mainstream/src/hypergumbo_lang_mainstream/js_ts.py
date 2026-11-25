@@ -324,6 +324,7 @@ from hypergumbo_core.js_package_entry import (
     is_node_core_module, nearest_package_root, package_entry, probe_file,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import (
     ListNameResolver,
     LookupResult,
@@ -334,6 +335,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     emit_module_attribute_refs,
     stamp_io_mode_from_call,
@@ -7512,6 +7514,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
+                                    resolved_by=resolved_by.LEXICAL_SCOPE,
                                 ))
                         break
 
@@ -7583,6 +7586,7 @@ def _extract_edges(
                         pass
                     elif (current_function := (_get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol)):
                         callee = None
+                        _by: str | None = None
                         # ADR-0039 ruling 6: each route below grades its
                         # match, and Edge.create interpolates the grade in
                         # the ast_call_direct band.
@@ -7592,6 +7596,7 @@ def _extract_edges(
                             # site sees. Stronger than every name heuristic
                             # below, including an explicit-import match.
                             callee = _binding[1]
+                            _by = resolved_by.LEXICAL_SCOPE
                         # Otherwise: import-path disambiguation first
                         # (cross-package same-name functions, e.g. two packages
                         # both export ``process()`` but main.js imports from one
@@ -7616,6 +7621,7 @@ def _extract_edges(
                             if callee is not None:
                                 # An explicit-import match is exact too.
                                 resolution_score = _JS_ROUTE_SCORE_EXACT
+                                _by = resolved_by.IMPORT
                         # Try same-package preference (avoids cross-package
                         # false positives for common names like error,
                         # resolve, reject when there's no import).
@@ -7625,6 +7631,9 @@ def _extract_edges(
                             )
                             if callee is not None:
                                 resolution_score = _JS_ROUTE_SCORE_SAME_PACKAGE
+                                # The same npm package is a nearness
+                                # heuristic, not a language scope.
+                                _by = resolved_by.NAME
                         # INV-fahub: a bare ``foo()`` that resolves only via a
                         # weak short-name SUFFIX to a DIFFERENT class's method is
                         # the magnet (dozens of call sites -> one arbitrary
@@ -7662,6 +7671,11 @@ def _extract_edges(
                                             _JS_ROUTE_SCORE_RESOLVER
                                             * lookup_result.confidence
                                         )
+                                        _by = resolved_by_for_bare_call(
+                                            _sym.kind, _sym.name,
+                                            lookup_result.resolved_by,
+                                            _enclosing_type,
+                                        )
                             elif defer_unresolved_tie(lookup_result):
                                 # A tie among methods (WI-jomik: no guess) is
                                 # deferred exactly as a weak pick is.
@@ -7690,6 +7704,7 @@ def _extract_edges(
                             # in-tree package is its entry's default export.
                             callee = default_export_of(_called_module, file_path)
                             resolution_score = _JS_ROUTE_SCORE_EXACT
+                            _by = resolved_by.IMPORT
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -7700,6 +7715,7 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
                                 resolution_score=resolution_score,
+                                resolved_by=_by,
                             )
                             edges.append(edge)
                         elif magnet_deferred:
@@ -7879,6 +7895,7 @@ def _extract_edges(
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_this",
                                     resolution_score=lookup_result.confidence,
+                                    resolved_by=resolved_by.OWN_TYPE,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -7919,6 +7936,7 @@ def _extract_edges(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type="ast_method_this_property",
+                                        resolved_by=resolved_by.RECEIVER_TYPE,
                                     )
                                     edges.append(edge)
                                     edge_added = True
@@ -7951,6 +7969,7 @@ def _extract_edges(
                                 and (import_path.startswith(".") or obj_name in module_objects)
                                 else None
                             )
+                            _by = resolved_by.IMPORT
                             lookup_result = (
                                 LookupResult(symbol=None) if _ns_external
                                 else resolver.lookup(
@@ -7963,6 +7982,9 @@ def _extract_edges(
                                 # the target lives in a different npm package.
                                 if not _is_cross_package(file_path, lookup_result.symbol.path):
                                     ns_target = lookup_result.symbol
+                                    # The import path is the hint; a lone
+                                    # candidate outside it is a name match.
+                                    _by = lookup_result.resolved_by
                             if ns_target is not None:
                                 # The in-tree candidate is an exact package
                                 # match; the resolver's grade is for its own.
@@ -7990,6 +8012,7 @@ def _extract_edges(
                                         None if is_class
                                         else 0.90 * ns_conf
                                     ),
+                                    resolved_by=_by,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -8066,6 +8089,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
+                                    resolved_by=resolved_by.RECEIVER_TYPE,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -8237,6 +8261,11 @@ def _extract_edges(
                                             origin_run_id=run.execution_id,
                                             evidence_type="ast_method_inferred",
                                             resolution_score=lookup_result.confidence,
+                                            resolved_by=resolved_by_for_bare_call(
+                                                _sym.kind, _sym.name,
+                                                lookup_result.resolved_by,
+                                                _enclosing_type,
+                                            ),
                                         )
                                         edges.append(edge)
                                         edge_added = True
@@ -8415,6 +8444,7 @@ def _extract_edges(
             current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol
             class_name = None
             target_sym = None
+            _by = None
             lookup_confidence = 1.0  # Default for exact match
             ns_import_path: str | None = None  # Path hint for namespace imports
 
@@ -8459,12 +8489,14 @@ def _extract_edges(
                     {imported_name: [s for s in symbols_by_name.get(imported_name, ())
                                      if s.kind == "class"]},
                 )
+                _by = resolved_by.IMPORT
             # Otherwise resolve via class_resolver, using the import path as a hint
             if class_name and target_sym is None:
                 lookup_result = class_resolver.lookup(class_name, path_hint=ns_import_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target_sym = lookup_result.symbol
                     lookup_confidence = lookup_result.confidence
+                    _by = lookup_result.resolved_by
 
             # Emit instantiates edge
             if current_function and target_sym:
@@ -8477,6 +8509,7 @@ def _extract_edges(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_new",
                     resolution_score=lookup_confidence,
+                    resolved_by=_by,
                 )
                 edges.append(edge)
 
