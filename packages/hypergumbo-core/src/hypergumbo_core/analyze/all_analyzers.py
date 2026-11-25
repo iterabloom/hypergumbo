@@ -35,7 +35,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..discovery import (
     DEFAULT_EXCLUDES,
@@ -66,6 +66,9 @@ from .base import (
 )
 from .edge_target import stamp_non_id_edge_endpoints
 from .file_records import repoint_file_references
+if TYPE_CHECKING:
+    from ..import_scope import ImportScope
+
 from .registry import (
     RegisteredAnalyzer,
     clear_registry,
@@ -121,6 +124,29 @@ def stamp_analyzer_config_fingerprint(result: Any, analyzer: Any) -> None:
         "backend": analyzer.backend,
         "languages": list(analyzer.languages),
     })
+
+
+def collect_import_scopes(
+    result: Any, into: dict[str, "ImportScope"], repo_root: Path,
+) -> None:
+    """Gather one analyzer's per-file import tables under repo-relative paths.
+
+    The tables are what a linker knows about a file beyond its symbols and
+    edges (ADR-0064, piece b); ``AnalysisResult.import_scopes`` says what they
+    hold. Keys are normalised the way symbol paths are below (an analyzer may
+    report an absolute path), so a linker finds a file's table under the path
+    its symbols carry. The first table for a path is kept: two producers of
+    one file do not overwrite each other by arrival order. A skipped result
+    hands over nothing.
+    """
+    if getattr(result, "skipped", False):
+        return
+    root_prefix = normalize_path(str(repo_root)).rstrip("/") + "/"
+    for path, scope in getattr(result, "import_scopes", {}).items():
+        normed = normalize_path(path)
+        if normed.startswith(root_prefix):
+            normed = normed[len(root_prefix):]
+        into.setdefault(normed, scope)
 
 
 def collect_analyzer_result(
@@ -409,6 +435,7 @@ def run_all_analyzers(
     repo_root: Path,
     max_files: int | None = None,
     profile: dict | None = None,
+    import_scopes: dict[str, "ImportScope"] | None = None,
 ) -> tuple[
     list[dict],  # analysis_runs
     list[Symbol],  # all_symbols
@@ -434,6 +461,10 @@ def run_all_analyzers(
             ``profile.languages``; otherwise it's recorded in
             ``limits.skipped_passes`` with reason ``"no files matched"`` and
             not invoked.
+        import_scopes: Optional dict the caller owns; filled with every
+            analyzer's per-file import tables (``collect_import_scopes``) for
+            the caller to hand to the linkers. An out-parameter, so the
+            returned tuple keeps its shape.
 
     Returns:
         Tuple of (analysis_runs, all_symbols, all_edges, all_usage_contexts,
@@ -514,6 +545,9 @@ def run_all_analyzers(
                 result, analysis_runs, all_symbols, all_edges, all_usage_contexts,
                 limits, analyzer_name=analyzer.name, cost=cost,
             )
+
+            if import_scopes is not None:
+                collect_import_scopes(result, import_scopes, repo_root)
 
             # Capture symbols for linkers (e.g., JNI needs c_symbols and java_symbols)
             if analyzer.capture_symbols_as and not result.skipped:

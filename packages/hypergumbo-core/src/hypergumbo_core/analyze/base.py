@@ -255,6 +255,8 @@ def _check_memory_pressure() -> None:
 if TYPE_CHECKING:
     import tree_sitter
 
+    from ..import_scope import ImportScope
+
 
 @dataclass
 class AnalysisResult:
@@ -294,6 +296,15 @@ class AnalysisResult:
     Cargo.toml) can populate this field. Manifests are merged after all
     analyzers run and passed to ``create_boundary_nodes`` for tier
     classification of external references.
+    """
+    import_scopes: dict[str, "ImportScope"] = field(default_factory=dict)
+    """What each file's imports bind, by the file's path (ADR-0064, piece b).
+
+    The table an analyzer hands to the shared call-resolution pass: local name
+    to the module and name it stands for. It is the only per-file data that
+    outlives the analyzer; everything else a linker knows comes from symbols
+    and edges. ``collect_import_scopes`` gathers the tables of every analyzer
+    and ``LinkerContext.import_scopes`` is where a linker reads them.
     """
 
 
