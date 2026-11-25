@@ -156,6 +156,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -456,6 +457,12 @@ _CSHARP_MEMBER_BODY_NODES: frozenset[str] = frozenset({
     "method_declaration", "constructor_declaration", "property_declaration",
     *_CSHARP_BODY_MEMBER_DECLS,
 })
+
+#: What a local variable or a parameter is scoped to (INV-zabud): a member, or
+#: a local function or lambda inside one.
+_CSHARP_VARIABLE_SCOPE_NODES: frozenset[str] = _CSHARP_MEMBER_BODY_NODES | {
+    "local_function_statement", "lambda_expression", "anonymous_method_expression",
+}
 
 
 def _csharp_body_member(
@@ -1882,8 +1889,10 @@ def _extract_edges_from_file(
     file_id = make_file_id("csharp", str(file_path))
     file_anchor = file_anchor_symbol("csharp", str(file_path), PASS_ID, run.execution_id)
     current_function: Optional[Symbol]
-    # Track variable types for type inference: var_name -> class_name
-    var_types: dict[str, str] = {}
+    # Variable types for type inference: var_name -> class_name. A local or a
+    # parameter closes with the member, local function or lambda that binds it
+    # (``ScopedVarTypes``, INV-zabud); a field is bound for the file.
+    var_types = ScopedVarTypes()
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the method name being called from an invocation expression."""
@@ -1901,6 +1910,9 @@ def _extract_edges_from_file(
         return None  # pragma: no cover - defensive
 
     for node in iter_tree(tree.root_node):
+        var_types.close_scopes_before(node)
+        if node.type in _CSHARP_VARIABLE_SCOPE_NODES:
+            var_types.open_scope(node)
         # Using directive
         if node.type == "using_directive":
             # Get the namespace being imported
@@ -1923,7 +1935,7 @@ def _extract_edges_from_file(
         # (a method's, a constructor's, an operator's or an indexer's)
         elif node.type in _CSHARP_MEMBER_BODY_NODES:
             param_types = _extract_param_types(node, source)
-            # Add parameter types to var_types for method call resolution
+            # Parameter types, for method call resolution inside the member.
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
 
