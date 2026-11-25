@@ -322,17 +322,21 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=667,
-        anchor="_extract_csharp_return_type_name(resolved_sym.signature)",
+        line=652,
+        anchor="_extract_csharp_return_type_name(method.signature)",
         fact="return_type",
-        note="Resolves a class from the parsed return type.",
+        note=(
+            "Resolves a class from the parsed return type. One function, "
+            "_declared_return_type, read by the var tracker and by the "
+            "receiver of a chained call."
+        ),
     ),
     LegacyValueParser(
         path=(
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=2551,
+        line=2564,
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
