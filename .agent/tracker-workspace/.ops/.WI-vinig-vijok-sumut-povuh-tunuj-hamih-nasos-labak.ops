@@ -1,0 +1,21 @@
+- op: create  # bd43
+  at: '2026-11-25T14:30:44Z'  # bd43
+  by: agent  # bd43
+  actor: jgstern_agent  # bd43
+  clock: 1  # bd43
+  nonce: bd43  # bd43
+  data:  # bd43
+    kind: work_item  # bd43
+    title: "C#: a qualifier that is a member named like its type (ResultPredicates.Add) is read as a type"  # bd43
+    status: todo_hard  # bd43
+    priority: 3  # bd43
+    parent:  # bd43
+    tags:  # bd43
+    - analysis_quality  # bd43
+    - shared_call_resolution  # bd43
+    isbefore: []  # bd43
+    duplicate_of: []  # bd43
+    not_duplicate_of: []  # bd43
+    pr_ref:  # bd43
+    description: "STATEMENT: Owner.M() where Owner is a property or field of the enclosing type (or an ancestor) whose type has the same name binds through the member's type. OBSERVED: 3 right edges lost on Polly since type arity (the arity-0 name means no type); one more is right by coincidence. NEEDS: the stub carrying both qualifier and enclosing_class, and Site 3's field-type walk tried before the type lookup.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # bd43
+    fields: {}  # bd43
