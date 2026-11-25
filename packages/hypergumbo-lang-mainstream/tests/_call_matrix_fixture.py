@@ -1234,8 +1234,8 @@ def lua(R, D, B, S, dl, split=False, third=False):
         files[f"{side}_spare_util.lua"] = mod.format(v=2)
     if split:
         # One class per module, each returning its class table; main
-        # ``require``s the right classes only. Decoy files carry the ``z_`` /
-        # ``a_`` prefix.
+        # ``require``s R, D (``scope_decoy_local`` names it) and Child, never S
+        # or Spare. Decoy files carry the ``z_`` / ``a_`` prefix.
         def module(text, n):
             return f"{text}\nreturn {n}\n"
         files |= {"store.lua": module(cls(R, "execute", 1), R), f"{side}_store.lua": module(cls(D, "execute", 2), D),
@@ -1244,7 +1244,8 @@ def lua(R, D, B, S, dl, split=False, third=False):
                   f"{side}_stray.lua": module(cls(S, "ping", 2), S)}
         if third:
             files[f"{side}_spare.lua"] = module(spare, "Spare")
-        classes = f'local {R} = require("store")\nlocal Child = require("child")\n'
+        classes = (f'local {R} = require("store")\nlocal {D} = require("{side}_store")\n'
+                   'local Child = require("child")\n')
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
         pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
