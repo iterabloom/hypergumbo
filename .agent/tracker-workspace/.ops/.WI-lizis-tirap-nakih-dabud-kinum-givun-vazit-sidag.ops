@@ -28,3 +28,10 @@
   clock: 2  # e638
   nonce: e638  # e638
   message: "Fixture, PR #2394: a new cell of this item. import * as util from './util.js' then util.helper() (column qual) binds the decoy file's helper by name at 0.9 when the decoy sorts last, in both layouts. TypeScript, whose import has no extension, is right with mark import. GUESSES maps (javascript, qual) to this item; if the cause turns out not to be the .js extension, it needs its own."  # e638
+- op: discuss  # 6e5f
+  at: '2026-11-25T09:34:21Z'  # 6e5f
+  by: agent  # 6e5f
+  actor: jgstern_agent  # 6e5f
+  clock: 3  # 6e5f
+  nonce: 6e5f  # 6e5f
+  message: "Sample 2026-11-25 (424 resolved call edges of the 51-tree baseline, drawn at random per mark, judged blind from source by eight judges; ~/hypergumbo_lab_notebook/sample_11252026/results.md): the TypeScript analogue: hocuspocus tests import { sleep } from \"../utils/index.ts\" (with the extension) and sleep(...) binds a file-local sleep of another test file, in two of two sampled calls (mark name). Filed with the TypeScript same-file item of the same day."  # 6e5f

@@ -1,0 +1,23 @@
+- op: create  # 071b
+  at: '2026-11-25T09:41:08Z'  # 071b
+  by: agent  # 071b
+  actor: jgstern_agent  # 071b
+  clock: 1  # 071b
+  nonce: 071b  # 071b
+  data:  # 071b
+    kind: work_item  # 071b
+    title: "ADR-0064 asks three decisions: what a name-only bind becomes, resolved_by as a field, folding the receiver-flavoured evidence types"  # 071b
+    status: needs_human_review  # 071b
+    priority: 1  # 071b
+    parent:  # 071b
+    tags:  # 071b
+    - call_graph  # 071b
+    - analysis_quality  # 071b
+    - call_matrix  # 071b
+    - adr  # 071b
+    isbefore: []  # 071b
+    duplicate_of: []  # 071b
+    not_duplicate_of: []  # 071b
+    pr_ref:  # 071b
+    description: "THREE DECISIONS ADR-0064 ASKS OF THE OWNER (docs/adr/0064-shared-call-resolution.md, section \"Open for the owner\"; merged as Proposed in PR #2398)\n\nThe owner's ruling 4 of 2026-11-24 was: \"A name-only match keeps its number for now; first MARK how every edge was resolved, count, sample, then decide.\" The mark (PR #2389, #2393), the count (51 repositories) and the sample (424 edges judged blind from source) are done. This item is the \"then decide\".\n\nEVIDENCE (the ADR's Context has the tables)\n- Census: 250,319 resolved calls; 73,243 (29%) found by a name looked up among every declaration of the repository.\n- Sample, wrong of judged: name with more than one holder 57 of 120; name with one holder 10 of 96 (9 of the 10 are calls that leave the repository); receiver's type known but another type shares its name 17 of 36; same-file table 14 of 41; own type, import, lexical scope, own package: 0 of 59.\n- Limits: 1 to 15 edges per (language, mark) cell; one judge per language; eight languages.\n\nDECISION 1: what a name-only bind becomes.\n  (a) several holders of the name: unresolved, candidates kept; one holder: stays bound, marked name. RECOMMENDED.\n  (b) as (a), and a single-holder bind is also refused when the call's own text points outside the repository (needs the import table, so it arrives with each language's batch).\n  (c) keep binding, lower the confidence.\n  And: apply (a) in one PR across all analyzers (about 20,000 edges move at once in the eight sampled languages, before any language has the shared pass to win the right ones back), or per language in its batch. RECOMMENDED: per batch.\n\nDECISION 2: resolved_by as a field of Edge, or the meta key it is today. ADR-0024's fold-residue rule 3 argues for a field (about 90 producer modules write it); call_construct (25 modules) was left in meta. No producer changes either way; the schema gains a field (a patch under the 0.x rule). RECOMMENDED: a field, in the pilot PR, when the first reader (the magnet detector, WI-topit) depends on it.\n\nDECISION 3: fold the fifteen receiver-flavoured evidence_type values into ast_call plus the mark (ADR-0028's direction; per-value table in docs/audits/0030). It moves published confidences, because the band comes from the evidence type. RECOMMENDED: per language in its batch, with the band chosen so that a receiver_type or own_type bind does not lose confidence and a name bind does not gain any.\n\nALSO FOR ACCEPTANCE: the ADR as a whole is Proposed. Its rulings 1 to 8 are the owner's own, quoted; the four pieces and the rollout section restate the agreed design.\n\nWHAT PROCEEDS WITHOUT THESE: step 4 (the pilot: Rust, C#, JavaScript/TypeScript on one branch) was agreed on 2026-11-24 and is built under ruling 3 (refuse ties). Decision 1 fixes what the pass publishes for a name-only bind; decision 2 and 3 are needed before the pilot PR merges, not before it starts."  # 071b
+    fields: {}  # 071b

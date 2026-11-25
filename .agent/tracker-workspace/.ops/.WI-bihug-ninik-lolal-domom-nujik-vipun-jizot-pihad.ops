@@ -35,3 +35,10 @@
   clock: 3  # 6e10
   nonce: '6e10'  # 6e10
   message: "Fixture, PR #2394: a new cell of this item, and Rust's only guess in the table. util::helper() (column qual) is order:decoy/right, mark name, in both layouts: the path's module is not used, the short name is. GUESSES maps (rust, qual) to this item."  # 6e10
+- op: discuss  # 52fc
+  at: '2026-11-25T09:34:21Z'  # 52fc
+  by: agent  # 52fc
+  actor: jgstern_agent  # 52fc
+  clock: 4  # 52fc
+  nonce: 52fc  # 52fc
+  message: "Sample 2026-11-25 (424 resolved call edges of the 51-tree baseline, drawn at random per mark, judged blind from source by eight judges; ~/hypergumbo_lab_notebook/sample_11252026/results.md): one more instance of this item's title case: diesel_cli/src/print_schema.rs:597 String::new() bound to PadAdapter::new of the same file (mark same_file, confidence 0.85). Also Some(..) bound to a private enum variant OptionalAggregator::Some, twice."  # 52fc

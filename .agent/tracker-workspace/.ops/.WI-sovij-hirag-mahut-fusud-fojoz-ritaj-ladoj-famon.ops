@@ -21,3 +21,10 @@
     pr_ref:  # e369
     description: "WHAT\nRust: a method call on an untyped closure parameter is bound by the short-name fallback to a method the receiver does not have. reqwest src/blocking/request.rs line 648, in RequestBuilder::try_clone: self.request.as_ref().ok().and_then(|req| req.try_clone()). req is a &Request; the edge goes to Kind::try_clone.\n\nHISTORY\nBefore INV-zabud the edge went to Request::try_clone, right, because another function of the file declared req: Request. With variable types scoped to their function nothing types req and Strategy 2 (the same-file short-name table, rust.py) answers. INV-hupis's guard refuses that table when the file's same-named methods have more than one owner; why it did not refuse here is NOT traced.\n\nREPRO\n~/hypergumbo_lab_notebook/var_scope_11242026/sample_rust_repointed.txt entry 2; maps base/rust_reqwest_src.json and final/rust_reqwest_src.json."  # e369
     fields: {}  # e369
+- op: discuss  # 3981
+  at: '2026-11-25T09:34:21Z'  # 3981
+  by: agent  # 3981
+  actor: jgstern_agent  # 3981
+  clock: 2  # 3981
+  nonce: '3981'  # 3981
+  message: "Sample 2026-11-25 (424 resolved call edges of the 51-tree baseline, drawn at random per mark, judged blind from source by eight judges; ~/hypergumbo_lab_notebook/sample_11252026/results.md): Rust same_file: 7 wrong of 8. req.headers() on the Request returned by RequestBuilder::build bound to RequestBuilder::headers of the same file (three times); empty_body.size_hint() on a Body bound to IntoBytesBody::size_hint; a chain ending .positional_order_by(2) bound to the #[test] fn of that name in the file. The receiver is the result of a call or a chain, so it is untyped for the analyzer, and the file's short-name table answers. Also Rust receiver_type with a shared owner name: 6 wrong of 6 (five are x.as_expression() on a generic T bound to a blanket impl of a trait that is not in scope)."  # 3981

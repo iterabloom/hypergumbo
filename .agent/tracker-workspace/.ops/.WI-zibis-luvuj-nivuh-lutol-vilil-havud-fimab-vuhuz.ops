@@ -20,3 +20,10 @@
     pr_ref:  # 641c
     description: "STATEMENT\nA C call to a function the caller's own file defines `static` binds that function, never a same-named function of another file.\n\nOBSERVED (2026-11-25, mark PR head)\nc.py builds `NameResolver(global_symbols)` (c.py:1472, also 900) over a table that holds one function per name for the run. a.c `static void init(){}` plus b.c `static void init(){}`: `call_static` in a.c binds b.c's init (resolved_by name). `static` gives the function internal linkage: the other file's function is not callable from a.c at all.\nOn tmux (curriculum_repos/tmux): 7 function names are defined in two or more files; 12 resolved calls go to them; 4 of the 12 land in another file although the caller's own file defines the name.\n\nANALOGUE: the cpp item for the same rule (an unqualified call binds a static function of another .cpp file). c is not a column of the call-resolution matrix's guess list today.\n\nNOT CHECKED: other C repositories; calls to non-static functions with two external definitions (link-time ambiguity, a different question).\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/mainA/RESULTS.md, guess-prone 1."  # 641c
     fields: {}  # 641c
+- op: discuss  # 910f
+  at: '2026-11-25T09:34:20Z'  # 910f
+  by: agent  # 910f
+  actor: jgstern_agent  # 910f
+  clock: 2  # 910f
+  nonce: 910f  # 910f
+  message: "Sample 2026-11-25 (424 resolved call edges of the 51-tree baseline, drawn at random per mark, judged blind from source by eight judges; ~/hypergumbo_lab_notebook/sample_11252026/results.md): C name with several candidates: 12 wrong of 15, all on zstd, all confidence 0.85. Five are a call to a static function of the caller's OWN file bound to another file's (FSE_isError, compress, fclose_orDie, fopen_orDie, FUZ_rand); six are bound to stand-in definitions in build/single_file_libs/examples/roundtrip.c that sit inside #ifndef ZSTD_VERSION_MAJOR (dead code even there). C name with one candidate: 0 wrong of 12."  # 910f
