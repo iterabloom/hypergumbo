@@ -1223,15 +1223,34 @@ def lua(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v):
         return (f"local {n} = {{}}\n{n}.__index = {n}\n\nfunction {n}.new()\n  return setmetatable({{}}, {n})\nend\n\n"
                 f"function {n}:{m}()\n  return {v}\nend\n")
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
     child = (f"\nlocal Child = setmetatable({{}}, {{ __index = {B} }})\nChild.__index = Child\n\n"
              "function Child.new()\n  return setmetatable({}, Child)\nend\n")
-    pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
-    main = f"""local extlib = require("extlib")
+    spare = cls("Spare", "execute", 2) + "\nfunction Spare:ping()\n  return 2\nend\n"
+    side = "z" if dl else "a"
+    mod = "local M = {{}}\n\nfunction M.helper()\n  return {v}\nend\n\nreturn M\n"
+    files = {"util.lua": mod.format(v=1), f"{side}_decoy.lua": mod.format(v=2)}
+    if third:
+        files[f"{side}_spare_util.lua"] = mod.format(v=2)
+    if split:
+        # One class per module, each returning its class table; main
+        # ``require``s the right classes only. Decoy files carry the ``z_`` /
+        # ``a_`` prefix.
+        def module(text, n):
+            return f"{text}\nreturn {n}\n"
+        files |= {"store.lua": module(cls(R, "execute", 1), R), f"{side}_store.lua": module(cls(D, "execute", 2), D),
+                  "base.lua": module(cls(B, "ping", 1), B),
+                  "child.lua": module(f'local {B} = require("base")\n' + child, "Child"),
+                  f"{side}_stray.lua": module(cls(S, "ping", 2), S)}
+        if third:
+            files[f"{side}_spare.lua"] = module(spare, "Spare")
+        classes = f'local {R} = require("store")\nlocal Child = require("child")\n'
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["main.lua"] = f"""local extlib = require("extlib")
 local util = require("util")
-
-{ex}
-{pg}
+{classes}
 local function get_db()
   return {R}.new()
 end
@@ -1272,9 +1291,9 @@ end
 return {{ via_var = via_var, via_chain = via_chain, via_ctor = via_ctor, via_inherited = via_inherited,
          via_amb_ext = via_amb_ext, via_amb_param = via_amb_param, via_import = via_import }}
 """
-    dec = ("z" if dl else "a") + "_decoy.lua"
-    mod = "local M = {{}}\n\nfunction M.helper()\n  return {v}\nend\n\nreturn M\n"
-    return {"main.lua": main, "util.lua": mod.format(v=1), dec: mod.format(v=2)}
+    # No ``via_qual``: a Lua module is a table, so ``via_import`` already
+    # reaches ``helper`` through its qualifier (``util.helper()``).
+    return files
 
 
 # ---------------------------------------------------------------- perl
