@@ -58,7 +58,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from collections.abc import Callable, Iterator, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Collection
 
 from ..edge_types import (
     DISPATCH_ROLE_CONCRETE,
@@ -537,8 +537,13 @@ def build_method_index(
     all_symbols: list[Symbol],
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
+    kinds: Collection[str] = ("method",),
 ) -> _TypeHierarchyIndex:
     """Build a short-method-name -> [(class_id, Symbol)] index over methods.
+
+    ``kinds``: the member kinds to index. Methods by default; the
+    inherited-calls linker builds a second index over fields and properties
+    with the same owner resolution, for a member that is invoked.
 
     Extracted from ``_TypeHierarchyIndex.build`` so the upcoming
     ``inherited_calls`` linker (priority=18, runs before
@@ -555,7 +560,7 @@ def build_method_index(
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in all_symbols}
     methods_by_short_name: dict[str, list[tuple[str, Symbol]]] = {}
     for sym in all_symbols:
-        if sym.kind != "method":
+        if sym.kind not in kinds:
             continue
         short_method_name = _get_method_short_name(sym.name)
         class_id = _resolve_method_class_id(

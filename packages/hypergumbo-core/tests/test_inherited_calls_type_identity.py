@@ -339,3 +339,45 @@ def test_a_call_on_the_parent_reaches_a_grandparent_and_stops_where_none_has_it(
     alone = _type_with_method("App", "Solo", "Run", "Solo.cs")
     lone = _stub(alone[1], "Run", enclosing_class="Solo", super_receiver=True)
     assert _link_all(alone, [lone]) == []
+
+
+# --- a member that is not a method can be what a call invokes --------------------
+
+
+def _type_with_member(kind: str, member: str) -> list[Symbol]:
+    return [
+        _sym("class", "Clock", "App.Util.Clock", "util/Clock.cs", (1, 9)),
+        _sym(kind, f"Clock.{member}", f"App.Util.Clock.{member}", "util/Clock.cs", (3, 3)),
+    ]
+
+
+def test_an_invoked_field_or_property_of_the_type_is_the_callee() -> None:
+    """``public static Func<TimeSpan, Task> Sleep = Task.Delay;`` then
+    ``Clock.Sleep(t)``: the call invokes what the member holds, and the member
+    is all the source names. Once the type is settled and no method of that
+    name is on it, the member is bound."""
+    caller = _caller()
+    for kind in ("field", "property"):
+        holder = _type_with_member(kind, "Sleep")
+        named = _stub(caller, "Sleep", qualifier="Clock")
+        (edge,) = _link([*holder, caller], named, _scope("App.Util"))
+        assert (edge.dst, edge.edge_type, edge.meta["resolved_by"]) == (holder[1].id, "calls", "qualified")
+        typed = _stub(caller, "Sleep", receiver_type_hint="Clock")
+        (edge,) = _link([*holder, caller], typed, _scope("App.Util"))
+        assert (edge.dst, edge.meta["resolved_by"]) == (holder[1].id, "receiver_type")
+
+
+def test_a_method_of_that_name_is_preferred_to_a_member() -> None:
+    holder = _type_with_member("field", "Sleep")
+    method = _sym("method", "Clock.Sleep", "App.Util.Clock.Sleep", "util/Clock.cs", (5, 7))
+    caller = _caller()
+    (edge,) = _link([*holder, method, caller], _stub(caller, "Sleep", qualifier="Clock"), _scope("App.Util"))
+    assert edge.dst == method.id
+
+
+def test_a_member_is_bound_only_where_the_type_is_settled() -> None:
+    """With no table the type is found by name alone, and a name-found type's
+    field is not a reason to bind a call: unchanged, nothing bound."""
+    holder = _type_with_member("field", "Sleep")
+    caller = _caller()
+    assert _link([*holder, caller], _stub(caller, "Sleep", receiver_type_hint="Clock"), None) == []
