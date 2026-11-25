@@ -25,6 +25,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Breaking and contract changes
 
 - **Behavior map `SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
+- **Behavior map `SCHEMA_VERSION` 0.22.0 → 0.22.2** (additions): `resolved_by` on resolved calls; call facts `qualifier`, `super_receiver`, `stdlib_member_name` on unresolved calls; `type_arity` on type nodes.
+- **Resolved call edges change in C#, JavaScript/TypeScript and Rust**: fewer binds by name alone, more through types and imports (ADR-0064).
+- **Two workspace packages declaring one name resolve to neither** (the first in path order was kept).
 - **`stable_id_scheme` v15 → v20** (`hgstableid20:`): many digests change, most in C++, Swift, Rust, Scala, Kotlin, C and JS/TS (spec: "`stable_id_scheme` version history").
 - **`verify-claims --json` 3.1 → 3.2** adds `withheld_flows`.
 - **`validation_report` 0.5 → 0.6** adds `name_slot_stats.column_suffixed`, the count of node ids carrying `@<column>`.
@@ -145,6 +148,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Rust method calls no longer bind by declaration order.**
 - **Variable types no longer cross functions in ten languages.**
 - **Resolved calls say what scoped their target: `resolved_by`.**
+- **C#, JavaScript/TypeScript and Rust calls are resolved by shared passes** (ADR-0064): analyzers report facts, linkers decide.
+- **A type name means the declaration the file's imports reach**, not any namesake (C#, JS/TS, Rust).
+- **An imported function is bound through its import**, barrel files and `pub use` followed.
+- **A name several declarations hold no longer binds a call** in those three languages.
+- **A name one declaration holds binds only as a last resort** (JS/TS, Rust), marked `resolved_by: name`.
+- **C# tells `Policy` from `Policy<T>`**, reads project-wide usings, types declared locals.
+- **C# delegate fields and extension methods are call targets.**
+- **JS/TS reads CommonJS classes and class-expression `this`.**
+- **Every Cargo target is its own crate** for `crate::` paths.
 - **Namespaced Ruby class methods sit under their own class.**
 - **IPC and WebSocket channels reach their handlers**; a cobra handler's edge starts at its command.
 - **An OpenAPI document alone yields operation nodes**, with `basePath` applied and real line spans.
