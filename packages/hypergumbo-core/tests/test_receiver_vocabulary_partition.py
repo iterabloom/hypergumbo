@@ -37,10 +37,17 @@ def _is_receiver_key(node: ast.AST | None) -> bool:
     return isinstance(node, ast.Constant) and node.value == "receiver"
 
 
-def _string(node: ast.AST | None) -> str | None:
+def _strings(node: ast.AST | None) -> set[str]:
+    """The string literals ``node`` can evaluate to: a literal, or a
+    conditional expression between literals (``"a" if cond else "b"`` writes
+    both; the Rust analyzer writes ``typed_field`` / ``typed_var`` that way,
+    and a walker that read literals only reported ``typed_var`` as written by
+    nobody). Anything else is not a vocabulary value."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    return None
+        return {node.value}
+    if isinstance(node, ast.IfExp):
+        return _strings(node.body) | _strings(node.orelse)
+    return set()
 
 
 def _receiver_values_in(source: str) -> set[str]:
@@ -52,12 +59,12 @@ def _receiver_values_in(source: str) -> set[str]:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Dict):
             for key, value in zip(node.keys, node.values, strict=True):
-                if _is_receiver_key(key) and _string(value) is not None:
-                    found.add(_string(value))
-        elif isinstance(node, ast.Assign) and _string(node.value) is not None:
+                if _is_receiver_key(key):
+                    found |= _strings(value)
+        elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Subscript) and _is_receiver_key(target.slice):
-                    found.add(_string(node.value))
+                    found |= _strings(node.value)
     return found
 
 
@@ -92,8 +99,9 @@ def test_gate_can_fail() -> None:
         "    m = {}\n"
         "    m['receiver'] = 'also_new'\n"
         "    ctx = {'receiver': receiver_name}\n"
+        "    e = Edge.create(meta={'receiver': 'one' if through else 'other'})\n"
     )
-    assert _receiver_values_in(src) == {"brand_new", "also_new"}
+    assert _receiver_values_in(src) == {"brand_new", "also_new", "one", "other"}
 
 
 @pytest.mark.parametrize("src_dir", SRC_DIRS, ids=lambda p: p.parts[-2])
