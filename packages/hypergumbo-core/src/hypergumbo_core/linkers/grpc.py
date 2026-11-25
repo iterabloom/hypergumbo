@@ -67,9 +67,11 @@ When the Go analyzer creates unresolved edges to gRPC registration functions
    practice this is an analyzer symbol from ``ctx.symbols`` (the generated
    ``RegisterXxxServer`` function), because this linker's own symbols are
    named by the bare service name
-3. Creating replacement ``calls`` edges to that symbol. These stay
-   ``is_resolved=False`` — the linker supplies a destination, not a proof
-   that the callee was resolved by name binding.
+3. Creating replacement ``calls`` edges to that symbol. The destination is
+   a node of the repository, so the edge is resolved (ADR-0037:
+   ``is_resolved`` names in-repo-ness; finalize says so whatever a producer
+   passes). That the linker supplies a destination and not a proof is what
+   its mark says: ``resolved_by="name"``.
 
 Also emitted, beyond the numbered flow above:
 
@@ -899,9 +901,10 @@ def link_grpc(
     # the analyzed tree (e.g., workadventure's TS clients call a Go
     # server in a separate repo; without this fallback the entire
     # client side of the graph is disconnected from the proto contract).
-    # Edge shape: canonical ``calls`` + meta[protocol]=grpc + the
-    # ADR-0028 ``is_resolved=False`` flag because the actual receiver
-    # is unknown.
+    # Edge shape: canonical ``calls`` + meta[protocol]=grpc. The proto
+    # service is a node of the repository, so the edge is resolved
+    # (ADR-0037); that the actual receiver is unknown is not something
+    # ``is_resolved`` can say.
     for stub in stubs:
         if id(stub) in stubs_with_servicer:
             continue
@@ -938,10 +941,11 @@ def link_grpc(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
-            is_resolved=False,
             meta=edge_meta,
             # derived-from consumed-none: stub and proto service are both minted from a file scan
             derived_from=[],
+            # The service name the stub and the .proto both declare.
+            resolved_by=resolved_by.KEY_MATCH,
         ))
 
     # Create route symbols for proto RPC definitions.
@@ -1246,8 +1250,10 @@ def _resolve_unresolved_grpc_edges(
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_stub_resolution",
-                is_resolved=False,
                 derived_from=[edge.src, edge.id, *consumed_target],
+                # The unresolved edge's callee name among the linker's
+                # symbols; the package hint only prefers one of them.
+                resolved_by=resolved_by.NAME,
             ))
 
     return resolved_edges

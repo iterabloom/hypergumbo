@@ -32,8 +32,10 @@ edges and the unresolved-edge edges described below.
 After scanning, the linker also checks every existing edge whose destination
 is ``:unresolved`` (no language or edge-type filter is applied) and, when the
 trailing name matches a C/C++ function symbol, emits a ``calls`` edge with
-``evidence_type="luajit_ffi_lookup"`` and ``is_resolved=False`` (for cases
-where an analyzer produced an unresolved edge for an FFI call).
+``evidence_type="luajit_ffi_lookup"`` (for cases where an analyzer produced
+an unresolved edge for an FFI call). Its target is a symbol of the
+repository, so the edge is resolved, and it is marked ``resolved_by="name"``:
+the bind rests on the name alone (WI-patin: it reaches calls of any language).
 
 Why This Design
 ---------------
@@ -296,10 +298,13 @@ def link_lua_ffi(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="luajit_ffi_lookup",
-            is_resolved=False,
             data_direction="src_to_dst",
             meta=edge_meta,
             derived_from=[edge.src, c_sym.id, edge.id],
+            # The unresolved edge's name slot, looked up among every C/C++
+            # function of the repository: nothing scoped it. (No cdef or
+            # load declares this name, unlike phase 1's key_match.)
+            resolved_by=resolved_by.NAME,
         ))
 
     # Phase 2 emits whenever a name resolves, so a silent run is one whose

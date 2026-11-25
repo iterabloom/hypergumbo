@@ -603,8 +603,11 @@ class TestGrpcTypescriptClientToProtoBinding:
     binding edge from the TS client to the proto service Symbol —
     otherwise the cross-language graph drops the entire client side.
 
-    Edit shape: ``edge_type='calls'`` + ``meta['protocol']='grpc'`` +
-    ``Edge.is_resolved=False`` (since no in-tree handler was located).
+    Edit shape: ``edge_type='calls'`` + ``meta['protocol']='grpc'``. The
+    target is the proto service, a node of the repository, so the edge is
+    resolved (ADR-0037: ``is_resolved`` names in-repo-ness, not whether a
+    handler was located) and marked ``key_match``: the service name both
+    sides declare.
     """
 
     def test_ts_client_binds_to_proto_service_when_no_impl(self, tmp_path: Path) -> None:
@@ -633,13 +636,14 @@ class TestGrpcTypescriptClientToProtoBinding:
 
         result = link_grpc(tmp_path)
 
-        # The TS client should be linked to the proto service. ``calls``
-        # + meta['protocol']='grpc' + is_resolved=False (no impl found).
+        # The TS client should be linked to the proto service: ``calls``
+        # + meta['protocol']='grpc', resolved, joined on the service name.
         binding_edges = [
             e for e in result.edges
             if e.edge_type == "calls"
             and (e.meta or {}).get("protocol") == "grpc"
-            and not e.is_resolved
+            and e.is_resolved
+            and (e.meta or {}).get("resolved_by") == "key_match"
         ]
         assert len(binding_edges) >= 1, (
             "Expected at least one TS→proto binding edge; got "
@@ -2326,6 +2330,9 @@ class TestGrpcUnresolvedEdgeResolution:
         assert resolved[0].src == unresolved_edge.src
         assert resolved[0].dst == register_sym.id
         assert resolved[0].edge_type == "calls"
+        # Bound to a symbol of the repository by the callee's name alone.
+        assert resolved[0].is_resolved
+        assert resolved[0].meta["resolved_by"] == "name"
 
     def test_ignores_non_grpc_unresolved_edges(self, tmp_path: Path) -> None:
         """Ignores unresolved edges that don't match gRPC patterns."""

@@ -74,6 +74,24 @@ def test_a_computed_is_resolved_does_not_exempt_a_site() -> None:
     )) == 2
 
 
+def test_an_unresolved_claim_does_not_exempt_a_site_whose_target_is_a_symbol() -> None:
+    """``is_resolved=False`` is the producer's claim, and finalize overrules it
+    when the destination is a node of the repository. A destination written
+    as ``<symbol>.id`` is one: three linker sites said False for such a target
+    and published 565 resolved, unmarked edges on one repository."""
+    assert len(_unmarked(
+        'Edge.create(src="a", dst=c_sym.id, edge_type="calls", line=1, is_resolved=False)\n'
+        'Edge.create(src="a", dst=best.candidate.id, edge_type="calls", line=1,\n'
+        '            is_resolved=False)\n'
+    )) == 2
+    # A placeholder id, in a variable or spelled out, still leaves the repository.
+    assert _unmarked(
+        'Edge.create(src="a", dst=dst_id, edge_type="calls", line=1, is_resolved=False)\n'
+        'Edge.create(src="a", dst=f"x:{m}:0-0:{n}:unresolved", edge_type="calls",\n'
+        '            line=1, is_resolved=False)\n'
+    ) == []
+
+
 # --- the older spellings are counted where they are written --------------------
 
 

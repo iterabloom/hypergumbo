@@ -438,6 +438,11 @@ class TestLuaFFILinkerEdgeCases:
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
         assert result.edges[0].dst == c_sym.id
+        # The target is a symbol of the repository, so the edge is resolved
+        # (finalize would say so whatever this linker claimed) and says how
+        # its target was chosen: by the name alone.
+        assert result.edges[0].is_resolved
+        assert result.edges[0].meta["resolved_by"] == "name"
 
     def test_resolved_edges_ignored(self, tmp_path: Path) -> None:
         """Already-resolved edges should not produce ffi_bridge edges."""
