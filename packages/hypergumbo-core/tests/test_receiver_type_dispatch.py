@@ -254,3 +254,37 @@ class TestGuards:
                             symbols=[ext, caller], edges=[call_a, call_b])
         result = link_receiver_type_dispatch(ctx)
         assert len([e for e in result.edges if e.dst == ext.id]) == 1
+
+
+def test_of_two_overloads_of_an_extension_the_one_that_takes_the_arguments_is_bound() -> None:
+    """Two extensions ``Retry`` on one type were an ambiguity and the call was
+    withheld. With the number of arguments the call writes, the one that can
+    take them is the callee; the receiver parameter of a C# extension is not
+    among the arguments. Without the fact, or when both fit, still withheld."""
+    from hypergumbo_core.overload_arity import parameter_entry
+
+    def extension(sid: str, *names: str) -> Symbol:
+        symbol = _callable(sid, "Retry", receiver_meta_key="extension_receiver",
+                           receiver_type="Policy", kind="method", language="csharp", path="/x.cs")
+        symbol.meta["parameters"] = [parameter_entry("policy", "Policy", receiver=True)] + [
+            parameter_entry(name) for name in names
+        ]
+        return symbol
+
+    one, two = extension("sym:retry1", "count"), extension("sym:retry2", "count", "delay")
+    caller = _caller(language="csharp")
+
+    def targets(argument_count: int | None) -> list[str]:
+        call = make_unresolved_edge(
+            lang="csharp", src_id=caller.id, callee_name="Retry", line=1, pass_id="test-pass",
+            run_id="test-run", receiver_type_hint="Policy", argument_count=argument_count,
+        )
+        ctx = LinkerContext(repo_root=Path("/"), symbols=[one, two, caller], edges=[call])
+        return [e.dst for e in link_receiver_type_dispatch(ctx).edges]
+
+    assert targets(1) == [one.id]
+    assert targets(2) == [two.id]
+    assert targets(None) == []
+    assert targets(5) == []
+    two.meta["parameters"][2]["default"] = True
+    assert targets(1) == []

@@ -1298,7 +1298,10 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Symbols (name + type + default; ``variadic`` when "
                 "true; in the C family ``declarator``, the pointer, "
                 "reference and array marks written on the parameter, "
-                "when it has any). Used by signature-shape matching."),
+                "when it has any; ``receiver`` when true, on the parameter "
+                "a call written on a receiver does not list: a C# "
+                "extension method's ``this`` parameter). Used by "
+                "signature-shape matching and by overload selection."),
     MetaKeySpec("params", AXIS_SYMBOL_META,
                 "Short-form parameter-name list on function / "
                 "method Symbols. Lighter-weight alternative to "
