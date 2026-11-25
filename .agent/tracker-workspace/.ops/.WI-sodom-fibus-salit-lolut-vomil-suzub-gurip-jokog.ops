@@ -1,0 +1,21 @@
+- op: create  # 5bba
+  at: '2026-11-25T19:10:43Z'  # 5bba
+  by: agent  # 5bba
+  actor: jgstern_agent  # 5bba
+  clock: 1  # 5bba
+  nonce: 5bba  # 5bba
+  data:  # 5bba
+    kind: work_item  # 5bba
+    title: "Declared-name rule: inherited member types, member types before imports, Kotlin function beside class, pkg.f()"  # 5bba
+    status: todo_hard  # 5bba
+    priority: 3  # 5bba
+    parent:  # 5bba
+    tags:  # 5bba
+    - analysis_quality  # 5bba
+    - shared_call_resolution  # 5bba
+    isbefore: []  # 5bba
+    duplicate_of: []  # 5bba
+    not_duplicate_of: []  # 5bba
+    pr_ref:  # 5bba
+    description: "STATEMENT: the declared-name rule (type_visibility) finds a type the way the language does in four cases it does not handle. OBSERVED, each from batch 5a: (1) a member type INHERITED from a base class is not searched: HashAlgorithm.getAlgorithmByCode(..) in a subclass of PKWareExtraHeader, whose nested enum it is (commons-compress; 2 of the 4 Java edges a blind judge found right before and lost). (2) A member type of an enclosing type shadows an import of the same name in Java, Kotlin and C#; the rule reads the file's named imports first. No instance was measured. (3) Kotlin: a function and a class of one name in one scope (fun Analyzer(..) beside class Analyzer) are a tie and the call is unresolved; Kotlin chooses by the arguments. 11 lost edges on detekt-core; 2 of 9 Kotlin edges judged right before and lost. (4) Kotlin: pkg.f(), a top-level function called through its package, has no lookup (fixture cell qual stays unresolved). Also by reading only: ImportScope does not tell a class import from a function import of one local name (PHP use A\\Foo; beside use function B\\foo;).\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 5bba
+    fields: {}  # 5bba
