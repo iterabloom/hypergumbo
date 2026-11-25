@@ -1301,19 +1301,44 @@ def perl(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, parent=""):
         return (f"package {n};\n{parent}\nsub new {{\n    my $class = shift;\n    return bless {{}}, $class;\n}}\n\n"
                 f"sub {m} {{\n    return {v};\n}}\n")
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    child = (f"\npackage Child;\nuse parent -norequire, '{B}';\n")
-    pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
-    main = f"""use strict;
-use warnings;
+    spare = cls("Spare", "execute", 2) + "\nsub ping {\n    return 2;\n}\n"
+    side = "Z" if dl else "A"
+    pragmas = "use strict;\nuse warnings;\n"
 
-{ex}
-{pg}
+    def helper_file(package, v, exports=""):
+        return f"package {package};\n{pragmas}{exports}\nsub helper {{\n    return {v};\n}}\n\n1;\n"
+    files = {"Util.pm": helper_file("Util", 1, "use Exporter 'import';\nour @EXPORT_OK = qw(helper);\n"),
+             f"{side}Decoy.pm": helper_file(f"{side}Decoy", 2)}
+    if third:
+        files[f"{side}SpareUtil.pm"] = helper_file(f"{side}SpareUtil", 2)
+    if split:
+        # One package per .pm file. ``use`` ties a file's name to its package
+        # (Conn -> Conn.pm), so, as in Java, a directory carries the arm: the
+        # decoy classes live in ``ZLib/`` / ``ALib/``, a library root main never
+        # puts on @INC, and main ``use``s the right classes only.
+        def module(text):
+            return f"{text}\n1;\n"
+        files |= {f"{R}.pm": module(cls(R, "execute", 1, pragmas)),
+                  f"{side}Lib/{D}.pm": module(cls(D, "execute", 2, pragmas)),
+                  f"{B}.pm": module(cls(B, "ping", 1, pragmas)),
+                  "Child.pm": f"package Child;\n{pragmas}use parent '{B}';\n\n1;\n",
+                  f"{side}Lib/{S}.pm": module(cls(S, "ping", 2, pragmas))}
+        if third:
+            files[f"{side}Lib/Spare.pm"] = module(spare.replace("package Spare;\n", f"package Spare;\n{pragmas}"))
+        classes, uses = "", f"use {R};\nuse Child;\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
+        child = (f"\npackage Child;\nuse parent -norequire, '{B}';\n")
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes, uses = f"\n{ex}\n{pg}", ""
+    files["main.pl"] = f"""use strict;
+use warnings;
+{classes}
 package main;
 
 use ExtLib;
 use Util qw(helper);
-
+{uses}
 sub get_db {{
     return {R}->new();
 }}
@@ -1352,12 +1377,13 @@ sub via_import {{
     helper();
 }}
 
+sub via_qual {{
+    Util::helper();
+}}
+
 1;
 """
-    dec = ("ZDecoy" if dl else "ADecoy")
-    return {"main.pl": main,
-            "Util.pm": "package Util;\nuse strict;\nuse warnings;\nuse Exporter 'import';\nour @EXPORT_OK = qw(helper);\n\nsub helper {\n    return 1;\n}\n\n1;\n",
-            f"{dec}.pm": f"package {dec};\nuse strict;\nuse warnings;\n\nsub helper {{\n    return 2;\n}}\n\n1;\n"}
+    return files
 
 
 LANGS: dict[str, Callable[..., dict[str, str]]] = {
