@@ -40,3 +40,10 @@
   clock: 4  # e0da
   nonce: e0da  # e0da
   message: "WI-kosup sweep (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §3a/§3c): the call_type / method keep is replaced by a DELETE verdict (filed WI-dikum: every writer's value is already on the same edge or its source symbol). This item's other halves get the sweep's table: 33 keys are written on BOTH Symbol.meta and Edge.meta, each registered on one axis only (§3c lists them; most are linkers copying a node's facts onto its edge, plus route_handler.py ~:795 copying route meta)."  # e0da
+- op: discuss  # 5177
+  at: '2026-11-25T07:33:09Z'  # 5177
+  by: agent  # 5177
+  actor: jgstern_agent  # 5177
+  clock: 5  # 5177
+  nonce: '5177'  # 5177
+  message: "Met in PR #2389: the HTTP linker writes http_method on its calls edges, a key registered on symbol_meta only. Moving that meta into Edge.create(meta=...) is refused by the producer-axis ratchet (the key is not on edge_meta), and writing it after creation by subscript is refused by write-discipline rule 2 (construction + mutation, no declared discipline). The site keeps a whole-dict assignment that spreads the edge's own meta first, which is how it stays under the lax 'registered on some axis' rule."  # 5177

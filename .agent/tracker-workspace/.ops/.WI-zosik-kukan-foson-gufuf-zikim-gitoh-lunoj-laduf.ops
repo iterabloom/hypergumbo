@@ -21,3 +21,10 @@
     pr_ref:  # e96f
     description: "WHAT\nrust.py resolves a typed receiver by building the name `Type::method` from the receiver's BARE type name and looking it up in tables that hold one symbol per name (local_symbols, then global_symbols). Two types of one name in the tree (a test double named like the real type, two crates that each declare a LoroDoc) share the key; the last one registered answers for both.\nSEEN (A/B of the INV-hupis fix, ~/hypergumbo_lab_notebook/hupis_11242026/):\n  ripgrep crates/matcher/tests/test_matcher.rs:89   `let matcher = matcher(..); matcher.new_captures()` -> RegexMatcher::new_captures in crates/searcher/src/testutil.rs; the test's own RegexMatcher is in crates/matcher/tests/util.rs. Four methods of that name in the tree.\n  loro crates/examples/examples/sheet.rs:9,14       `doc.commit()`, `doc.peer_id()` -> crates/loro-wasm/src/lib.rs; the example uses the loro crate's LoroDoc.\nBoth receivers were untyped before the INV-hupis fix typed them from a function's return type, so these two edges are NEW with that fix: 17 of its 345 newly typed edges go to a `Type::method` name declared more than once. The lookup itself is older: on the base (dev 81d89b52c) 2,817 of 13,416 typed_var edges in twelve repositories go to such a name. That count includes several impl blocks of one type (`impl From<A> for X`, `impl From<B> for X`), which are not this defect; the two were not separated.\nEXPECTED: the type is the one the receiver's declaration names: through the file's `use` paths, the caller's module and crate; two same-named types with nothing to choose between them leave the call unresolved.\nINVARIANT: INV-jutog (a resolved edge does not depend on declaration or registration order)."  # e96f
     fields: {}  # e96f
+- op: discuss  # 5823
+  at: '2026-11-25T07:33:08Z'  # 5823
+  by: agent  # 5823
+  actor: jgstern_agent  # 5823
+  clock: 2  # 5823
+  nonce: '5823'  # 5823
+  message: "Code sites (PR #2389 stamping): rust.py ~3951, ~4035, ~4094 read global_symbols.get('T::m'), a single-valued table: last writer among same-named types of different modules."  # 5823
