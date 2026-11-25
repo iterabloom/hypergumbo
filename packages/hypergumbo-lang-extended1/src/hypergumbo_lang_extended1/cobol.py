@@ -188,6 +188,21 @@ def _resolve_target(
     return result.symbol, result.confidence, result.resolved_by
 
 
+def _external_call(
+    src_id: str, name: str, line: int, run_id: str, rel_path: str, call_type: str,
+) -> Edge:
+    """An unresolved PERFORM / CALL edge that carries the two COBOL keys only.
+
+    The assignment replaces what ``make_unresolved_edge`` stamped (the
+    registry's note on the ``file`` key records that discard); it is kept as it
+    was. It lives here, apart from the resolved branch, so that no edge built
+    with ``resolved_by=`` or ``meta=`` is ever the one whose meta is replaced.
+    """
+    edge = make_unresolved_edge("cobol", src_id, name, line, PASS_ID, run_id)
+    edge.meta = {"file": rel_path, "call_type": call_type}
+    return edge
+
+
 class CobolAnalyzer(TreeSitterAnalyzer):
     """COBOL language analyzer using tree-sitter-language-pack."""
 
@@ -408,14 +423,10 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                     meta={"file": rel_path, "call_type": "perform"},
                                 )
                             else:  # pragma: no cover - unresolvable external paragraph
-                                edge = make_unresolved_edge(  # pragma: no cover
-                                    "cobol", src_id, target_name,
-                                    perform.start_point[0] + 1,
-                                    PASS_ID, run.execution_id,
+                                edge = _external_call(  # pragma: no cover
+                                    src_id, target_name, perform.start_point[0] + 1,
+                                    run.execution_id, rel_path, "perform",
                                 )
-                                edge.meta = {  # pragma: no cover
-                                    "file": rel_path, "call_type": "perform",
-                                }
                             edges.append(edge)
 
                 # Find CALL statements
@@ -440,12 +451,10 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                 meta={"file": rel_path, "call_type": "call"},
                             )
                         else:
-                            edge = make_unresolved_edge(
-                                "cobol", src_id, target_name,
-                                call.start_point[0] + 1,
-                                PASS_ID, run.execution_id,
+                            edge = _external_call(
+                                src_id, target_name, call.start_point[0] + 1,
+                                run.execution_id, rel_path, "call",
                             )
-                            edge.meta = {"file": rel_path, "call_type": "call"}
                         edges.append(edge)
 
         return edges

@@ -386,15 +386,15 @@ def link_graphql(
                     #   joined by name (meta operation_name)
                     derived_from=[schema_sym.id],
                     resolved_by=resolved_by.KEY_MATCH,
+                    # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
+                    # leak; meta["framework_dispatch"]="graphql_operation".
+                    meta={
+                        "protocol": "graphql",
+                        "operation_type": call.operation_type,
+                        "operation_name": call.operation_name,
+                        "framework_dispatch": "graphql_operation",
+                    },
                 )
-                # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
-                # leak; meta["framework_dispatch"]="graphql_operation".
-                edge.meta = {
-                    "protocol": "graphql",
-                    "operation_type": call.operation_type,
-                    "operation_name": call.operation_name,
-                    "framework_dispatch": "graphql_operation",
-                }
                 edges.append(edge)
                 continue
 
@@ -423,14 +423,14 @@ def link_graphql(
             #   field name
             derived_from=[schema_field.id],
             resolved_by=resolved_by.KEY_MATCH,
+            meta={
+                "protocol": "graphql",
+                "operation_type": call.operation_type,
+                "operation_name": call.operation_name,
+                "root_field": root_field,
+                "framework_dispatch": "graphql_operation",
+            },
         )
-        edge.meta = {
-            "protocol": "graphql",
-            "operation_type": call.operation_type,
-            "operation_name": call.operation_name,
-            "root_field": root_field,
-            "framework_dispatch": "graphql_operation",
-        }
         edges.append(edge)
 
     # WI-lisan: the claim is what the scan found, never what was emitted.

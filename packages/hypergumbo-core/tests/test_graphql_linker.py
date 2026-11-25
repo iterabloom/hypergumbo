@@ -234,6 +234,9 @@ const GET_USERS = gql`query GetUsers { users { id } }`;
         ]
         assert len(graphql_edges) == 1
         assert operation_symbol.id in graphql_edges[0].dst
+        # The join is on the operation name both sides declare. The mark is
+        # passed at creation; it was once lost to a meta dict assigned after.
+        assert graphql_edges[0].meta["resolved_by"] == "key_match"
 
 
 class TestGraphQLLinkerRegistered:
@@ -379,6 +382,7 @@ class TestRootFieldJoin:
         assert edge.edge_type == "calls"
         assert (edge.meta or {})["root_field"] == "users"
         assert (edge.meta or {})["protocol"] == "graphql"
+        assert (edge.meta or {})["resolved_by"] == "key_match"
 
     def test_a_mutation_joins_on_the_mutation_root_type(self, tmp_path: Path) -> None:
         self._client(tmp_path, "mutation AddUser { createUser { id } }")

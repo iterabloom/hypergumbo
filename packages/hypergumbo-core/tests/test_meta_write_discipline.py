@@ -234,6 +234,61 @@ def test_checker_flags_a_whole_dict_meta_assignment_that_destroys_kwargs(
     assert any("access_mode" in o or "meta" in o for o in offenders), offenders
 
 
+def test_checker_flags_a_whole_dict_assignment_that_destroys_the_resolution_mark(
+    tmp_path,
+):
+    """``resolved_by=`` lands in ``meta`` (``Edge.create``), so replacing the
+    dict afterwards removes the mark from a resolved call edge with no test
+    failing: the same shape as ``access_mode``."""
+    offenders = _drift(tmp_path, """
+        from hypergumbo_core.ir import Edge
+
+        def emit():
+            edge = Edge.create(src="a", dst="b", resolved_by="name")
+            edge.meta = {"file": "f"}
+            return edge
+    """)
+    assert any("resolved_by" in o for o in offenders), offenders
+
+
+def test_checker_allows_an_assignment_that_spreads_the_edges_own_meta_first(
+    tmp_path,
+):
+    """``edge.meta = {**(edge.meta or {}), ...}`` adds keys and destroys
+    none: what construction stored is copied in before anything else."""
+    offenders = _drift(tmp_path, """
+        from hypergumbo_core.ir import Edge
+
+        def emit():
+            edge = Edge.create(src="a", dst="b", resolved_by="name")
+            edge.meta = {**(edge.meta or {}), "file": "f"}
+            other = Edge.create(src="a", dst="b", resolved_by="name")
+            other.meta = {**other.meta, "file": "f"}
+            return edge, other
+    """)
+    assert offenders == [], offenders
+
+
+def test_checker_flags_a_spread_that_does_not_keep_the_edges_own_meta(
+    tmp_path,
+):
+    """A spread of ANOTHER record's meta, a spread that is not first, and a
+    later key that re-writes one construction stored: each still destroys."""
+    offenders = _drift(tmp_path, """
+        from hypergumbo_core.ir import Edge
+
+        def emit(donor):
+            one = Edge.create(src="a", dst="b", resolved_by="name")
+            one.meta = {**(donor.meta or {}), "file": "f"}
+            two = Edge.create(src="a", dst="b", resolved_by="name")
+            two.meta = {"file": "f", **(two.meta or {})}
+            three = Edge.create(src="a", dst="b", resolved_by="name")
+            three.meta = {**(three.meta or {}), "resolved_by": "import"}
+            return one, two, three
+    """)
+    assert len(offenders) == 3, offenders
+
+
 def test_checker_allows_whole_dict_assignment_with_no_meta_bearing_kwarg(
     tmp_path,
 ):

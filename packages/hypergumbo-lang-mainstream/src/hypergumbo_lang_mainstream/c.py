@@ -1004,6 +1004,9 @@ def _extract_edges(
                             )
                         )
                     ):
+                        _unfollowed = _unfollowed_call_kind(
+                            node, facts.get(lookup_result.symbol.id),
+                        )
                         edge = Edge.create(
                             src=current_function.id,
                             dst=lookup_result.symbol.id,
@@ -1014,12 +1017,11 @@ def _extract_edges(
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
                             resolved_by=lookup_result.resolved_by,
+                            meta=(
+                                {"unfollowed_construct": _unfollowed}
+                                if _unfollowed is not None else None
+                            ),
                         )
-                        _unfollowed = _unfollowed_call_kind(
-                            node, facts.get(lookup_result.symbol.id),
-                        )
-                        if _unfollowed is not None:
-                            edge.meta = {**(edge.meta or {}), "unfollowed_construct": _unfollowed}
                         edges.append(edge)
                     elif callee_name in pointer_targets:
                         # INV-nohob: a call through a pointer variable the file
