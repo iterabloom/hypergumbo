@@ -1940,6 +1940,9 @@
             "publisher_framework": {
               "description": "event_sourcing event_publishes edge: the framework pattern that matched the publish site."
             },
+            "qualifier": {
+              "description": "On an unresolved call edge: the owner the call site NAMES, as written (``Util`` in ``Util.Helper()``, ``Ns.Util`` in ``Ns.Util.Helper()``), a type or namespace path and never a variable. A call fact of ADR-0064: the inherited-calls linker asks which declaration the name means from the caller's file (``type_visibility.visible_types`` over the file's import table) and looks the callee up on it, marking the bind ``resolved_by=qualified``. Read only for a file that hands over an import table."
+            },
             "query_type": {
               "description": "SQL operation of a database-query edge: 'SELECT', 'INSERT', 'UPDATE', or 'DELETE' (database_query linker)."
             },

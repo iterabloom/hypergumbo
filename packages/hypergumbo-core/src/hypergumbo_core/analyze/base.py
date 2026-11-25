@@ -1209,6 +1209,7 @@ def make_unresolved_edge(
     receiver_type_hint: Optional[str] = None,
     inherited_field_receiver: Optional[str] = None,
     call_construct: Optional[str] = None,
+    qualifier: Optional[str] = None,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -1257,6 +1258,13 @@ def make_unresolved_edge(
             receiver. Must be a value declared in
             :mod:`hypergumbo_core.call_constructs`; any other raises
             ``ValueError``.
+        qualifier: The owner the call site NAMES, as written
+            (``Util`` in ``Util.Helper()``, ``Ns.Util`` in
+            ``Ns.Util.Helper()``): a type or namespace path, not a variable.
+            Lands on ``Edge.meta`` under ``"qualifier"``. The shared pass
+            decides which declaration that name means from the caller's file
+            (its import table) and looks the callee up there (ADR-0064); it
+            is read only for files that hand over a table.
     """
     # Both slots through the factory (ADR-0036 Ruling 1): the name slot folds
     # ':' to '.', so a selector, a Rust/C++ path or a PowerShell argument such
@@ -1300,6 +1308,8 @@ def make_unresolved_edge(
         # The declared vocabulary (WI-dapap): a value computed at run time is
         # checked here, where the static emit scan cannot see it.
         hint_meta["call_construct"] = _require_declared_construct(call_construct)
+    if qualifier is not None:
+        hint_meta["qualifier"] = qualifier
     return Edge.create(
         src=src_id,
         dst=dst_id,
