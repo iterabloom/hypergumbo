@@ -467,6 +467,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
+                                resolved_by=result.resolved_by if result.found else None,
                             )
                             edges.append(edge)
 

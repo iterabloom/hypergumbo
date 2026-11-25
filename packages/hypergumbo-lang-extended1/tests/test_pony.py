@@ -538,3 +538,41 @@ class TestPonyCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('constructor', 'method'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestPonyResolvedBy:
+    """``meta["resolved_by"]`` per route of the call lookup (audit 0030)."""
+
+    def test_each_route_carries_its_value(self, tmp_path: Path) -> None:
+        make_pony_file(tmp_path, "main.pony", """actor Main
+  new create(env: Env) =>
+    helper()
+    Other.make()
+    Counter()
+    Other()
+    missing()
+
+  fun helper() =>
+    None
+
+class Counter
+  new create() =>
+    None
+""")
+        make_pony_file(tmp_path, "other.pony", """primitive Other
+  fun make() =>
+    None
+""")
+        result = analyze_pony(tmp_path)
+        marks = {
+            e.dst.split(":")[-2]: (e.meta or {}).get("resolved_by")
+            for e in result.edges if e.edge_type == "calls"
+        }
+        # A bare helper() is a member of the enclosing actor.
+        assert marks["Main.helper"] == "own_type"
+        # Other.make() names its owner.
+        assert marks["Other.make"] == "qualified"
+        # A bare name in this file's table, then in the run's.
+        assert marks["Counter"] == "same_file"
+        assert marks["Other"] == "name"
+        assert marks["missing"] is None

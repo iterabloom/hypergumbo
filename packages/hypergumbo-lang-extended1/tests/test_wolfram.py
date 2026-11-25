@@ -323,3 +323,14 @@ class TestWolframDotMFilesAreAnalyzed:
         by_id = {s.id: s for s in result.symbols}
         calls = [e for e in result.edges if e.edge_type == "calls"]
         assert [(by_id[e.src].name, by_id[e.dst].name) for e in calls] == [("main", "helper")]
+
+
+class TestWolframResolvedBy:
+    """``meta["resolved_by"]`` on the resolver's hit, none on a builtin (audit 0030)."""
+
+    def test_resolver_hit_is_name_and_builtin_has_none(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Body.wl", "f[x_] := x + 1\ng[x_] := f[Sin[x]]\n")
+        result = analyze_wolfram(tmp_path)
+        calls = {e.dst.split(":")[-2]: e for e in result.edges if e.edge_type == "calls"}
+        assert calls["f"].meta["resolved_by"] == "name"
+        assert "resolved_by" not in (calls["Sin"].meta or {})
