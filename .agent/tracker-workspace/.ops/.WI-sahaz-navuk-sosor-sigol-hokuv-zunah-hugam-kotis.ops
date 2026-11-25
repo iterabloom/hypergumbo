@@ -1,0 +1,21 @@
+- op: create  # 6996
+  at: '2026-11-25T14:31:36Z'  # 6996
+  by: agent  # 6996
+  actor: jgstern_agent  # 6996
+  clock: 1  # 6996
+  nonce: '6996'  # 6996
+  data:  # 6996
+    kind: work_item  # 6996
+    title: "C# has no screen of base-class-library member names, so the name step is off for it"  # 6996
+    status: todo_hard  # 6996
+    priority: 2  # 6996
+    parent:  # 6996
+    tags:  # 6996
+    - analysis_quality  # 6996
+    - shared_call_resolution  # 6996
+    isbefore: []  # 6996
+    duplicate_of: []  # 6996
+    not_duplicate_of: []  # 6996
+    pr_ref:  # 6996
+    description: "STATEMENT: a C# call on a receiver nobody could type is bound by name only when the name is not one the BCL defines. OBSERVED: with the name step on, 314 new binds on six trees; of 15 read 10 right, 5 wrong (string.Join, task.AsTask(), stopwatch.Start()). ImportScope.library_names_screened is therefore not set by csharp.py and the single-holder name linker skips C# files. Cost: about 16 right single-holder calls of the 214 lost (extension methods on untyped chains). NEEDS: a predefined-type receiver (string.Join) reported as a qualifier; a list of BCL member names passed as stdlib_member_name; then set the flag and re-sample.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # 6996
+    fields: {}  # 6996
