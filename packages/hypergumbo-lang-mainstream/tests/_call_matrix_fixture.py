@@ -381,7 +381,8 @@ def kotlin(R, D, B, S, dl, split=False, third=False):
     if split:
         # One class per file, named by role. The right classes are in package
         # ``model``, the decoys in the decoy package, whose directory sorts after
-        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R and Child.
+        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R, Child
+        # and D (the scope decoys name D); S and Spare stay unreferenced.
         files |= {"model/Store.kt": "package model\n\n" + cls(R, "execute", 1),
                   f"{dec}/Store.kt": f"package {dec}\n\n" + cls(D, "execute", 2),
                   "model/Base.kt": "package model\n\n" + cls(B, "ping", 1, "open "),
@@ -389,7 +390,7 @@ def kotlin(R, D, B, S, dl, split=False, third=False):
                   f"{dec}/Stray.kt": f"package {dec}\n\n" + cls(S, "ping", 2)}
         if third:
             files[f"{dec}/Spare.kt"] = f"package {dec}\n\n" + spare
-        classes = f"import model.{R}\nimport model.Child\n"
+        classes = f"import model.{R}\nimport {dec}.{D}\nimport model.Child\n"
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
         pg = order(dl, cls(B, "ping", 1, "open ") + f"class Child : {B}()\n", cls(S, "ping", 2))
