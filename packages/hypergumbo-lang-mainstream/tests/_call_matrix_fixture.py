@@ -10,7 +10,7 @@ the matrix with confidences::
 THE PROGRAM. Two classes R and D both declare ``execute()``; a base B declares
 ``ping()``, ``Child`` inherits B, and an unrelated S declares ``ping()`` too;
 ``get_db()`` returns an R; a second file declares ``helper()`` and a decoy file
-declares another. Nine callers, one call shape each:
+declares another. Ten callers, one call shape each:
 
 ==============  =====================================  =============================
 caller          the call                               what it reaches
@@ -24,7 +24,24 @@ via_amb_param   ``(x) x.execute()``, x untyped         nothing in the repository
 via_import      ``helper()``, imported from util       util's helper
 via_scope_own   ``h = R(); h.execute()``               R.execute
 via_scope_ext   ``h = extlib.make(); h.execute()``     nothing in the repository
+via_qual        ``util.helper()``, through a qualifier  util's helper
 ==============  =====================================  =============================
+
+``via_qual`` reaches the same ``helper`` as ``via_import``, through whatever
+qualifier the language has (a module alias, a namespace, a package path, a
+fully qualified class). It is not written where no such second form exists:
+Go and Lua already call ``helper`` through the package or module table, and a
+C function (Objective-C) or a top-level Ruby ``def`` has no qualifier.
+
+TWO LAYOUTS (WI-bobik). ``split=False`` writes every class and every caller
+into ONE file; only ``helper`` lives elsewhere. ``split=True`` writes ONE
+CLASS PER FILE (R, D, B, Child, S each in a file of its own), made visible the
+way the language does it, with the callers' text unchanged. The callers' file
+imports R and Child, and D too, because the same-variable callers below name
+it; S is referenced by nothing. Real Java, C#, Groovy and Objective-C trees
+are laid out the second way, and the two layouts do not measure the same
+thing: every bind C#, Groovy and Objective-C made through a same-file name
+table is ``unresolved`` when the classes are in other files.
 
 THE SAME NAME IN ANOTHER FUNCTION (INV-zabud). The last two callers each bind a
 local ``h``, and two more functions bind an ``h`` of the DECOY class:
@@ -45,7 +62,22 @@ typed resolution from a pick by name. The decoy makes a pick visible, and the
 arms show what the pick depends on: ``decoy_last`` puts the decoy class (and
 the decoy file, by path order) after or before the right one, and ``swap``
 exchanges the class names (Conn/Other, Base/Stray), which rules out a pick by
-spelling.
+spelling. In the split layout the decoy's FILE carries the arm: an ``a_`` or
+``z_`` prefix on the file, or on its directory where the language ties a
+file's name to its class (Java, Perl). Files are named by role, so ``swap``
+does not change their order.
+
+A THIRD CANDIDATE. ``third=True`` adds a class ``Spare`` declaring both
+``execute()`` and ``ping()``, and one more ``helper``, all on the decoy side
+and all returning 2. Two arms (decoy last, decoy first) measure every cell
+again; ``Measured.third`` holds the result. Where a resolver counts
+candidates, three is where it stops choosing.
+
+THE MARK BEHIND A CELL. ``Measured.marks`` holds, per shape, the
+``meta["resolved_by"]`` values of the resolved edges the cell was read from
+(audit-findings 0030): a ``right`` reached through the receiver's type and a
+``right`` reached because the name happened to be unique are different rows
+of the same table.
 
 HOW A DESTINATION IS JUDGED. Every right declaration returns 1 and every decoy
 returns 2. A destination symbol is "right" or "decoy" by the digit in its own
@@ -58,7 +90,8 @@ or ``right+unresolved`` (both edges). For the two ``amb`` callers nothing in
 the repository is the callee, so an edge to either class is ``picked``. Four
 arms collapse to one cell: the common verdict when they agree,
 ``order:<decoy last>/<decoy first>`` when only the declaration order changes
-it, ``mixed:...`` otherwise. An edge a linker superseded
+it, ``mixed:...`` otherwise. The two third-candidate arms collapse the same
+way. An edge a linker superseded
 (``meta["superseded_by"]``) is not counted: the linker's edge is the answer.
 
 The whole pipeline runs (``run_behavior_map``), not one analyzer, because the
