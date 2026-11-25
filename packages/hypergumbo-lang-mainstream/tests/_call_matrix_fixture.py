@@ -144,13 +144,14 @@ def py(R, D, B, S, dl, split=False, third=False):
         files[f"{side}_spare_util.py"] = "def helper():\n    return 2\n"
     if split:
         # One class per file. The decoys' files sort after (``z_``) or before
-        # (``a_``) every right file; main imports the right classes only.
+        # (``a_``) every right file. main imports R and Child, and D too:
+        # the same-variable callers below name it. S is never imported.
         files |= {"store.py": cls(R, "execute", 1), f"{side}_store.py": cls(D, "execute", 2),
                   "base.py": cls(B, "ping", 1), "child.py": f"from base import {B}\n\n\nclass Child({B}):\n    pass\n",
                   f"{side}_stray.py": cls(S, "ping", 2)}
         if third:
             files[f"{side}_spare.py"] = spare
-        classes = f"from store import {R}\nfrom child import Child\n"
+        classes = f"from store import {R}\nfrom {side}_store import {D}\nfrom child import Child\n"
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
         pg = order(dl, cls(B, "ping", 1) + f"class Child({B}):\n    pass\n\n", cls(S, "ping", 2))
