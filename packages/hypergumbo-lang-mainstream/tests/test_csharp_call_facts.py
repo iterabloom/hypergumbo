@@ -210,6 +210,44 @@ def test_a_project_file_that_is_not_xml_is_skipped_and_named(tmp_path: Path) -> 
     ]
 
 
+# ---------------------------------------------------------- type arity
+
+def test_every_type_symbol_says_how_many_type_parameters_it_takes(tmp_path: Path) -> None:
+    """``type_arity`` on every type symbol, 0 written, never omitted: an
+    absent key would mean "the producer does not say"."""
+    result = analyze_csharp(_write(tmp_path, {
+        "Types.cs": (
+            "namespace App {\n"
+            "    [Serializable] public class Policy : Base { }\n"
+            "    public class Policy<TResult> { }\n"
+            "    public partial class Map<K, V> where K : class { }\n"
+            "    public partial class Map<K, V> : IMap { }\n"
+            "    interface IMap { }\n"
+            "    interface IStore<T> : IMap { }\n"
+            "    struct Cell { }\n"
+            "    struct Pair<A, B> { }\n"
+            "    record Point(int X);\n"
+            "    record struct Box<T>(T Value);\n"
+            "    enum Color { Red }\n"
+            "    class Outer<T> { class Inner { } }\n"
+            "}\n"
+        ),
+    }))
+    types = {"class", "record", "interface", "struct", "enum"}
+    arities = sorted((s.name, s.kind, (s.meta or {}).get("type_arity"))
+                     for s in result.symbols if s.kind in types)
+    assert arities == [
+        ("Box", "record", 1), ("Cell", "struct", 0), ("Color", "enum", 0),
+        ("IMap", "interface", 0), ("IStore", "interface", 1), ("Inner", "class", 0),
+        ("Map", "class", 2), ("Map", "class", 2), ("Outer", "class", 1),
+        ("Pair", "struct", 2), ("Point", "record", 0), ("Policy", "class", 0),
+        ("Policy", "class", 1),
+    ]
+    # The other meta a type carried is still there.
+    plain = next(s for s in result.symbols if s.name == "Policy" and s.meta["type_arity"] == 0)
+    assert plain.meta["base_classes"] == ["Base"] and plain.meta["annotations"]
+
+
 # --------------------------------------------------- explicit receivers
 
 def test_a_receiver_of_known_type_in_another_file_carries_the_type(tmp_path: Path) -> None:
