@@ -878,3 +878,13 @@ def test_of_a_classs_overloads_the_one_that_takes_the_arguments_is_recovered() -
     )
     ctx = _ctx([main, cls, one, two], [built, *contains, answered, stub])
     assert link_method_call_recovery(ctx).edges == []
+    # Nor is a class hinted further away tried in its place.
+    other = _sym("k:O.kt:1-30:Other:class", "Other", "class", path="O.kt", end=30)
+    other_add = _sym("k:O.kt:3-4:Other.addHeader:method", "Other.addHeader", "method",
+                     path="O.kt", start=3, end=4)
+    ctx = _ctx(
+        [main, cls, one, two, other, other_add],
+        [built, *contains, answered, stub, _edge(main.id, other.id, "calls", line=30),
+         _edge(other.id, other_add.id, "contains", line=3)],
+    )
+    assert link_method_call_recovery(ctx).edges == []
