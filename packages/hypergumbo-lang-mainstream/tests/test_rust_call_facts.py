@@ -108,6 +108,47 @@ def test_every_file_hands_over_its_table_with_explicit_and_namespace_bindings(tm
     assert scopes["src/quiet.rs"].resolve("alone") is None
 
 
+def test_a_name_a_file_of_the_tree_passes_on_from_a_library_is_not_recorded(tmp_path: Path) -> None:
+    """lib.rs ``pub use url::Url;`` and, one file further, ``pub use
+    crate::Url as Address;``: ``Url`` and ``Address`` imported from the tree
+    are the library's type, so neither goes in the table. A name the file
+    declares (in one ``#[cfg]`` alternative), one it passes on from the tree,
+    and a module are recorded."""
+    scopes = _scopes(tmp_path, {
+        "src/lib.rs": "pub mod db;\npub mod net;\npub mod app;\npub use url::Url;\npub use db::Conn;\n",
+        "src/db.rs": (
+            "pub struct Conn;\n"
+            "#[cfg(feature = \"std\")]\nmod compat { pub use std::thread::panicking; }\n"
+            "#[cfg(not(feature = \"std\"))]\nmod compat { pub fn panicking() -> bool { false } }\n"
+        ),
+        "src/net.rs": "pub use crate::Url as Address;\npub use crate::db;\npub use crate::missing::Gone;\n"
+                      "pub use crate::net::Loop;\n",
+        "src/app.rs": (
+            "use crate::Url;\nuse crate::net::Address;\nuse crate::Conn;\nuse crate::net::db;\n"
+            "use crate::net::Gone;\nuse crate::net::Loop;\nuse crate::db::compat::panicking;\n"
+        ),
+    })
+    app = scopes["src/app.rs"]
+    assert app.named("Url") is None and app.named("Address") is None
+    assert app.named("Conn").module == "src/lib.rs"
+    assert app.named("db").module == "src/net.rs"
+    assert app.named("Gone").module == "src/net.rs"
+    assert app.named("Loop").module == "src/net.rs"  # a chain that never ends is not followed
+    # One ``#[cfg]`` alternative declares it: the file's declaration is recorded.
+    assert app.named("panicking").module == "src/db.rs"
+
+
+def test_a_type_a_file_passes_on_from_a_library_is_not_bound_by_its_name(tmp_path: Path) -> None:
+    """``Url::parse`` with ``Url`` from lib.rs's ``pub use url::Url;``: the
+    repository's one ``parse`` (``Cookie::parse``) is not it."""
+    data = _map(tmp_path, {
+        "src/lib.rs": "pub mod cookie;\npub mod app;\npub use url::Url;\n",
+        "src/cookie.rs": "pub struct Cookie;\nimpl Cookie {\n    pub fn parse(s: &str) -> Cookie { Cookie }\n}\n",
+        "src/app.rs": "use crate::Url;\n\npub fn run() { Url::parse(\"x\"); }\n",
+    })
+    assert _resolved(data, "run") == []
+
+
 def test_wildcards_and_what_the_table_leaves_out(tmp_path: Path) -> None:
     scopes = _scopes(tmp_path, {
         "src/lib.rs": "pub mod db;\npub mod kinds;\npub mod user;\n",
