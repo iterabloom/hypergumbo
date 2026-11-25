@@ -1,0 +1,82 @@
+{
+  "counts": {
+    "packages/hypergumbo-core/src/hypergumbo_core/linkers/inherited_calls.py": {
+      "evidence_type=ast_call_inherited": 1,
+      "evidence_type=ast_call_inherited_field": 1,
+      "evidence_type=ast_call_inherited_method": 2,
+      "evidence_type=ast_call_type_inferred": 1
+    },
+    "packages/hypergumbo-core/src/hypergumbo_core/linkers/method_call_recovery.py": {
+      "resolution_quality=recovery": 1
+    },
+    "packages/hypergumbo-core/src/hypergumbo_core/receiver_blind_magnets.py": {
+      "resolution_quality=ambiguous": 1
+    },
+    "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/dart.py": {
+      "resolution_quality=type_inferred": 1
+    },
+    "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/fsharp.py": {
+      "resolution_quality=ambiguous": 1
+    },
+    "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/nim.py": {
+      "resolution_quality=ambiguous": 1
+    },
+    "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/solidity.py": {
+      "receiver=qualified": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py": {
+      "receiver=declared_type": 1,
+      "resolution_quality=ambiguous": 3
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py": {
+      "resolution_quality=type_inferred": 2
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py": {
+      "receiver=typed_field": 1,
+      "resolution_quality=ambiguous": 1,
+      "resolution_quality=chained_return_type": 1,
+      "resolution_quality=typed_receiver": 2
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py": {
+      "evidence_type=ast_call_static": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py": {
+      "evidence_type=ast_call_namespace": 1,
+      "evidence_type=ast_method_inferred": 4,
+      "evidence_type=ast_method_this": 1,
+      "evidence_type=ast_method_this_property": 1,
+      "evidence_type=ast_method_type_inferred": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/kotlin.py": {
+      "evidence_type=ast_call_static": 2,
+      "evidence_type=ast_call_this": 2,
+      "evidence_type=ast_call_this_property": 1,
+      "evidence_type=ast_call_type_inferred": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/lua.py": {
+      "resolution_quality=typed": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/php.py": {
+      "evidence_type=ast_method_inferred": 1,
+      "evidence_type=ast_method_this": 1,
+      "evidence_type=ast_static_call": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py": {
+      "resolution_quality=type_inferred": 10
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ruby.py": {
+      "receiver=self": 1,
+      "resolution_quality=typed_receiver": 1
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py": {
+      "evidence_type=ast_call_type_inferred": 2,
+      "receiver=qualified": 5,
+      "receiver=typed_field": 1,
+      "receiver=typed_var": 2
+    },
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py": {
+      "resolution_quality=ambiguous": 3
+    }
+  },
+  "description": "Shrink-only pins for scripts/check-resolved-by-sites (audit-findings 0030, WI-gilip): how many places each source file writes an old spelling of 'how a call target was chosen'. A count may only go down."
+}

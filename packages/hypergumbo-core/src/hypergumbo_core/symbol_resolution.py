@@ -87,14 +87,35 @@ import math
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Final
 
-from . import kept_work
+from . import kept_work, resolved_by
 from .paths import is_test_node
 from .selection.filters import is_test_path
 
 if TYPE_CHECKING:
     from .ir import Symbol
+
+
+#: ``LookupResult.match_type``: how a lookup found its symbol, or why it did
+#: not. The first five are returned WITH a symbol, the last two without one
+#: (unless a ``variants`` registry or ``allow_ambiguous`` makes the pick).
+MATCH_EXACT: Final = "exact"  # the key was found verbatim; says nothing about what scoped it
+MATCH_PATH_HINT: Final = "path_hint"  # the caller's path hint (an import, as a rule) chose among candidates
+MATCH_CALLER_FILE: Final = "caller_file"  # the one candidate defined in the caller's own file
+MATCH_SUFFIX: Final = "suffix"  # the one key ending in the name
+MATCH_SOFT_HINT_FALLBACK: Final = "soft_hint_fallback"  # a lone candidate outside the hint
+MATCH_AMBIGUOUS: Final = "ambiguous"  # two or more candidates for the key
+MATCH_SUFFIX_AMBIGUOUS: Final = "suffix_ambiguous"  # two or more keys ending in the name
+
+#: What each match type says scoped the choice (``Edge.meta["resolved_by"]``,
+#: :mod:`hypergumbo_core.resolved_by`). A path hint is read as an import, which
+#: is what analyzers pass; a caller that passes something else as the hint (a
+#: resolved type, a directory) states its own value instead of this one.
+_RESOLVED_BY_OF_MATCH: Final[dict[str, str]] = {
+    MATCH_PATH_HINT: resolved_by.IMPORT,
+    MATCH_CALLER_FILE: resolved_by.SAME_FILE,
+}
 
 
 @dataclass
@@ -113,7 +134,7 @@ class LookupResult:
 
     symbol: Symbol | None
     confidence: float = 1.0
-    match_type: str = "exact"
+    match_type: str = MATCH_EXACT
     candidates: list[Symbol] = field(default_factory=list)
 
     @property
@@ -125,6 +146,17 @@ class LookupResult:
     def is_ambiguous(self) -> bool:
         """Whether multiple candidates were found."""
         return len(self.candidates) > 1
+
+    @property
+    def resolved_by(self) -> str:
+        """What scoped this lookup's choice, as a ``resolved_by`` value.
+
+        ``import`` for a path-hint match, ``same_file`` for the caller-file
+        pick, ``name`` for everything else: an exact key, a unique suffix and
+        a graded pick among candidates all found the symbol by its name among
+        every declaration the registry holds.
+        """
+        return _RESOLVED_BY_OF_MATCH.get(self.match_type, resolved_by.NAME)
 
 
 def _caller_file_pick(
@@ -334,14 +366,14 @@ class SymbolResolver:
                     return LookupResult(
                         symbol=candidate,
                         confidence=self.CONFIDENCE_PATH_HINT,
-                        match_type="path_hint",
+                        match_type=MATCH_PATH_HINT,
                         candidates=candidates,
                     )
 
         # Ambiguous: no guess among candidates (module docstring).
         return LookupResult(
             symbol=None,
-            match_type="ambiguous",
+            match_type=MATCH_AMBIGUOUS,
             candidates=candidates,
         )
 
@@ -376,7 +408,7 @@ class SymbolResolver:
             return LookupResult(
                 symbol=symbol,
                 confidence=self.CONFIDENCE_SUFFIX,
-                match_type="suffix",
+                match_type=MATCH_SUFFIX,
                 candidates=[symbol],
             )
 
@@ -386,14 +418,14 @@ class SymbolResolver:
             return LookupResult(
                 symbol=candidates[0],
                 confidence=self.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates)),
-                match_type="suffix_ambiguous",
+                match_type=MATCH_SUFFIX_AMBIGUOUS,
                 candidates=candidates,
             )
 
         # Return None but include candidates for debugging
         return LookupResult(
             symbol=None,
-            match_type="suffix_ambiguous",
+            match_type=MATCH_SUFFIX_AMBIGUOUS,
             candidates=candidates,
         )
 
@@ -433,7 +465,7 @@ class SymbolResolver:
                 return LookupResult(
                     symbol=symbol,
                     confidence=self.CONFIDENCE_PATH_HINT,
-                    match_type="path_hint",
+                    match_type=MATCH_PATH_HINT,
                 )
 
         return LookupResult(symbol=None)
@@ -726,7 +758,7 @@ class NameResolver:
                 return LookupResult(
                     symbol=path_matched[0],
                     confidence=self.CONFIDENCE_PATH_HINT,
-                    match_type="path_hint",
+                    match_type=MATCH_PATH_HINT,
                     candidates=candidates,
                 )
             # Stage 2: filter by registry key (qualified symbol name)
@@ -738,7 +770,7 @@ class NameResolver:
                 return LookupResult(
                     symbol=key_matched[0],
                     confidence=self.CONFIDENCE_PATH_HINT,
-                    match_type="path_hint",
+                    match_type=MATCH_PATH_HINT,
                     candidates=candidates,
                 )
             # Return first match from either stage
@@ -749,7 +781,7 @@ class NameResolver:
                 return LookupResult(
                     symbol=first_match,
                     confidence=self.CONFIDENCE_PATH_HINT,
-                    match_type="path_hint",
+                    match_type=MATCH_PATH_HINT,
                     candidates=candidates,
                 )
 
@@ -757,7 +789,7 @@ class NameResolver:
             return LookupResult(
                 symbol=candidates[0],
                 confidence=self.CONFIDENCE_SUFFIX,
-                match_type="suffix",
+                match_type=MATCH_SUFFIX,
                 candidates=candidates,
             )
 
@@ -768,12 +800,12 @@ class NameResolver:
             return LookupResult(
                 symbol=own,
                 confidence=self.CONFIDENCE_PATH_HINT,
-                match_type="caller_file",
+                match_type=MATCH_CALLER_FILE,
                 candidates=candidates,
             )
         return LookupResult(
             symbol=None,
-            match_type="suffix_ambiguous",
+            match_type=MATCH_SUFFIX_AMBIGUOUS,
             candidates=candidates,
         )
 
@@ -1061,7 +1093,7 @@ class ListNameResolver:
                         return LookupResult(
                             symbol=candidates[0],
                             confidence=self.CONFIDENCE_PATH_HINT,
-                            match_type="soft_hint_fallback",
+                            match_type=MATCH_SOFT_HINT_FALLBACK,
                             candidates=candidates,
                         )
                     return LookupResult(symbol=None)
@@ -1076,7 +1108,7 @@ class ListNameResolver:
             return LookupResult(
                 symbol=unique,
                 confidence=self.CONFIDENCE_PATH_HINT,
-                match_type="path_hint",
+                match_type=MATCH_PATH_HINT,
                 candidates=candidates,
             )
 
@@ -1090,7 +1122,7 @@ class ListNameResolver:
         ):
             return LookupResult(
                 symbol=None,
-                match_type="ambiguous",
+                match_type=MATCH_AMBIGUOUS,
                 candidates=candidates,
             )
 
@@ -1099,19 +1131,19 @@ class ListNameResolver:
             return LookupResult(
                 symbol=own,
                 confidence=self.CONFIDENCE_PATH_HINT,
-                match_type="caller_file",
+                match_type=MATCH_CALLER_FILE,
                 candidates=candidates,
             )
         if self.variants:
             return LookupResult(
                 symbol=sorted(narrowed, key=lambda s: s.path)[0],
                 confidence=1.0 / (len(narrowed) ** 0.5),
-                match_type="ambiguous",
+                match_type=MATCH_AMBIGUOUS,
                 candidates=candidates,
             )
         return LookupResult(
             symbol=None,
-            match_type="ambiguous",
+            match_type=MATCH_AMBIGUOUS,
             candidates=candidates,
         )
 

@@ -88,6 +88,7 @@ from .module_sets import module_sets_for
 from .pass_metadata import PassMetadataLookup
 from .owner_ancestry import stamp_external_owner_ancestors
 from .receiver_blind_magnets import demote_harmful_magnets
+from .resolved_by import RESOLVED_BY_KEY
 from .repo_fingerprint import compute_repo_fingerprint_field
 from .visibility import (
     VISIBILITY_MODIFIER_TERMS,
@@ -437,7 +438,32 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
             edge.is_resolved = False
             if edge.dst_ref is None:
                 edge.dst_ref = _derive_dst_ref_from_id(edge.dst)
+            _drop_resolution_mark(edge)
         _rederive_confidence_from_verdict(edge)
+
+
+def _drop_resolution_mark(edge: "Edge") -> None:
+    """An edge that leaves the repository chose no in-repository target.
+
+    ``resolved_by`` (:mod:`hypergumbo_core.resolved_by`) is stamped by the
+    producer, which believed its target was first-party. When the verdict says
+    otherwise (a magnet demoted at step 6c, a target dropped by a filter), the
+    mark would say how a target that is not there was chosen. Removing it
+    here, where the one verdict is derived, keeps "a calls edge carries the
+    mark if and only if it is resolved" true by construction. The meta dict is
+    replaced, not mutated: producers share dict literals across edges.
+    """
+    meta = edge.meta
+    if meta and (RESOLVED_BY_KEY in meta or _RESOLVED_BY_VALUES_KEY in meta):
+        edge.meta = {
+            k: v for k, v in meta.items()
+            if k not in (RESOLVED_BY_KEY, _RESOLVED_BY_VALUES_KEY)
+        } or None
+
+
+#: The companion ``ir.deduplicate_edges`` writes when collapsed call sites
+#: disagree on a per-call-site key (``axis_meta_keys.per_call_site_keys``).
+_RESOLVED_BY_VALUES_KEY = f"{RESOLVED_BY_KEY}_values"
 
 
 #: ADR-0057 §14 (WI-lihis): ``SUPERSEDED_STUB_RANK_FACTOR`` (re-exported above

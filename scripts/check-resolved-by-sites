@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Static check of the resolution mark (audit-findings 0030, WI-hirol).
+
+Thin wrapper over ``hypergumbo_core.resolved_by_sites``; what is checked and
+why is documented there.
+
+    scripts/check-resolved-by-sites                    # gate: exit 1 on an unmarked site or a moved pin
+    scripts/check-resolved-by-sites --list [SUBSTR]    # unmarked sites, optionally of matching files
+    scripts/check-resolved-by-sites --update-baseline  # lower the old-spelling pins (shrink only)
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from hypergumbo_core.resolved_by_sites import (
+    BASELINE_PATH,
+    baseline_document,
+    compare_to_baseline,
+    load_baseline,
+    scan_tree,
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--list", nargs="?", const="", metavar="SUBSTR",
+                        help="print the unmarked sites (of files whose path contains SUBSTR)")
+    parser.add_argument("--update-baseline", action="store_true",
+                        help="rewrite the old-spelling pins; refused when a count grew")
+    args = parser.parse_args(argv)
+    root = args.repo_root
+    unmarked, current = scan_tree(root)
+    if args.list is not None:
+        shown = [site for site in unmarked if args.list in site.path]
+        for site in shown:
+            print(site.render())
+        print(f"{len(shown)} unmarked site(s)")
+        return 0
+    grown, shrunk = compare_to_baseline(current, load_baseline(root))
+    if args.update_baseline:
+        if grown and (root / BASELINE_PATH).exists():
+            print("refusing to raise a shrink-only pin:", file=sys.stderr)
+            for line in grown:
+                print("  " + line, file=sys.stderr)
+            return 1
+        (root / BASELINE_PATH).write_text(baseline_document(current), encoding="utf-8")
+        print(f"pins rewritten for {len(current)} file(s)")
+        return 0
+    for site in unmarked:
+        print("UNMARKED " + site.render())
+    for line in grown:
+        print("GREW     " + line + "  (an old spelling gained a producer: read docs/audits/0030)")
+    for line in shrunk:
+        print("SHRANK   " + line + "  (lower the pin: --update-baseline)")
+    if unmarked or grown or shrunk:
+        return 1
+    print("resolved_by: every call-family creation site is marked; old-spelling pins hold")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

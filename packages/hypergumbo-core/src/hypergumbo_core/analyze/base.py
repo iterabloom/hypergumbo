@@ -202,6 +202,7 @@ from ..identity_schemes import (
 )
 from ..axis_meta_keys import write_meta_key
 from ..call_constructs import require_declared as _require_declared_construct
+from ..resolved_by import OWN_TYPE as _OWN_TYPE
 from ..symbol_resolution import NameResolver
 from ..pass_silence import DEPENDENCY_UNAVAILABLE, silence_reason_for_candidates
 
@@ -1354,16 +1355,45 @@ def defer_bare_method_call(
     """
     if candidate_kind != "method":
         return False
-    owner = (
-        candidate_name.rsplit(separator, 1)[0]
-        if separator in candidate_name else None
-    )
-    if owner is not None and owner == enclosing_type:
+    if _is_method_of(candidate_name, enclosing_type, separator):
         return False  # same-class implicit ``this``/``self`` — bind directly
     # Cross-class (or owner-unknown) method: only a strong exact / import-scoped
     # match is trustworthy for a bare call; a weak suffix / ambiguous / same-file
     # short-name collision is the magnet — defer to Site-1.
     return match_type not in ("exact", "path_hint")
+
+
+def _is_method_of(
+    candidate_name: str, enclosing_type: Optional[str], separator: str,
+) -> bool:
+    """Whether ``candidate_name`` is ``"<enclosing_type><sep><method>"``."""
+    if enclosing_type is None or separator not in candidate_name:
+        return False
+    return candidate_name.rsplit(separator, 1)[0] == enclosing_type
+
+
+def resolved_by_for_bare_call(
+    candidate_kind: str,
+    candidate_name: str,
+    lookup_resolved_by: str,
+    enclosing_type: Optional[str],
+    separator: str = ".",
+) -> str:
+    """The ``resolved_by`` value of a bare call bound to ``candidate``.
+
+    The companion of :func:`defer_bare_method_call`, for the sites that bind
+    instead of deferring: a bare call to a method of the caller's own
+    enclosing type is ``own_type`` (the language's implicit-receiver rule,
+    the same test that makes ``defer_bare_method_call`` bind it), whatever
+    lookup produced the candidate. Anything else keeps ``lookup_resolved_by``,
+    the value the lookup itself gives (``LookupResult.resolved_by``, or
+    ``same_file`` for a hit in the file's own table).
+    """
+    if candidate_kind == "method" and _is_method_of(
+        candidate_name, enclosing_type, separator,
+    ):
+        return _OWN_TYPE
+    return lookup_resolved_by
 
 
 
