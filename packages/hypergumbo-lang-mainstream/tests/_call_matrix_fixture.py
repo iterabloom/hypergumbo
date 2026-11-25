@@ -1066,8 +1066,8 @@ def php(R, D, B, S, dl, split=False, third=False):
         files[f"{side}_spare_util.php"] = helper_file(f"{side.upper()}SpareUtil", 2)
     if split:
         # One class per file, all in namespace App, loaded with ``require_once``;
-        # main loads the right classes only. Decoy files carry the ``z_`` /
-        # ``a_`` prefix.
+        # main loads R, D (``scope_decoy_local`` names it) and Child, never S
+        # or Spare. Decoy files carry the ``z_`` / ``a_`` prefix.
         app = "<?php\n\nnamespace App;\n\n"
         files |= {"store.php": app + cls(R, "execute", 1), f"{side}_store.php": app + cls(D, "execute", 2),
                   "base.php": app + cls(B, "ping", 1),
@@ -1075,7 +1075,7 @@ def php(R, D, B, S, dl, split=False, third=False):
                   f"{side}_stray.php": app + cls(S, "ping", 2)}
         if third:
             files[f"{side}_spare.php"] = app + spare
-        classes = "\nrequire_once __DIR__ . '/store.php';\nrequire_once __DIR__ . '/child.php';\n"
+        classes = "".join(f"\nrequire_once __DIR__ . '/{f}.php';" for f in ("store", f"{side}_store", "child")) + "\n"
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
         pg = order(dl, cls(B, "ping", 1) + f"\nclass Child extends {B}\n{{\n}}\n", cls(S, "ping", 2))
