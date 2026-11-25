@@ -12,7 +12,13 @@ under ``packages/*/src`` whose ``edge_type`` is a call-family literal
 (``calls``, ``instantiates``), or a conditional between literals one of which
 is, must pass ``resolved_by=``. Exempt: a site that passes the literal
 ``is_resolved=False`` (it builds an edge that leaves the repository, and
-``Edge.create`` refuses the mark there). A site that builds an edge to a
+``Edge.create`` refuses the mark there), UNLESS its destination is written
+``<symbol>.id``. The producer's ``is_resolved`` is advisory: finalize resolves
+any edge whose destination is a node of the repository (ADR-0037), so a site
+that says False for a symbol's id publishes a resolved edge with no mark
+(the Lua FFI linker's second phase and two gRPC sites did: 565 edges on one
+repository). A destination held in a variable is not judged; the census over
+real repositories is what catches one. A site that builds an edge to a
 placeholder without that literal (the Erlang logger expansion, a minted
 stdlib symbol) passes ``resolved_by=None`` with a comment saying so: the
 keyword is what this check reads, so the absence is a statement rather than
@@ -113,6 +119,11 @@ def _is_edge_construction(call: ast.Call) -> bool:
     )
 
 
+def _is_a_symbols_id(dst: ast.expr | None) -> bool:
+    """Whether ``dst`` is written ``<something>.id``: an existing node's id."""
+    return isinstance(dst, ast.Attribute) and dst.attr == "id"
+
+
 def unmarked_sites(source: str, rel: str) -> list[UnmarkedSite]:
     """Call-family edge creations in ``source`` that pass no ``resolved_by``."""
     family = call_family_edge_types()
@@ -128,7 +139,11 @@ def unmarked_sites(source: str, rel: str) -> list[UnmarkedSite]:
         if not in_family or "resolved_by" in keywords:
             continue
         unresolved = keywords.get("is_resolved")
-        if isinstance(unresolved, ast.Constant) and unresolved.value is False:
+        dst = keywords.get("dst") or (node.args[1] if len(node.args) > 1 else None)
+        if (
+            isinstance(unresolved, ast.Constant) and unresolved.value is False
+            and not _is_a_symbols_id(dst)
+        ):
             continue
         found.append(UnmarkedSite(rel, node.lineno, "/".join(in_family)))
     return found
