@@ -1240,19 +1240,26 @@ def _type_meant(
     tie). ``None`` when visibility cannot judge (a candidate with no
     qualified name): the caller falls back to the name lookup.
     """
+    arity = written_arity(written)
+    written_short = dotted(written.split("<", 1)[0]).rpartition(".")[2].strip()
+
     def types_named(short: str) -> list[Symbol]:
-        return [
+        found = [
             class_symbols[class_id] for class_id in _same_language_class_ids(
                 short, caller.language or "", class_ids_by_name, class_symbols,
             )
         ]
+        # Name and arity are looked up TOGETHER, before any scope is walked:
+        # a non-generic ``Registry`` in a nearer scope does not hide the
+        # ``Registry<TKey>`` the caller wrote. An alias is looked up by the
+        # aliased name, which the written arity does not describe.
+        return _of_arity(found, arity) if short == written_short else found
 
     seen = visible_types(
         written, caller.qualified_name, scope, types_named, caller_path=caller.path,
     )
     if seen is None:
         return None
-    seen = _of_arity(seen, written_arity(written))
     return (_one_type(seen) if seen else None) or _NOT_BOUND
 
 

@@ -509,3 +509,19 @@ def test_the_bound_file_must_declare_the_function() -> None:
     scope = _file_scope()
     scope.add_named("src/index.ts", "helper")
     assert _ts_link([elsewhere, caller], _ts_stub(caller, "helper"), scope) == []
+
+
+def test_a_nearer_namesake_of_another_arity_does_not_hide_the_type() -> None:
+    """C# looks a type up by name AND arity together. The caller's own
+    namespace declares a non-generic ``Registry``; a namespace the file uses
+    declares ``Registry<TKey>``. A receiver declared ``Registry<string>`` is
+    the generic one: the nearer scope does not declare a type of that arity."""
+    nearer = _arity(_type_with_method("App.Web", "Registry", "Dispose", "web/Registry.cs"), 0)
+    generic = _arity(_type_with_method("Lib", "Registry", "Dispose", "lib/Registry.cs"), 1)
+    caller = _caller()
+    symbols = [*nearer, *generic, caller]
+    (edge,) = _link(symbols, _stub(caller, "Dispose", receiver_type_hint="Registry<string>"), _scope("Lib"))
+    assert edge.dst == generic[1].id
+    # Written without type arguments, the same receiver is the nearer one.
+    (edge,) = _link(symbols, _stub(caller, "Dispose", receiver_type_hint="Registry"), _scope("Lib"))
+    assert edge.dst == nearer[1].id
