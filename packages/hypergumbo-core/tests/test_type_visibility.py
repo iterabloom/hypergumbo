@@ -6,7 +6,7 @@ from __future__ import annotations
 from hypergumbo_core.import_scope import ImportScope
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core import type_visibility
-from hypergumbo_core.type_visibility import dotted
+from hypergumbo_core.type_visibility import dotted, without_type_arguments
 
 
 def _type(qualified_name: str | None, name: str = "", path: str = "a.cs") -> Symbol:
@@ -208,3 +208,9 @@ def test_a_wildcard_import_of_a_file_supplies_its_declarations() -> None:
     assert _paths(visible_types("Conn", None, two, conns, caller_path="src/main.rs")) == ["src/db.rs", "src/net.rs"]
     two.add_named("src/old.rs", "Conn")
     assert _paths(visible_types("Conn", None, two, conns, caller_path="src/main.rs")) == ["src/old.rs"]
+
+
+def test_a_written_type_without_its_type_arguments() -> None:
+    assert without_type_arguments("Policy") == "Policy"
+    assert without_type_arguments("Policy<int>") == "Policy"
+    assert without_type_arguments("App.Map<string, List<int>> ") == "App.Map"

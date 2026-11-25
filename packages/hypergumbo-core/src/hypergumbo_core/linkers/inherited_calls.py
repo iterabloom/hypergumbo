@@ -174,7 +174,9 @@ from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
-from ..type_visibility import dotted, visible_types, written_arity
+from ..type_visibility import (
+    dotted, visible_types, without_type_arguments, written_arity,
+)
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
     LinkerActivation,
@@ -1241,7 +1243,7 @@ def _type_meant(
     qualified name): the caller falls back to the name lookup.
     """
     arity = written_arity(written)
-    written_short = dotted(written.split("<", 1)[0]).rpartition(".")[2].strip()
+    written_short = dotted(without_type_arguments(written)).rpartition(".")[2]
 
     def types_named(short: str) -> list[Symbol]:
         found = [

@@ -39,9 +39,23 @@ Analyzers do NOT resolve these calls themselves. They:
 2. emit the call site as an unresolved ``calls`` edge carrying
    ``receiver_type_hint`` (via ``make_unresolved_edge``).
 
-Current producers: Kotlin stamps ``extension_receiver`` and D stamps
+Current producers: Kotlin and C# stamp ``extension_receiver`` and D stamps
 ``ufcs_receiver_type``. The other languages listed above are not yet
 stamped by their analyzers, so this linker resolves nothing for them.
+
+Both sides are matched on the type's NAME, with the type arguments the source
+wrote removed (``type_visibility.without_type_arguments``): ``fun
+List<Int>.foo()`` is invocable on any ``List`` receiver, and no generic
+type-checking is done.
+
+What the match does not do, measured on the C# adapter of ADR-0064 (Dapper,
+Polly, Serilog): two overloads of one extension on one receiver type count as
+two candidates and withhold the bind (16 of 53 extension calls); a receiver
+that is a method type parameter (``this TBuilder builder``) is matched by the
+parameter's name; a nullable receiver (``T?``) is indexed under that spelling
+and no hint matches it; the receiver's ancestors are not walked (an extension
+on an interface is not reached from an implementing class); and the
+extension's namespace is not checked against the caller's imports.
 
 This linker owns the receiver-type-keyed search. Resolution is gated to the
 call site's own ``src_lang`` (INV-milud: never cross-resolve across languages),
@@ -55,6 +69,7 @@ import time
 
 from .. import resolved_by
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..type_visibility import without_type_arguments
 from .method_call_recovery import parse_unresolved_name, short_name
 from .registry import (
     LinkerActivation,
@@ -76,19 +91,6 @@ _RECEIVER_META_EVIDENCE: tuple[tuple[str, str], ...] = (
 )
 
 
-def _base_type(type_name: str) -> str:
-    """Strip generic parameters: ``List<Int>`` → ``List``.
-
-    Extension / UFCS resolution matches on the base type, not the
-    instantiation — ``fun List<Int>.foo()`` is invocable on any ``List``
-    receiver. hypergumbo does not do full generic type-checking, so both
-    the declared receiver type and the call-site ``receiver_type_hint`` are
-    normalized to their base name before the index lookup (this reproduces
-    the base-name matching the Kotlin analyzer did in-line before WI-lodij).
-    """
-    return type_name.split("<", 1)[0]
-
-
 def _build_receiver_type_index(
     symbols: list[Symbol],
 ) -> dict[tuple[str, str, str], list[tuple[str, str]]]:
@@ -104,7 +106,7 @@ def _build_receiver_type_index(
             receiver_type = meta.get(meta_key)
             if not receiver_type:
                 continue
-            key = (sym.language, _base_type(receiver_type), short_name(sym.name))
+            key = (sym.language, without_type_arguments(receiver_type), short_name(sym.name))
             index.setdefault(key, []).append((sym.id, evidence))
     return index
 
@@ -149,7 +151,7 @@ def link_receiver_type_dispatch(ctx: LinkerContext) -> LinkerResult:
             continue
 
         candidates = index.get(
-            (src_lang, _base_type(receiver_type_hint), callee_short),
+            (src_lang, without_type_arguments(receiver_type_hint), callee_short),
         )
         if not candidates:
             continue

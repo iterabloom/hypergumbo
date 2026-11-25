@@ -85,6 +85,7 @@ from typing import TYPE_CHECKING
 
 from .. import resolved_by
 from ..member_names import member_short_name
+from ..type_visibility import without_type_arguments
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, NodeId, make_pass_id, stated_module_of,
 )
@@ -223,7 +224,9 @@ def _hint_agrees_with_declared(hint_class: "Symbol", declared: str) -> bool:
     COMPARED ON SHORT NAMES IN BOTH DIRECTIONS. A stamped type may be qualified
     (``java.io.File``, ``com.example.Tts``) while a class symbol carries its own
     short name, and a class symbol may itself be nested (``Queue.WaitingItem``)
-    while the stamp is the bare ``WaitingItem``. Comparing the spellings as
+    while the stamp is the bare ``WaitingItem``. A stamp also keeps the type
+    arguments the source wrote (``Tts<Int>``), which no class name has, so
+    they are removed first. Comparing the spellings as
     given would refuse almost every recovery, which reads exactly like a working
     guard while actually disabling the linker -- so both sides are reduced and
     the reduction is pinned by a test.
@@ -233,7 +236,9 @@ def _hint_agrees_with_declared(hint_class: "Symbol", declared: str) -> bool:
     of ``sym_by_id``'s keys -- so a missing-symbol branch here would be dead
     code, and the coverage gate said so.
     """
-    return member_short_name(hint_class.name) == member_short_name(declared)
+    return member_short_name(hint_class.name) == member_short_name(
+        without_type_arguments(declared),
+    )
 
 
 @register_linker(

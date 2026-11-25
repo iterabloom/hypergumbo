@@ -96,6 +96,7 @@ from .edge_types import INHERITANCE_EDGE_TYPES
 from .ir import symbol_name_slot, symbol_path_slot
 from .member_names import MEMBER_NAME_SEPARATORS
 from .symbol_kinds import type_like_kind_names
+from .type_visibility import without_type_arguments
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .ir import Edge, Symbol
@@ -227,8 +228,14 @@ def _call_owner(edge: "Edge", index: _Index, language: str) -> Optional["Symbol"
     """The in-repo type a call is made on, by the module docstring's order."""
     meta = edge.meta or {}
     if "receiver_type_id" in meta or "receiver_type_hint" in meta:
+        hint = meta.get("receiver_type_hint")
+        # A hint keeps the type arguments the source wrote; an owner is named
+        # without them.
         return (index.owner_by_id(meta.get("receiver_type_id"), language)
-                or index.owner_by_name(meta.get("receiver_type_hint"), language))
+                or index.owner_by_name(
+                    without_type_arguments(hint) if isinstance(hint, str) else None,
+                    language,
+                ))
     module = symbol_path_slot(edge.dst)
     if module not in _NO_MODULE:
         by_module = index.owner_by_name(module, language)

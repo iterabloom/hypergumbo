@@ -82,9 +82,18 @@ def _written_name(written: str) -> tuple[str, bool]:
     """The name as a dotted path with its type arguments removed, and whether
     it was rooted at the global namespace (``global::A.B``), which makes it a
     full name that no enclosing scope or import may reinterpret."""
-    name = written.split("<", 1)[0].strip()
+    name = without_type_arguments(written)
     rooted = name.startswith(_GLOBAL_ROOT)
     return dotted(name[len(_GLOBAL_ROOT):] if rooted else name), rooted
+
+
+def without_type_arguments(written: str) -> str:
+    """``written`` with its type arguments removed: ``Policy<int>`` is
+    ``Policy``. The ONE reduction for every reader of a stub's
+    ``receiver_type_hint`` or ``qualifier`` that wants the type's name: a hint
+    keeps the arguments the source wrote, so a reader that takes it whole
+    looks up a name no declaration has."""
+    return written.split("<", 1)[0].strip()
 
 
 def written_arity(written: str) -> int:
