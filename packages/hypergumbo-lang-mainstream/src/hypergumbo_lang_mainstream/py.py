@@ -336,6 +336,7 @@ from hypergumbo_core.analyze.registry import (
 )
 from hypergumbo_core.library_signatures import load_library_member_types, load_library_tuple_returns
 from hypergumbo_core.qualified_name_axis import QUALIFIED_NAME_SEPARATORS
+from hypergumbo_core import resolved_by
 from hypergumbo_lang_mainstream._pyscope import NestedDef, Scope, ScopeStack
 
 if TYPE_CHECKING:
@@ -10550,6 +10551,9 @@ def _process_call(
 
     func = call_node.func
     callee_symbol = None
+    # What scoped the choice of ``callee_symbol``, set beside it on every
+    # route (``Edge.meta["resolved_by"]``, WI-hirol).
+    _by: str | None = None
     is_instantiation = False
     evidence_type = "ast_call_direct"
     call_meta: dict[str, str] | None = None
@@ -10559,6 +10563,13 @@ def _process_call(
         callee_name = func.id
         # INV-mofav: enclosing-function scope wins over module scope.
         callee_symbol = _lexical_def(callee_name, stack, local_symbols)
+        # The caller's function scopes answer first; the module-level
+        # bare-name table of this file is the fallback (last writer wins).
+        _by = (
+            resolved_by.SAME_FILE
+            if callee_symbol is local_symbols.get(callee_name)
+            else resolved_by.LEXICAL_SCOPE
+        )
         # WI-gulot: a module-level `f = g` function alias resolves as a variable;
         # chase it to the aliased function so the call reaches the real body
         # (else it dead-ends at the 0-out-degree variable node).
@@ -10569,6 +10580,14 @@ def _process_call(
             and callee_name in function_aliases
         ):
             callee_symbol = function_aliases[callee_name]
+            # The alias target came from this file's table or, for an
+            # imported ``g``, through the import (only those two fill
+            # ``function_aliases``).
+            _by = (
+                resolved_by.SAME_FILE
+                if callee_symbol.path == caller_symbol.path
+                else resolved_by.IMPORT
+            )
 
         if callee_symbol and callee_symbol.kind == "class":
             is_instantiation = True
@@ -10577,6 +10596,7 @@ def _process_call(
             callee_symbol = _lookup_symbol_by_module(
                 global_symbols, module_name, original_name, resolver=resolver
             )
+            _by = resolved_by.IMPORT
             if callee_symbol and callee_symbol.kind == "class":
                 is_instantiation = True
 
@@ -10587,6 +10607,7 @@ def _process_call(
         if callee_symbol is None and stack is not None:
             callee_symbol = stack.lookup_enclosing(callee_name)
             is_instantiation = _is_class(callee_symbol)
+            _by = resolved_by.LEXICAL_SCOPE
 
     # Case 2: Attribute calls - self.method(), module.ClassName(), variable.method()
     elif isinstance(func, ast.Attribute):
@@ -10611,6 +10632,7 @@ def _process_call(
             # gate.
             if receiver_name == "self":
                 callee_symbol = self_methods.get(attr_name)
+                _by = resolved_by.OWN_TYPE
 
             # Case 2b: module.ClassName() or module.func()
             elif receiver_name in module_imports:
@@ -10618,6 +10640,7 @@ def _process_call(
                 callee_symbol = _lookup_symbol_by_module(
                     global_symbols, module_name, attr_name, resolver=resolver
                 )
+                _by = resolved_by.IMPORT
                 if callee_symbol and callee_symbol.kind == "class":
                     is_instantiation = True
 
@@ -10630,6 +10653,7 @@ def _process_call(
                     sym_by_path_name,
                 )
                 is_instantiation = _is_class(callee_symbol)
+                _by = resolved_by.RECEIVER_TYPE
 
             # Case 2d: Imported class method calls - Item.model_validate()
             # When Item is imported via "from app.models import Item"
@@ -10647,6 +10671,8 @@ def _process_call(
                             class_symbol, attr_name, {}, sym_by_path_name,
                         )
                         is_instantiation = _is_class(callee_symbol)
+                        # The owner class is the one the import binds.
+                        _by = resolved_by.IMPORT
 
                 # Case 2e: Imported submodule calls - crud.create_user()
                 # When crud is imported via "from app import crud" (crud is a module)
@@ -10656,6 +10682,7 @@ def _process_call(
                     callee_symbol = _lookup_symbol_by_module(
                         global_symbols, submodule_name, attr_name, resolver=resolver
                     )
+                    _by = resolved_by.IMPORT
 
         # Case 2f: self.field.method() - call on injected dependency (INV-014)
         # Pattern: self.svc.process() where self.svc was assigned from a typed param
@@ -10672,6 +10699,7 @@ def _process_call(
                     sym_by_path_name,
                 )
                 is_instantiation = _is_class(callee_symbol)
+                _by = resolved_by.RECEIVER_TYPE
 
         # Case 2g: a fully dotted module call -- ``import pkg.sub.deep`` then
         # ``pkg.sub.deep.deep_fn()`` (WI-lovun). ``import pkg.sub.deep`` binds
@@ -10687,6 +10715,7 @@ def _process_call(
                 callee_symbol = _lookup_symbol_by_module(
                     global_symbols, dotted_module, attr_name, resolver=resolver
                 )
+                _by = resolved_by.IMPORT
                 if callee_symbol and callee_symbol.kind == "class":
                     is_instantiation = True
 
@@ -10716,6 +10745,14 @@ def _process_call(
                 ):
                     callee_symbol = member
                     is_instantiation = member.kind == "class"
+                    # The class a receiver CALL evaluates to is a type
+                    # established by its constructor or return type; a dotted
+                    # owner (``Outer.Inner``) is one the call site names.
+                    _by = (
+                        resolved_by.RECEIVER_TYPE
+                        if isinstance(func.value, ast.Call)
+                        else resolved_by.QUALIFIED
+                    )
 
     # Emit edge if we resolved the callee
     if callee_symbol:
@@ -10728,6 +10765,7 @@ def _process_call(
                 evidence_type="ast_new",
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                resolved_by=_by,
             ))
         else:
             edges.append(Edge.create(
@@ -10739,6 +10777,7 @@ def _process_call(
                 meta=call_meta,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                resolved_by=_by,
             ))
     else:
         # Emit unresolved edge for attribute calls with known module context
