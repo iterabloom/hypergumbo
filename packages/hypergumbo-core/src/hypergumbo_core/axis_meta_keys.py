@@ -538,7 +538,15 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "half of ``receiver``, ``disambiguation_fallback`` -- are "
                 "still written and fold into this key language by language.",
                 applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
-                per_call_site=True),
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: ir.Edge.create, from its resolved_by= "
+                    "argument, at the moment the edge is built. Nothing "
+                    "rewrites it. finalize._drop_resolution_mark REMOVES it "
+                    "from an edge whose verdict is unresolved, and "
+                    "ir.deduplicate_edges moves disagreeing sites' values "
+                    "to resolved_by_values (the per-call-site rule).")),
     MetaKeySpec("resolution_quality", AXIS_EDGE_META,
                 "Pathway-quality label on ``ast_call`` edges "
                 "(e.g. 'recovery', 'ambiguous'), ORTHOGONAL to "
