@@ -160,6 +160,7 @@ from hypergumbo_core.ir import (
     make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     record_partial_parse,
@@ -860,6 +861,7 @@ def _emit_self_send(
             origin=PASS_ID,
             origin_run_id=run_id,
             meta={"call_construct": "method", "receiver": "self"},
+            resolved_by=resolved_by.OWN_TYPE,
         ))
         return
     edges.append(make_unresolved_edge(
@@ -905,6 +907,25 @@ def _symbol_belongs_to_class(symbol: Symbol, class_path: str) -> bool:
     to ``A::B::X``. Covers instance and class methods alike.
     """
     return _owner_path(symbol) == class_path
+
+
+def _bare_send_resolved_by(
+    callee: Symbol, current_method: Symbol, lookup_value: str,
+) -> str:
+    """The ``resolved_by`` of a receiverless send bound to ``callee``.
+
+    Ruby's counterpart of ``resolved_by_for_bare_call``: a method of the
+    caller's own class (by lexical path, instance or class method, the test
+    the AMB-METHOD guard binds by) is the implicit ``self``, ``own_type``;
+    anything else keeps what the lookup that found it says.
+    """
+    owner = _owner_path(current_method)
+    if (
+        callee.kind == "method" and owner is not None
+        and _symbol_belongs_to_class(callee, owner)
+    ):
+        return resolved_by.OWN_TYPE
+    return lookup_value
 
 
 def _resolve_bare_call_class_aware(
@@ -3000,6 +3021,7 @@ def _try_receiver_call(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta={"call_construct": "constructor"},
+                    resolved_by=resolved_by.QUALIFIED,
                 ))
                 return True
             # ``Klass#initialize`` is absent on the named class: emit an
@@ -3040,6 +3062,7 @@ def _try_receiver_call(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta={"call_construct": "method", "receiver": "generic"},
+                    resolved_by=resolved_by.QUALIFIED,
                 ))
                 return True
 
@@ -3480,6 +3503,7 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
+                                        resolved_by=resolved_by.RECEIVER_TYPE,
                                     ))
                             else:
                                 # WI-misir: a variable receiver of unknown type
@@ -3523,6 +3547,11 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "method"},
+                                # The file's bare-name table, last
+                                # declaration winning.
+                                resolved_by=_bare_send_resolved_by(
+                                    callee, current_method, resolved_by.SAME_FILE,
+                                ),
                             ))
                         # Check global symbols via resolver (bare calls only)
                         elif receiver_node is None:
@@ -3540,6 +3569,10 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "method"},
+                                    resolved_by=_bare_send_resolved_by(
+                                        lookup_result.symbol, current_method,
+                                        lookup_result.resolved_by,
+                                    ),
                                 ))
                             elif method_node.type in ("identifier", "constant"):
                                 # A receiverless call to a name no project symbol
@@ -3687,6 +3720,12 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "method", "receiver": "bare"},
+                                # The own class first, then the file's
+                                # bare-name table (last declaration winning).
+                                resolved_by=(
+                                    resolved_by.OWN_TYPE if same_class
+                                    else resolved_by.SAME_FILE
+                                ),
                             ))
                 elif not ambiguous:
                     # Use require hints for disambiguation
@@ -3707,6 +3746,10 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "method", "receiver": "bare"},
+                                resolved_by=_bare_send_resolved_by(
+                                    callee, current_method,
+                                    lookup_result.resolved_by,
+                                ),
                             ))
                     elif not lookup_result.found:
                         # A non-local bare name no project symbol carries is
