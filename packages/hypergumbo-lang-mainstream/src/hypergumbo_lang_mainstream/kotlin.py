@@ -210,6 +210,22 @@ declaration is exported unless its modifier list contains ``private``,
 ``internal``, or ``protected``. Extension functions are unconditionally
 treated as exported (see the ``receiver_type`` branch).
 
+OVERLOADS BY ARGUMENT COUNT (WI-tosut). Every ``fun`` symbol (function,
+method, local function, abstract interface member) declares its parameters in
+``meta["parameters"]``, one ``overload_arity.parameter_entry`` each, read
+from its ``function_value_parameters`` node (``_kt_parameters_meta``; never
+from ``signature``, ADR-0058): ``p: Int = 0`` has ``default``, ``vararg xs:
+T`` is ``variadic``, an extension's receiver is not a parameter. A list that
+does not parse writes no key (unknown arity, never excluded). Constructors
+have no symbol of their own (the primary one's parameters sit on the class
+declaration, a secondary one emits nothing), so a class declares none and is
+never narrowed. Every stub a call makes carries ``argument_count``
+(``_kt_argument_count``: a trailing lambda is one, named arguments count, a
+spread makes it unknown), which the shared linkers read to leave out the
+overloads that cannot take it. The bind made here, the enclosing type's own
+member, chooses the same way: of the overloads the count admits, the one
+declared last, the one taken before the count was read (``_own_member``).
+
 IMPORTED TYPE NAMES (stable-id scheme v17, WI-palus). Every type a typed
 stable id hashes is written through the file's imports (an alias as what it names) and the default imports
 (``_kotlin_type_names``, read once per file and set with ``resolving_type_names``), so an
@@ -231,7 +247,7 @@ from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.import_scope import ImportScope
 from hypergumbo_core.type_visibility import visible_types
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.overload_arity import scoped_table_stable_id
+from hypergumbo_core.overload_arity import narrow_by_arity, parameter_entry, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
@@ -1009,6 +1025,98 @@ def _kt_is_vararg(parameter_modifiers: "tree_sitter.Node") -> bool:
     )
 
 
+@dataclass(frozen=True)
+class _KtParameter:
+    """One parameter a ``function_value_parameters`` list declares, as written."""
+
+    name: str | None
+    type_text: str | None
+    vararg: bool
+    default: bool
+
+
+def _kt_declared_parameters(
+    parameters: "tree_sitter.Node", source: bytes,
+) -> list[_KtParameter]:
+    """The parameters of a ``function_value_parameters`` node, in order.
+
+    The grammar writes what belongs to one parameter as SIBLINGS of its
+    ``parameter`` node: the ``parameter_modifiers`` before it (``vararg``,
+    annotations) and, for a default value, ``=`` and the expression after it.
+    The name is the parameter's first identifier and the type its last type
+    node (the one reading the signature text and the parameter list share).
+    """
+    found: list[_KtParameter] = []
+    vararg = False
+    for child in parameters.children:
+        if child.type == "parameter_modifiers":
+            vararg = _kt_is_vararg(child)
+        elif child.type == "parameter":
+            name: str | None = None
+            type_text: str | None = None
+            for part in child.children:
+                if part.type == "identifier" and name is None:
+                    name = node_text(part, source)
+                elif part.type in _KT_TYPE_SLOT_NODES:
+                    type_text = node_text(part, source)
+            found.append(_KtParameter(name, type_text, vararg, False))
+            vararg = False
+        elif child.type == "=" and found:
+            last = found[-1]
+            found[-1] = _KtParameter(last.name, last.type_text, last.vararg, True)
+    return found
+
+
+def _kt_parameters_meta(
+    decl: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, Any]] | None:
+    """``meta["parameters"]`` of a ``fun`` (``overload_arity.parameter_entry``
+    per declared parameter, the empty list for none): ``p: Int = 0`` has a
+    default and ``vararg xs: T`` takes any number. An extension's receiver
+    is not a parameter (``meta["extension_receiver"]``). ``None`` (the key is
+    not written: the arity is unknown) when the list does not parse, since a
+    parameter lost to an error would otherwise read as one the callable does
+    not take."""
+    parameters = find_child_by_type(decl, "function_value_parameters")
+    if parameters is None or parameters.has_error:
+        return None
+    return [
+        parameter_entry(p.name or "", p.type_text, default=p.default, variadic=p.vararg)
+        for p in _kt_declared_parameters(parameters, source)
+    ]
+
+
+def _kt_argument_count(call: "tree_sitter.Node") -> int | None:
+    """How many arguments a ``call_expression`` writes, or ``None`` when the
+    count is not what the callee receives (a spread ``*xs``).
+
+    Each ``value_argument`` is one, named or not (a comment in the list is
+    not a ``value_argument``), and a trailing lambda is one more. The grammar
+    hangs a trailing lambda written after parentheses (``f(a) { }``) on an
+    OUTER ``call_expression`` whose callee is this call, and one written
+    without them (``f { }``) on this call itself. An outer call with an
+    argument list of its own (``h()(1) { }``) is a call of what ``h()``
+    returns, and its lambda is not ``h``'s.
+    """
+    count = 0
+    for child in call.children:
+        if child.type == "annotated_lambda":
+            count += 1
+        elif child.type == "value_arguments":
+            for argument in child.children:
+                if argument.type != "value_argument":
+                    continue
+                if find_child_by_type(argument, "spread_expression") is not None:
+                    return None
+                count += 1
+    outer = call.parent
+    if outer is not None and outer.type == "call_expression" and outer.children[0] == call:
+        rest = [c for c in outer.children[1:] if not c.is_extra]
+        if rest and all(c.type == "annotated_lambda" for c in rest):
+            count += len(rest)
+    return count
+
+
 def _kt_receiver_type_node(decl: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
     """The extension receiver's type node of a function or property, or ``None``.
 
@@ -1067,22 +1175,10 @@ def _extract_kotlin_signature(
     for child in node.children:
         if child.type == "function_value_parameters":
             found_params = True
-            vararg = False
-            for subchild in child.children:
-                if subchild.type == "parameter_modifiers":
-                    vararg = _kt_is_vararg(subchild)
-                elif subchild.type == "parameter":
-                    param_name = None
-                    param_type = None
-                    for pc in subchild.children:
-                        if pc.type == "identifier" and param_name is None:
-                            param_name = node_text(pc, source)
-                        elif pc.type in _KT_TYPE_SLOT_NODES:
-                            param_type = node_text(pc, source)
-                    if param_name and param_type:
-                        prefix = _KT_VARARG_PREFIX if vararg else ""
-                        params.append(f"{prefix}{param_name}: {param_type}")
-                    vararg = False
+            for param in _kt_declared_parameters(child, source):
+                if param.name and param.type_text:
+                    prefix = _KT_VARARG_PREFIX if param.vararg else ""
+                    params.append(f"{prefix}{param.name}: {param.type_text}")
         # Return type comes after function_value_parameters and before function_body
         elif found_params and child.type in _KT_TYPE_SLOT_NODES:
             return_type = node_text(child, source)
@@ -1829,6 +1925,9 @@ def _extract_parsed_symbols(
                         func_meta = {}
                     func_meta["extension_receiver"] = receiver_type
                     func_is_exported = True
+                parameters = _kt_parameters_meta(node, source)
+                if parameters is not None:
+                    func_meta = {**(func_meta or {}), "parameters": parameters}
 
                 cls_ancestors = _get_kotlin_class_ancestors(node, source)
                 symbol = Symbol(
@@ -2220,6 +2319,9 @@ def _extract_edges_from_file(
     # Declared once: the call arm assigns a Symbol (narrowed), the reference
     # arms an Optional.
     current_function: Optional[Symbol]
+    # How many arguments the call the call arm is on writes
+    # (``_kt_argument_count``); every stub ``_report`` makes carries it.
+    current_arguments: int | None = None
 
     # Variable types: var_name -> type. A LOCAL or a PARAMETER closes with its
     # function (``ScopedVarTypes``). Were the map file-scoped,
@@ -2373,6 +2475,7 @@ def _extract_edges_from_file(
             super_receiver=super_receiver,
             call_construct="method" if on_receiver else None,
             stdlib_member_name=name in _KOTLIN_LIBRARY_MEMBER_NAMES,
+            argument_count=current_arguments,
         ))
 
     def _report_named_owner(owner: str, member: str, line: int, module_hint: str) -> None:
@@ -2449,6 +2552,7 @@ def _extract_edges_from_file(
                 "kotlin", current_function.id, method_name, line, PASS_ID,
                 run.execution_id, module_hint=PRINT_STREAM_TYPE,
                 receiver_type_hint=PRINT_STREAM_TYPE, call_construct="method",
+                argument_count=current_arguments,
             )
             stdio_call.meta = {
                 **(stdio_call.meta or {}), "io_target_kind": STD_STREAM_TARGET_KIND,
@@ -2471,10 +2575,13 @@ def _extract_edges_from_file(
                 return
         _report(method_name, line)
 
-    # WI-gikuk: this file's declarations by qualified name (``a.Foo.helper``).
-    own_by_qualified: dict[str, Symbol] = {
-        s.qualified_name: s for s in decl_symbols if s.qualified_name
-    }
+    # WI-gikuk: this file's declarations by qualified name (``a.Foo.helper``),
+    # every one of a name in declaration order: the overloads of a method.
+    own_by_qualified: dict[str, list[Symbol]] = {}
+    for decl in decl_symbols:
+        if decl.qualified_name:
+            own_by_qualified.setdefault(decl.qualified_name, []).append(decl)
+
     def _visible_declaration(
         written: str, kinds: frozenset[str], place: Symbol | None = None,
     ) -> Symbol | None:
@@ -2509,18 +2616,33 @@ def _extract_edges_from_file(
     def _own_member(
         node: "tree_sitter.Node", member: str,
         kinds: frozenset[str] | None = _OWN_MEMBER_KINDS,
+        argument_count: int | None = None,
     ) -> Symbol | None:
         """The member ``member`` of the type whose declaration contains
         ``node`` (by POSITION): this file's declaration at ``<class qualified
         name>.<member>``, of one of ``kinds`` (any kind when ``None``). The
         run-wide resolver keeps one ``Foo.helper`` for every ``Foo`` in the
         project, so it could bind ``b.Foo``'s ``this.helper()`` to ``a.Foo``'s
-        (WI-gikuk)."""
+        (WI-gikuk).
+
+        Of several (the overloads of a method), the ones that can take the
+        ``argument_count`` arguments the call writes
+        (``overload_arity.narrow_by_arity`` over their ``meta["parameters"]``),
+        and of those the one declared LAST, the one taken before the count was
+        read: the types of the arguments are not read (WI-tosut). None of them
+        taking it is ``None``: the call is reported, for the linkers to look
+        in the type's ancestors. A name whose last declaration is not of
+        ``kinds`` is ``None``, as before."""
         owner = enclosing_declared_symbol(node, decl_index, _SUPER_OWNER_NODES)
         if owner is None or not owner.qualified_name:
             return None
-        own = own_by_qualified.get(f"{owner.qualified_name}.{member}")
-        return own if own is not None and (kinds is None or own.kind in kinds) else None
+        declared = own_by_qualified.get(f"{owner.qualified_name}.{member}")
+        if not declared or (kinds is not None and declared[-1].kind not in kinds):
+            return None
+        admitted = narrow_by_arity(
+            [d for d in declared if kinds is None or d.kind in kinds], argument_count,
+        )
+        return admitted[-1] if admitted else None
 
     def _own_class_lookup(
         node: "tree_sitter.Node", member: str, name_key: str,
@@ -2639,6 +2761,7 @@ def _extract_edges_from_file(
                 or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
                 or file_anchor
             )
+            current_arguments = _kt_argument_count(node)
 
             # Check for navigation_expression (Object.method() or instance.method())
             nav_node = find_child_by_type(node, "navigation_expression")
@@ -2676,7 +2799,7 @@ def _extract_edges_from_file(
                     # other (inherited) is reported with the enclosing type,
                     # whose ancestors the inherited-calls linker walks.
                     if receiver_node.type == "this_expression":
-                        own = _own_member(node, method_name)
+                        own = _own_member(node, method_name, argument_count=current_arguments)
                         if own is not None:
                             edges.append(Edge.create(
                                 src=current_function.id, dst=own.id,
@@ -2797,7 +2920,7 @@ def _extract_edges_from_file(
                 if callee_node:
                     callee_name = node_text(callee_node, source)
                     line = node.start_point[0] + 1
-                    own = _own_member(node, callee_name)
+                    own = _own_member(node, callee_name, argument_count=current_arguments)
                     imported = file_scope.named(callee_name) if own is None else None
                     imported_member = (
                         project_by_qualified.get(f"{imported.module}.{imported.name}")
