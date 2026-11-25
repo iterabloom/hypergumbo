@@ -28,3 +28,10 @@
   clock: 2  # 0ef9
   nonce: 0ef9  # 0ef9
   message: "Seen while stamping resolved_by (PR #2389): rust.py ~4264 method_resolver for a scoped call bound SystemTime::now() to an in-repo free function now in clock.rs (owner ignored). Path-dependent: seen with the fixture under /tmp, unresolved with the same fixture under pytest's tmp path. Not investigated."  # 0ef9
+- op: discuss  # 6e10
+  at: '2026-11-25T09:25:04Z'  # 6e10
+  by: agent  # 6e10
+  actor: jgstern_agent  # 6e10
+  clock: 3  # 6e10
+  nonce: '6e10'  # 6e10
+  message: "Fixture, PR #2394: a new cell of this item, and Rust's only guess in the table. util::helper() (column qual) is order:decoy/right, mark name, in both layouts: the path's module is not used, the short name is. GUESSES maps (rust, qual) to this item."  # 6e10

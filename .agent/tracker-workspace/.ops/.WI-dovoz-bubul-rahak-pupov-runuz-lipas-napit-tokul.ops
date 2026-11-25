@@ -28,3 +28,10 @@
   clock: 2  # 4dc2
   nonce: 4dc2  # 4dc2
   message: "Code site, read while stamping resolved_by (PR #2389): csharp.py ~2297, the arity pick runs over global_ctors[X.X], which mixes constructors of same-named classes from different namespaces; overloads[0] is a first-match pick. local_symbols / global_symbols Type.Type are last-declaration tables."  # 4dc2
+- op: discuss  # 787f
+  at: '2026-11-25T09:25:05Z'  # 787f
+  by: agent  # 787f
+  actor: jgstern_agent  # 787f
+  clock: 3  # 787f
+  nonce: 787f  # 787f
+  message: "Fixture, PR #2394, second layout (one class per file): the inherited, amb_ext and scope_ext guesses of this item are unresolved across files; only the import guess remains in both layouts. With a third same-named candidate the one-file guesses also go to unresolved. The guesses are real and a one-class-per-file tree mostly does not reach them."  # 787f

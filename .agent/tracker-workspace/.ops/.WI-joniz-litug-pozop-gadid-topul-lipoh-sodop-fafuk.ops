@@ -28,3 +28,10 @@
   clock: 2  # 34ec
   nonce: 34ec  # 34ec
   message: "The C analyzer has the same defect, filed as WI-zibis (c.py builds its resolver over a one-function-per-name table; on tmux 4 of 12 resolved calls to a multiply-defined name land in another file although the caller's own file defines it)."  # 34ec
+- op: discuss  # c58d
+  at: '2026-11-25T09:25:04Z'  # c58d
+  by: agent  # c58d
+  actor: jgstern_agent  # c58d
+  clock: 3  # c58d
+  nonce: c58d  # c58d
+  message: "Fixture, PR #2394: a new cell of this item. The qualified call ::helper() (column qual) is order:right/decoy, mark name, in both layouts: the decoy it can bind is a static function of another .cpp file. GUESSES maps (cpp, qual) to this item."  # c58d

@@ -1,0 +1,22 @@
+- op: create  # 823f
+  at: '2026-11-25T09:24:57Z'  # 823f
+  by: agent  # 823f
+  actor: jgstern_agent  # 823f
+  clock: 1  # 823f
+  nonce: 823f  # 823f
+  data:  # 823f
+    kind: work_item  # 823f
+    title: "Across files: objc resolves no method call, csharp loses a typed bind, groovy drops the edge with three candidates"  # 823f
+    status: todo_hard  # 823f
+    priority: 3  # 823f
+    parent:  # 823f
+    tags:  # 823f
+    - call_graph  # 823f
+    - analysis_quality  # 823f
+    - call_matrix  # 823f
+    isbefore: []  # 823f
+    duplicate_of: []  # 823f
+    not_duplicate_of: []  # 823f
+    pr_ref:  # 823f
+    description: "STATEMENT\nA method call whose receiver's class is declared in another file of the repository is resolved by the same evidence as when the class is in the caller's file.\n\nOBSERVED (2026-11-25, the call-resolution fixture's second layout, one class per file; MATRIX_SPLIT against MATRIX)\n- objc: NO method call resolves across files. var, chain, ctor, inherited, scope_own: `order:decoy/right [same_file]` in one file, `unresolved` across files; a constructor call `[[Conn alloc] init]` followed by `[c execute]` included. The one-file binds were guesses through the per-file selector table (WI-mokul); across files nothing replaces it.\n- csharp: `var db = get_db(); db.execute();` is `right [receiver_type]` when Conn is declared in the caller's file and `unresolved` when Conn.cs is another file of the same namespace. The typed bind is lost, not a guess. (ctor and scope_own stay right in both layouts.)\n- groovy: the split row has no bind at all for var, chain, inherited (unresolved); only ctor and scope_own are right.\n- groovy with a THIRD same-named declaration: var, chain, inherited, amb_ext, amb_param, scope_ext have NO call edge at all (`no_edge`), in both layouts; with two declarations the same cells are unresolved or guessed. All three `execute` declarations have symbols, so it is not a parse failure.\nEach is a gap (a call missing), not a false edge. They matter for the rollout because real C#, Groovy and Objective-C trees are laid out one class per file: the same-file guesses the one-file table shows for these three languages are mostly not reached there, and what is reached is mostly nothing.\nThe C#, Groovy and Objective-C programs were NOT compiled (no toolchain on the machine).\nReproduce: python packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py objc csharp groovy"  # 823f
+    fields: {}  # 823f

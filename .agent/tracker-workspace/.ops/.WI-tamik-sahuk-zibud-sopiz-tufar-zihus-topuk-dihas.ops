@@ -1,0 +1,22 @@
+- op: create  # 7107
+  at: '2026-11-25T09:24:50Z'  # 7107
+  by: agent  # 7107
+  actor: jgstern_agent  # 7107
+  clock: 1  # 7107
+  nonce: '7107'  # 7107
+  data:  # 7107
+    kind: work_item  # 7107
+    title: "A qualified call to an imported function is unresolved in csharp, groovy, kotlin and swift"  # 7107
+    status: todo_hard  # 7107
+    priority: 3  # 7107
+    parent:  # 7107
+    tags:  # 7107
+    - call_graph  # 7107
+    - analysis_quality  # 7107
+    - call_matrix  # 7107
+    isbefore: []  # 7107
+    duplicate_of: []  # 7107
+    not_duplicate_of: []  # 7107
+    pr_ref:  # 7107
+    description: "STATEMENT\nA call that names its callee through a qualifier the caller's file imports or can see (a package path, a namespace, a module) reaches that declaration.\n\nOBSERVED (2026-11-25, the call-resolution fixture, column `qual`, same in both layouts)\nThe qualified call to the imported helper is `unresolved` in four languages although the repository declares exactly the function the qualifier names:\n- csharp   `UtilNs.Util.helper();`\n- groovy   `util.Util.helper()`\n- kotlin   `util.helper()`\n- swift    `Util.helper()`\nNothing false is said (a gap, not a guess). For comparison the same call is right in perl, scala (mark `qualified`), python and typescript (mark `import`), and a guess by file order in cpp, java, javascript and rust (those four are owned by WI-joniz, WI-mugon, WI-lizis, WI-bihug).\nThe four programs were NOT compiled (no toolchain on the machine); the kotlin and groovy call forms are written from knowledge of the languages.\nReproduce: python packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py csharp groovy kotlin swift\nFor the shared resolution pass (step 4): the qualifier is evidence the pass should read before any name lookup (see also WI-kanak)."  # 7107
+    fields: {}  # 7107

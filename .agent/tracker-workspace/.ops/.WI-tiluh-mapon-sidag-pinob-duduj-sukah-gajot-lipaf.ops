@@ -28,3 +28,10 @@
   clock: 2  # a4f2
   nonce: a4f2  # a4f2
   message: "Code sites, read while stamping resolved_by (PR #2389): groovy.py ~1082 local_symbols[name] last declaration wins, and with a receiver (obj.m()) that short-table route binds any m in the file regardless of the receiver; ~1144 the resolver route binds by bare name across the repository for an untyped receiver."  # a4f2
+- op: discuss  # 4590
+  at: '2026-11-25T09:25:05Z'  # 4590
+  by: agent  # 4590
+  actor: jgstern_agent  # 4590
+  clock: 3  # 4590
+  nonce: '4590'  # 4590
+  message: "Fixture, PR #2394, second layout (one class per file): the var, inherited, amb_ext, amb_param and scope_ext guesses of this item are unresolved across files; only the import guess remains in both layouts. With a third same-named candidate those cells have no call edge at all."  # 4590
