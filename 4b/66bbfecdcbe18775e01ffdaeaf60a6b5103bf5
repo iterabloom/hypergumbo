@@ -1,0 +1,55 @@
+Original commit body from 88c13bb8315f11c08275b863f554481c886eaa3b:
+
+Batch 5a of the shared call resolution (ADR-0064): Java, Kotlin and PHP. The three analyzers stop choosing a call's target by looking a name up among everything. Each binds a call itself only to the enclosing type's own member, found by position, and reports every other call with facts; shared linkers decide through the file's imports and the receiver's type. Where nobody can tell, the call is unresolved.
+
+## What is in it
+
+- Adapters, one commit each: `php.py`, `java.py`, `kotlin.py`. Each hands over an import table per file and deletes its run-wide name tables, its same-file table and the lookups that read them. Java and PHP report `new T()` as an unresolved `instantiates` stub.
+- Shared layer (hypergumbo-core), from what the adapters reported it lacked, each change with a test that fails without it: packages that do not nest (`ImportScope.own_namespace`; a bare `Builder` in `jedis.search` was bound to `jedis.Builder`); the caller as its own innermost scope; nested types named `Outer.Inner`; a bare call that names an imported member (Java `import static`, a Kotlin object's member); the caller's own file first among files that declare one function name; the recovery linker leaves a stub an earlier linker answered; the name step never binds a bare call in a language of declared names and counts a Kotlin extension as a holder.
+- The name step: on for Kotlin (a screen of 353 standard-library member names), off for Java, off for PHP. PHP was measured with it on: 2 right of 15 new binds (calls on values a framework call returned).
+- ADR-0064 gains the batch's section; changelog and linker table updated. No schema change.
+
+## Scoreboard (7 repositories; before = dev 619ebe7ac, after = this branch at e566c8ded; the later Kotlin refactor re-measured: 464 edges change origin, 12 change target, all to the function where the analyzer had bound a property of the same name)
+
+Resolved `calls` whose caller is in the language:
+
+| | before | after | resolved before, unresolved now | different target | unresolved before, resolved now |
+|---|---|---|---|---|---|
+| Java (jedis, spring-petclinic, commons-compress) | 45,072 | 46,191 | 142 | 394 | 1,261 |
+| Kotlin (okhttp, detekt-core) | 11,660 | 19,031 | 81 | 887 | 7,452 |
+| PHP (koel, grpc src/php) | 2,017 | 3,158 | 379 | 104 | 1,519 |
+
+Resolved constructions: Java 5,019 to 6,487, PHP 420 to 448.
+
+By mark (before to after). Java constructions: `name` 4,958 to 0, `import` 0 to 2,728, `same_module` 0 to 3,677. Java calls: `import` 0 to 450, `receiver_type` 30,162 to 30,568. Kotlin: `name` 1,194 to 1,301, `same_file` 496 to 0, `same_module` 0 to 1,677, `receiver_type` 5,721 to 7,365, `own_type` 1,731 to 2,834, `import` 1,695 to 2,542, `qualified` 293 to 994, `class_hint` 530 to 2,318. PHP: `name` 1,405 to 0, `same_file` 39 to 0, `receiver_type` 0 to 1,018, `qualified` 20 to 797, `import` 0 to 437, `same_module` 0 to 212.
+
+## What moved, read in the source
+
+A judge was given call and target only, shuffled, and not told which side of the comparison a pair came from (one seed; 15 call sites per row unless a count is given).
+
+| | Java | Kotlin | PHP |
+|---|---|---|---|
+| lost: right before | 4 of 15 | 9 of 15 | 8 of 15 |
+| different target: wrong before, right now | 15 of 15 | 9 of 15 | 15 of 15 |
+| different target: right before, wrong now | 0 | 3 | 0 |
+| gained: right | 15 of 15 | 13 of 15 | 15 of 15 |
+
+Also: Java binds through a static import 8 right of 10; Java constructions retargeted 10 of 10 wrong before and right now, new ones 10 of 10 right; Kotlin name-step binds on calls nothing resolved before 14 of 15; Kotlin `class_hint` binds on such calls 14 of 15; PHP new constructions 9 of 10; PHP lost constructions 5 of 5 wrong before. Each adapter also read its own samples before the shared changes; those readings are in the notebook reports.
+
+The three Kotlin edges that went from right to wrong, and most of the wrong gained ones, are overloads: the linker's method index keeps the last overload of a name (255 Kotlin edges changed overload). That gap is on file with these numbers and is the next change planned, before batch 5b.
+
+## The languages already moved did not move
+
+Six C# repositories, two Rust and one TypeScript are edge-for-edge identical to dev. On knex two recovery edges keep caller and target and change line.
+
+## Not done, each on file with its count
+
+Overload selection by argument count in the shared layer; stubs of one name from one caller collapsing before the linkers run (432 Kotlin stubs lose facts; 5 of the 9 right Kotlin losses); the return type of a callee typing a later receiver; a receiver that is a call result (why the name step is off for PHP); PHP traits as ancestors; one qualified name declared in two files (168 binds on grpc's generated PHP copies); inherited member types, a Kotlin function beside a class of its name, `pkg.f()`; an unresolved `instantiates` stub carries confidence 0.95, the resolved value of `new` (giving that pathway an unresolved value also raises the floor of every graded resolved construction in every language, so it was taken back out of this branch).
+
+## What must not change
+
+Measured on the seven repositories against dev. Symbols (ids, names, qualified names, stable ids): identical. Edges other than `calls` and `instantiates`: identical on koel, grpc, spring-petclinic and detekt-core. On jedis and commons-compress `uses` edges move (jedis 242 gone, 32 new; commons-compress 22 gone, 128 new): the inherited-calls linker makes them beside a call bind, and the ones read are the `Builder` binds to a parent package that are gone. On okhttp `extends` 13 gone and 4 new, `implements` 16 gone and 26 new (this branch keeps a supertype written `Outer.Nested` whole; it was cut to `Outer`), and `dispatches_to` 11 gone and 122 new, derived from them. Ranked entrypoint lists change with the call graph: jedis 277 to 285 entries, commons-compress 154 to 161, koel 191 to 197, detekt-core 0 to 1; `request_ingress` keeps its count on every tree.
+
+## Not checked
+
+No repository outside the seven (and the ten of the earlier languages) was run. Confidence values of moved edges, and the effect of the moved edges on slice, dead-code and taint output beyond the existing tests, were not compared. Which entries entered and left the ranked entrypoint lists was not read.
