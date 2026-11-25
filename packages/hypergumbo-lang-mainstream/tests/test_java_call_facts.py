@@ -424,3 +424,246 @@ def test_end_to_end_a_nested_type_and_a_statically_imported_method(tmp_path: Pat
     assert _resolved(data, "Config.fresh", "Builder", "instantiates") == [
         ("db.Config.Builder", "same_module"),
     ]
+
+
+# ------------------------------- the parameters declared, the arguments written (WI-tosut)
+
+
+def test_every_method_and_constructor_declares_its_parameters(tmp_path: Path) -> None:
+    """One ``parameter_entry`` per declared parameter, in order: a plain, a
+    generic, an array written after the name and a varargs one (its element
+    type, ``variadic``); a final varargs; a varargs the grammar cannot parse
+    (an annotation before ``...``) is variadic too. A receiver parameter
+    (``Shape this``) is not listed: no call writes it. A callable with none
+    declares the empty list, never an absent key. A record's compact
+    constructor takes the record's components."""
+    result = analyze_java(_write(tmp_path, {"p/Shape.java": (
+        "package p;\n"
+        "import java.util.List;\n"
+        "class Shape {\n"
+        "    Shape() {}\n"
+        "    Shape(int w, List<String> tags, int grid[], String... names) {}\n"
+        "    void none() {}\n"
+        "    void self(Shape this, int a) {}\n"
+        "    void last(final int... xs) {}\n"
+        "    void annotated(String @Deprecated ... keys) {}\n"
+        "    record Point(int x, int y) { Point { } }\n"
+        "}\n"
+        "interface Api { int size(); void put(String k, Object v); }\n"
+    )}))
+    params = {
+        (s.name, s.span.start_line): s.meta["parameters"]
+        for s in result.symbols if s.kind in ("method", "constructor")
+    }
+
+    def entry(name: str, type_: str, variadic: bool = False) -> dict[str, Any]:
+        out: dict[str, Any] = {"name": name, "type": type_, "default": False}
+        if variadic:
+            out["variadic"] = True
+        return out
+
+    assert params == {
+        ("Shape.Shape", 4): [],
+        ("Shape.Shape", 5): [
+            entry("w", "int"), entry("tags", "List<String>"), entry("grid", "int[]"),
+            entry("names", "String", variadic=True),
+        ],
+        ("Shape.none", 6): [],
+        ("Shape.self", 7): [entry("a", "int")],
+        ("Shape.last", 8): [entry("xs", "int", variadic=True)],
+        ("Shape.annotated", 9): [entry("keys", "String @Deprecated", variadic=True)],
+        ("Shape.Point.Point", 10): [entry("x", "int"), entry("y", "int")],
+        ("Api.size", 12): [],
+        ("Api.put", 12): [entry("k", "String"), entry("v", "Object")],
+    }
+
+
+def test_every_call_and_construction_says_how_many_arguments_it_writes(tmp_path: Path) -> None:
+    """Bare, on ``this``, on ``super``, on a typed receiver, on a type, on a
+    chain and on a construction: the receiver is never counted, a comment in
+    the list is no argument. ``new T(..)`` counts its arguments, an anonymous
+    class body included; ``T::new`` writes no argument list and says nothing."""
+    edges = _edges(tmp_path, {"app/Main.java": (
+        "package app;\n"
+        "import java.util.function.Supplier;\n"
+        "class Main extends Base {\n"
+        "    void run(Conn c) {\n"
+        "        inherited();\n"
+        "        this.later(1, 2);\n"
+        "        super.save(\"a\");\n"
+        "        c.open(1, /* port */ 2, 3);\n"
+        "        Util.helper(x, y);\n"
+        "        c.next().close();\n"
+        "        new Conn(1, 2);\n"
+        "        new Box() { };\n"
+        "        Supplier<Conn> s = Conn::new;\n"
+        "    }\n"
+        "}\n"
+    )}, "Main.run")
+    counts = sorted(
+        (e.meta["callee_name"], e.meta.get("argument_count")) for e in edges
+        if not e.is_resolved
+    )
+    assert counts == [
+        ("close", 0), ("helper", 2), ("inherited", 0), ("later", 2),
+        ("next", 0), ("open", 3), ("save", 1),
+    ]
+    created = _edges(tmp_path, {}, "Main.run", edge_type="instantiates")
+    assert sorted(
+        ((e.meta["callee_name"], e.meta.get("argument_count")) for e in created), key=repr,
+    ) == [("Box", 0), ("Conn", 2), ("Conn", None)]
+
+
+def test_an_own_member_that_cannot_take_the_call_is_not_bound(tmp_path: Path) -> None:
+    """``send(a, b)`` in a type that declares only ``send(a)`` is the parent's
+    overload: no own member is bound, the call is reported with the type. Of
+    overloads none of which takes the count, none is bound either."""
+    edges = _edges(tmp_path, {"p/Child.java": (
+        "package p;\n"
+        "class Child extends Base {\n"
+        "    void send(String a) {}\n"
+        "    void log(int a) {}\n"
+        "    void log(int a, int b) {}\n"
+        "    void run() { send(\"a\", \"b\"); log(1, 2, 3); send(\"c\"); }\n"
+        "}\n"
+    )}, "Child.run")
+    stubs = sorted(
+        (e.meta["callee_name"], e.meta.get("argument_count"), _facts(e)["enclosing_class"])
+        for e in edges if not e.is_resolved
+    )
+    assert stubs == [("log", 3, "Child"), ("send", 2, "Child")]
+    assert [e.meta.get("resolved_by") for e in edges if e.is_resolved] == ["own_type"]
+
+
+# The LAST declared overload is the wrong one in each case below: the method
+# index of the hierarchy linker keeps the last of a name, so a bind that does
+# not read the argument count lands there.
+
+
+def test_end_to_end_overloads_that_differ_in_count_on_a_typed_receiver(tmp_path: Path) -> None:
+    data = _map(tmp_path, {
+        "net/Server.java": (
+            "package net;\npublic class Server {\n"
+            "  public void takeRequest() {}\n"
+            "  public void takeRequest(long timeout, Object unit) {}\n"
+            "  public void start() {}\n"
+            "  public void start(int port) {}\n}\n"
+        ),
+        "app/Main.java": (
+            "package app;\nimport net.Server;\n"
+            "public class Main {\n"
+            "  void take(Server s) { s.takeRequest(); }\n"
+            "  void begin(Server s) { s.start(); }\n"
+            "  void bind(Server s) { s.start(8080); }\n}\n"
+        ),
+    })
+    nodes = {n["id"]: n for n in data["nodes"]}
+
+    def lines(caller: str, callee: str) -> list[int]:
+        return sorted(
+            nodes[e["dst"]]["span"]["start_line"] for e in data["edges"]
+            if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+            and nodes.get(e["src"], {}).get("name") == caller
+            and nodes[e["dst"]]["name"] == callee
+        )
+
+    assert lines("Main.take", "Server.takeRequest") == [3]
+    assert lines("Main.begin", "Server.start") == [5]
+    assert lines("Main.bind", "Server.start") == [6]
+
+
+def _bound_lines(data: dict[str, Any], caller: str, callee: str) -> list[tuple[int, str]]:
+    """(start line of the target, mark) of each resolved call from ``caller``
+    to a method named ``callee``."""
+    nodes = {n["id"]: n for n in data["nodes"]}
+    return sorted(
+        (nodes[e["dst"]]["span"]["start_line"], (e.get("meta") or {}).get("resolved_by"))
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+        and not (e.get("meta") or {}).get("superseded_by")
+        and nodes.get(e["src"], {}).get("name") == caller
+        and nodes[e["dst"]]["name"] == callee
+    )
+
+
+def test_end_to_end_a_variadic_overload(tmp_path: Path) -> None:
+    """``f.format("a", 1, 2)`` takes ``format(String, Object...)``, not the
+    two-parameter overload declared after it; ``f.format("a")`` takes it too
+    (zero varargs); ``f.format("a", 1)`` has two candidates, the last kept."""
+    data = _map(tmp_path, {
+        "util/Fmt.java": (
+            "package util;\npublic class Fmt {\n"
+            "  public String format(String s, Object... args) { return s; }\n"
+            "  public String format(String s, int width) { return s; }\n}\n"
+        ),
+        "app/Main.java": (
+            "package app;\nimport util.Fmt;\npublic class Main {\n"
+            "  void many(Fmt f) { f.format(\"a\", 1, 2); }\n"
+            "  void one(Fmt f) { f.format(\"a\"); }\n"
+            "  void two(Fmt f) { f.format(\"a\", 1); }\n}\n"
+        ),
+    })
+    assert _bound_lines(data, "Main.many", "Fmt.format") == [(3, "receiver_type")]
+    assert _bound_lines(data, "Main.one", "Fmt.format") == [(3, "receiver_type")]
+    assert _bound_lines(data, "Main.two", "Fmt.format") == [(4, "receiver_type")]
+
+
+def test_end_to_end_an_inherited_overload_beside_the_types_own(tmp_path: Path) -> None:
+    """``Tls`` declares ``send(a)``, its parent ``Channel`` ``send(a, b)``.
+    Two arguments on a ``Tls`` receiver, and a bare two-argument call inside
+    ``Tls``, are the parent's overload; one argument is the own."""
+    data = _map(tmp_path, {
+        "net/Channel.java": (
+            "package net;\npublic class Channel {\n"
+            "  public void send(String a, String b) {}\n}\n"
+        ),
+        "net/Tls.java": (
+            "package net;\npublic class Tls extends Channel {\n"
+            "  public void send(String a) {}\n"
+            "  void relay() { send(\"a\", \"b\"); send(\"c\"); }\n}\n"
+        ),
+        "app/Main.java": (
+            "package app;\nimport net.Tls;\npublic class Main {\n"
+            "  void two(Tls t) { t.send(\"a\", \"b\"); }\n"
+            "  void one(Tls t) { t.send(\"a\"); }\n}\n"
+        ),
+    })
+    assert _bound_lines(data, "Main.two", "Channel.send") == [(3, "receiver_type")]
+    assert _bound_lines(data, "Main.two", "Tls.send") == []
+    assert _bound_lines(data, "Main.one", "Tls.send") == [(3, "receiver_type")]
+    assert _bound_lines(data, "Tls.relay", "Channel.send") == [(3, "own_type")]
+    assert _bound_lines(data, "Tls.relay", "Tls.send") == [(3, "own_type")]
+
+
+def test_end_to_end_a_bare_call_of_an_own_member_with_overloads(tmp_path: Path) -> None:
+    """``log("x")`` inside the type is the one-parameter overload, not the
+    two-parameter one declared after it; ``log("x", e)`` is that one."""
+    data = _map(tmp_path, {
+        "app/Svc.java": (
+            "package app;\npublic class Svc {\n"
+            "  void log(String m) {}\n"
+            "  void log(String m, Throwable t) {}\n"
+            "  void one() { log(\"x\"); }\n"
+            "  void two(Throwable e) { this.log(\"x\", e); }\n}\n"
+        ),
+    })
+    assert _bound_lines(data, "Svc.one", "Svc.log") == [(3, "own_type")]
+    assert _bound_lines(data, "Svc.two", "Svc.log") == [(4, "own_type")]
+
+
+def test_end_to_end_a_statically_imported_overload(tmp_path: Path) -> None:
+    """``import static util.Text.pad;`` and ``pad("x")``: the one-parameter
+    overload, not the two-parameter one declared after it."""
+    data = _map(tmp_path, {
+        "util/Text.java": (
+            "package util;\npublic class Text {\n"
+            "  public static String pad(String s) { return s; }\n"
+            "  public static String pad(String s, int n) { return s; }\n}\n"
+        ),
+        "app/Main.java": (
+            "package app;\nimport static util.Text.pad;\npublic class Main {\n"
+            "  void one() { pad(\"x\"); }\n  void two() { pad(\"x\", 2); }\n}\n"
+        ),
+    })
+    assert _bound_lines(data, "Main.one", "Text.pad") == [(3, "import")]
+    assert _bound_lines(data, "Main.two", "Text.pad") == [(4, "import")]
