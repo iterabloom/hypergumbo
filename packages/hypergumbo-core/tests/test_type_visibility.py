@@ -214,3 +214,104 @@ def test_a_written_type_without_its_type_arguments() -> None:
     assert without_type_arguments("Policy") == "Policy"
     assert without_type_arguments("Policy<int>") == "Policy"
     assert without_type_arguments("App.Map<string, List<int>> ") == "App.Map"
+
+
+# --- a name that reaches the importer through a file that only passes it on --------
+
+
+def _through(scopes: dict[str, ImportScope], written: str, caller_scope: ImportScope,
+             candidates: list[Symbol]) -> list[str] | None:
+    def named(short: str) -> list[Symbol]:
+        return [c for c in candidates if c.name == short]
+    return _paths(type_visibility.visible_types(
+        written, None, caller_scope, named, caller_path="src/main.ts", scopes=scopes,
+    ))
+
+
+def test_a_reexported_name_is_followed_to_the_file_that_declares_it() -> None:
+    """``import {Conn} from './index'``; index.ts: ``export {Conn} from './db'``."""
+    conns = [_file_type("Conn", "src/db.ts"), _file_type("Conn", "legacy/db.ts")]
+    caller = _file_scope()
+    caller.add_named("src/index.ts", "Conn")
+    barrel = _file_scope()
+    barrel.add_reexport("src/db.ts", "Conn")
+    assert _through({"src/index.ts": barrel}, "Conn", caller, conns) == ["src/db.ts"]
+    # Without the tables, or when the barrel handed none over: not found.
+    assert _through({}, "Conn", caller, conns) == []
+
+
+def test_a_reexport_under_another_name_and_an_import_that_is_exported() -> None:
+    """``export {Conn as Db} from './db'``; and ``import {Conn} from './db';
+    export {Conn}`` (Rust ``pub use db::Conn;``), which needs no record of its
+    own: the barrel's binding says where the name comes from."""
+    conns = [_file_type("Conn", "src/db.ts"), _file_type("Db", "legacy/other.ts")]
+    caller = _file_scope()
+    caller.add_named("src/index.ts", "Db")
+    renamed = _file_scope()
+    renamed.add_reexport("src/db.ts", "Conn", exported_as="Db")
+    assert _through({"src/index.ts": renamed}, "Db", caller, conns) == ["src/db.ts"]
+    caller = _file_scope()
+    caller.add_named("src/index.ts", "Conn")
+    imported = _file_scope()
+    imported.add_named("src/db.ts", "Conn")
+    assert _through({"src/index.ts": imported}, "Conn", caller, conns) == ["src/db.ts"]
+
+
+def test_names_passed_on_wholesale_and_through_several_files() -> None:
+    """``export * from './db'`` / ``pub use db::*;``, two files deep; a
+    namespace binding and a wildcard import of the barrel follow the same way."""
+    conns = [_file_type("Conn", "src/db/conn.ts"), _file_type("Conn", "legacy/db.ts")]
+    outer, inner = _file_scope(), _file_scope()
+    outer.add_reexport_all("src/db/index.ts")
+    inner.add_open_wildcard("src/db/conn.ts")
+    scopes = {"src/index.ts": outer, "src/db/index.ts": inner}
+    caller = _file_scope()
+    caller.add_named("src/index.ts", "Conn")
+    assert _through(scopes, "Conn", caller, conns) == ["src/db/conn.ts"]
+    caller = _file_scope()
+    caller.add_namespace("src/index.ts", "api")
+    assert _through(scopes, "api.Conn", caller, conns) == ["src/db/conn.ts"]
+    caller = _file_scope()
+    caller.add_open_wildcard("src/index.ts")
+    assert _through(scopes, "Conn", caller, conns) == ["src/db/conn.ts"]
+
+
+def test_two_files_passing_the_name_on_are_a_tie_and_a_cycle_ends() -> None:
+    conns = [_file_type("Conn", "src/a.ts"), _file_type("Conn", "src/b.ts")]
+    barrel = _file_scope()
+    barrel.add_reexport_all("src/a.ts")
+    barrel.add_reexport_all("src/b.ts")
+    caller = _file_scope()
+    caller.add_named("src/index.ts", "Conn")
+    assert _through({"src/index.ts": barrel}, "Conn", caller, conns) == ["src/a.ts", "src/b.ts"]
+    one, two = _file_scope(), _file_scope()
+    one.add_reexport_all("src/two.ts")
+    two.add_reexport_all("src/one.ts")
+    caller = _file_scope()
+    caller.add_named("src/one.ts", "Missing")
+    assert _through({"src/one.ts": one, "src/two.ts": two}, "Missing", caller, conns) == []
+
+
+def test_a_chain_longer_than_anyone_writes_is_given_up() -> None:
+    conns = [_file_type("Conn", "src/f10.ts")]
+    scopes = {}
+    for i in range(10):
+        scope = _file_scope()
+        scope.add_reexport(f"src/f{i + 1}.ts", "Conn")
+        scopes[f"src/f{i}.ts"] = scope
+    caller = _file_scope()
+    caller.add_named("src/f0.ts", "Conn")
+    assert _through(scopes, "Conn", caller, conns) == []
+    caller = _file_scope()
+    caller.add_named("src/f5.ts", "Conn")
+    assert _through(scopes, "Conn", caller, conns) == ["src/f10.ts"]
+
+
+def test_a_file_of_a_language_of_declared_names_passes_nothing_on() -> None:
+    """Only a table of files is followed: a C# table's modules are namespaces."""
+    conns = [_file_type("Conn", "src/db.ts")]
+    caller = _file_scope()
+    caller.add_named("src/index.ts", "Conn")
+    other = ImportScope()
+    other.add_named("src/db.ts", "Conn")
+    assert _through({"src/index.ts": other}, "Conn", caller, conns) == []

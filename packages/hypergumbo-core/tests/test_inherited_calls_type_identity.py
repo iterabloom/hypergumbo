@@ -586,3 +586,50 @@ def test_a_type_of_a_language_whose_imports_name_files_is_one_file() -> None:
     stub = make_unresolved_edge("typescript", own[1].id, "helper", 12, "test-pass", "test-run",
                                 enclosing_class="Handler")
     assert _ts_link([*own, *other], stub, _file_scope()) == []
+
+
+# --- through a file that only passes the name on -----------------------------------
+
+
+def _ts_link_all(symbols: list[Symbol], stub: Edge, scopes: dict[str, ImportScope]) -> list[Edge]:
+    ctx = LinkerContext(repo_root=Path("/"), symbols=symbols, edges=[stub], import_scopes=scopes)
+    return link_inherited_calls(ctx).edges
+
+
+def test_an_imported_function_is_followed_through_a_barrel_file() -> None:
+    """``import {helper} from './index'``; index.ts: ``export * from './impl'``."""
+    wanted, decoy = _ts("function", "helper", "src/impl.ts"), _ts("function", "helper", "legacy/util.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    mine, barrel = _file_scope(), _file_scope()
+    mine.add_named("src/index.ts", "helper")
+    barrel.add_reexport_all("src/impl.ts")
+    scopes = {"src/main.ts": mine, "src/index.ts": barrel}
+    (edge,) = _ts_link_all([wanted, decoy, caller], _ts_stub(caller, "helper"), scopes)
+    assert (edge.dst, edge.meta["resolved_by"]) == (wanted.id, "import")
+
+
+def test_a_typed_receiver_is_followed_through_a_reexport() -> None:
+    conn = [_ts("class", "Conn", "src/db.ts", (1, 9)), _ts("method", "Conn.execute", "src/db.ts", (3, 5))]
+    decoy = [_ts("class", "Conn", "legacy/db.ts", (1, 9)), _ts("method", "Conn.execute", "legacy/db.ts", (3, 5))]
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    mine, barrel = _file_scope(), _file_scope()
+    mine.add_named("src/index.ts", "Conn")
+    barrel.add_reexport("src/db.ts", "Conn")
+    scopes = {"src/main.ts": mine, "src/index.ts": barrel}
+    stub = _ts_stub(caller, "execute", receiver_type_hint="Conn")
+    (edge,) = _ts_link_all([*conn, *decoy, caller], stub, scopes)
+    assert (edge.dst, edge.meta["resolved_by"]) == (conn[1].id, "receiver_type")
+
+
+def test_a_bare_call_to_a_function_a_wildcard_import_supplies() -> None:
+    """Rust ``use crate::schema::*; setup()``. Two wildcard files that both
+    declare the name are a tie."""
+    wanted, other = _ts("function", "setup", "src/schema.ts"), _ts("function", "setup", "src/other.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_open_wildcard("src/schema.ts")
+    stub = _ts_stub(caller, "setup")
+    (edge,) = _ts_link_all([wanted, other, caller], stub, {"src/main.ts": scope})
+    assert (edge.dst, edge.meta["resolved_by"]) == (wanted.id, "import")
+    scope.add_open_wildcard("src/other.ts")
+    assert _ts_link_all([wanted, other, caller], stub, {"src/main.ts": scope}) == []

@@ -129,6 +129,8 @@ class ImportScope:
     _named: dict[str, CanonicalName] = field(default_factory=dict)
     _modules: dict[str, str] = field(default_factory=dict)
     _wildcards: list[str] = field(default_factory=list)
+    _reexports: dict[str, CanonicalName] = field(default_factory=dict)
+    _reexport_alls: list[str] = field(default_factory=list)
 
     def add_named(
         self, module: str, name: str, alias: Optional[str] = None
@@ -197,6 +199,43 @@ class ImportScope:
     def wildcard_modules(self) -> tuple[str, ...]:
         """The modules of ``add_open_wildcard``, in order of first mention."""
         return tuple(self._wildcards)
+
+    def add_reexport(
+        self, module: str, name: str, exported_as: Optional[str] = None
+    ) -> None:
+        """Record that this file passes on a name it does not declare.
+
+        Covers ``export { Y } from "X"`` (and ``... as Z``). Unlike an
+        import it binds nothing in the file's own scope: it says that a file
+        importing ``exported_as`` (default ``name``) from THIS file means
+        ``name`` of ``module``. A name the file imports and then exports
+        (``import { Y } from "X"; export { Y }``, Rust ``pub use x::Y;``)
+        needs no call here: its own binding already says where it comes from
+        (:py:meth:`exported`).
+        """
+        self._reexports[exported_as if exported_as is not None else name] = (
+            CanonicalName(module=module, name=name)
+        )
+
+    def add_reexport_all(self, module: str) -> None:
+        """Record that this file passes on every name of ``module``
+        (``export * from "X"``). Order of first mention is kept."""
+        if module not in self._reexport_alls:
+            self._reexport_alls.append(module)
+
+    def exported(self, name: str) -> Optional[CanonicalName]:
+        """Where ``name``, asked of THIS file by an importer, comes from when
+        the file does not declare it: an explicit re-export, else the file's
+        own binding of that name (imported, then exported)."""
+        return self._reexports.get(name) or self._named.get(name)
+
+    @property
+    def passed_on_modules(self) -> tuple[str, ...]:
+        """The modules whose every name this file passes on to its importers:
+        ``export * from``, then the file's own wildcard imports (Rust ``pub
+        use m::*;``; whether such a ``use`` is ``pub`` is not recorded, and a
+        private one is never asked for by code that compiles)."""
+        return tuple(dict.fromkeys([*self._reexport_alls, *self._wildcards]))
 
     def named(self, local_name: str) -> Optional[CanonicalName]:
         """The explicit name binding of ``local_name``, if it has one."""

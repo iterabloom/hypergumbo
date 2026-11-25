@@ -156,7 +156,9 @@ table unless said otherwise:
 * A function called by its imported name, in a language whose imports name
   files: an explicit binding names the function with the original name in the
   bound file; a qualifier that is a namespace binding names that file's
-  function. Marked ``import``. This is not one of the three Sites: there is
+  function; a bare name with no binding names the function a wildcard import
+  supplies. A file that only passes the name on (a barrel file, ``pub use``)
+  is followed to the one that declares it. Marked ``import``. This is not one of the three Sites: there is
   no type in it.
 
 The name of this module is narrower than what it now does; it stays until the
@@ -175,7 +177,8 @@ from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import (
-    call_language, dotted, visible_types, without_type_arguments, written_arity,
+    call_language, declaring_files, dotted, visible_types,
+    without_type_arguments, written_arity,
 )
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
@@ -1080,7 +1083,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         ):
             imported = _imported_function(
                 parse_unresolved_name(edge.dst) or "", qualifier, scope,
-                functions_in_file, src_lang,
+                functions_in_file, src_lang, ctx.import_scopes,
             )
             if imported is not None:
                 if (edge.src, imported.id) not in existing_call_pairs:
@@ -1116,6 +1119,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             if named_type and receiver_type_id is None:
                 meant = _type_meant(
                     named_type, src_sym, scope, class_ids_by_name, class_symbols,
+                    ctx.import_scopes,
                 )
                 if meant is _NOT_BOUND:
                     continue
@@ -1173,6 +1177,7 @@ def _imported_function(
     scope: ImportScope,
     functions_in_file: dict[tuple[str, str], list[Symbol]],
     language: str,
+    scopes: dict[str, ImportScope],
 ) -> Symbol | None:
     """The function a call names through the caller's imports, in a language
     whose imports name files.
@@ -1180,20 +1185,33 @@ def _imported_function(
     ``callee`` an explicit binding (``import {helper as h}``; ``h()``): the
     function with the ORIGINAL name in the bound file. ``qualifier`` a
     namespace binding (``import * as util``; ``util.helper()``): the function
-    ``callee`` in that file. One function of the caller's language, or
-    ``None``: no binding, a file that does not declare the name (a
-    re-export), or two declarations of it there.
+    ``callee`` in that file. A bare ``callee`` with no binding of its own:
+    the function of that name in a file the caller's file imports wholesale
+    (``use crate::schema::*;``). A file that only passes the name on (a
+    barrel file, ``pub use``) is followed to the one that declares it
+    (``type_visibility.declaring_files``). One function of the caller's
+    language, or ``None``: no binding, a name declared nowhere the imports
+    lead, or two declarations of it.
     """
     if qualifier:
         module = scope.namespace(dotted(qualifier))
-        key = (module, callee) if module is not None else None
+        asked = [(module, callee)] if module is not None else []
     else:
         bound = scope.named(callee)
-        key = (bound.module, bound.name) if bound is not None else None
-    found = [
-        f for f in functions_in_file.get(key, ())
-        if call_language(f.language or "") == call_language(language)
-    ] if key else []
+        asked = (
+            [(bound.module, bound.name)] if bound is not None
+            else [(module, callee) for module in scope.wildcard_modules]
+        )
+    found: list[Symbol] = []
+    for module, name in asked:
+        for key in declaring_files(
+            module, name, lambda f, n: (f, n) in functions_in_file, scopes,
+        ):
+            found += [
+                f for f in functions_in_file[key]
+                if call_language(f.language or "") == call_language(language)
+                and f not in found
+            ]
     return found[0] if len(found) == 1 else None
 
 
@@ -1240,9 +1258,11 @@ def _type_meant(
     scope: ImportScope,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
+    scopes: dict[str, ImportScope],
 ) -> list[str] | None:
     """The class ids ``written`` means for ``caller``, whose file's imports
-    are ``scope`` (``type_visibility.visible_types``).
+    are ``scope`` (``type_visibility.visible_types``); ``scopes`` is every
+    file's table, for a name that reaches the caller through a re-export.
 
     The ids of one type when the name is settled. ``_NOT_BOUND`` when no
     declaration of that name is visible from the caller (a library's type,
@@ -1266,7 +1286,8 @@ def _type_meant(
         return _of_arity(found, arity) if short == written_short else found
 
     seen = visible_types(
-        written, caller.qualified_name, scope, types_named, caller_path=caller.path,
+        written, caller.qualified_name, scope, types_named,
+        caller_path=caller.path, scopes=scopes,
     )
     if seen is None:
         return None
