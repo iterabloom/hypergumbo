@@ -1,0 +1,21 @@
+- op: create  # 2f85
+  at: '2026-11-25T19:42:21Z'  # 2f85
+  by: agent  # 2f85
+  actor: jgstern_agent  # 2f85
+  clock: 1  # 2f85
+  nonce: 2f85  # 2f85
+  data:  # 2f85
+    kind: work_item  # 2f85
+    title: "An unresolved instantiates stub is at 0.95, the resolved confidence of new; an unresolved base for ast_new would also raise every graded resolved construction"  # 2f85
+    status: todo_hard  # 2f85
+    priority: 3  # 2f85
+    parent:  # 2f85
+    tags:  # 2f85
+    - analysis_quality  # 2f85
+    - shared_call_resolution  # 2f85
+    isbefore: []  # 2f85
+    duplicate_of: []  # 2f85
+    not_duplicate_of: []  # 2f85
+    pr_ref:  # 2f85
+    description: "STATEMENT: an unresolved instantiates edge carries the confidence of an unresolved edge, and giving it one does not move the confidence of resolved constructions. OBSERVED: make_unresolved_edge(instantiates=True) (new in batch 5a of ADR-0064; Java and PHP report every new T() they cannot bind) uses evidence ast_new, whose registry entry has base_confidence 0.95 and no base_confidence_unresolved, so the stub is at 0.95 where an unresolved call is at 0.50. 4,090 such Java stubs on jedis, spring-petclinic and commons-compress. Adding base_confidence_unresolved=0.50 to ast_new was tried in the batch and taken back out: confidence.derive_resolved_confidence interpolates a GRADED RESOLVED edge between the pathway's unresolved base (else the 0.30 analyzer floor) and its base, so the change raised every name-resolved construction in every language (grade 0.85: 0.8525 to 0.8825; pinned by test_confidence.py::test_resolved_unconditioned_pathway_interpolates_from_analyzer_floor). Options not chosen here: an unresolved base for ast_new with the floor kept apart from it; an evidence value of its own for the stub. A band decision under ADR-0039.\n\nEvidence: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md, java_RESULTS.md gap E, prepr2/)."  # 2f85
+    fields: {}  # 2f85
