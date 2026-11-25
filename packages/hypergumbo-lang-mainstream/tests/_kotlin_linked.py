@@ -4,8 +4,7 @@
 Not a test module (the leading underscore keeps pytest from collecting it).
 Since ADR-0064's batch 5a the Kotlin analyzer binds a call only where the
 language's own evidence is in hand (the enclosing type's own member, found
-by position; a member of an object or companion the file imports by name);
-every other call is reported with facts, and the linkers decide through each
+by position); every other call is reported with facts, and the linkers decide through each
 file's import table. A test that pins WHERE a call lands therefore runs the
 three linkers that read those facts, in their registered order:
 ``inherited_calls`` (a type's member, a bare name through the table),

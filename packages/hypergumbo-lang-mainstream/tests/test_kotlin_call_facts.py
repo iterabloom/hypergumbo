@@ -126,12 +126,13 @@ def test_the_enclosing_types_own_member_is_bound_by_position(tmp_path: Path) -> 
     ]
 
 
-def test_an_imported_member_of_an_object_or_companion_is_bound_at_its_path(tmp_path: Path) -> None:
-    """``import okhttp3.Headers.Companion.headersOf``: the declaration named
-    ``okhttp3.Headers.headersOf``, not the namesake of another package. The
-    linker's lookup of a bare name reads functions and types only, so the
-    analyzer keeps this exact bind (reported in the batch)."""
-    result = _analyze(tmp_path, {
+def test_an_imported_member_of_an_object_or_companion_is_reported_and_bound_at_its_path(
+    tmp_path: Path,
+) -> None:
+    """``import okhttp3.Headers.Companion.headersOf``: the analyzer reports the
+    bare call, and the shared lookup binds the member the import names
+    (``okhttp3.Headers.headersOf``), not the namesake of another package."""
+    files = {
         "okhttp3/Headers.kt": (
             "package okhttp3\n\nclass Headers {\n    companion object {\n"
             "        fun headersOf(vararg s: String): Headers = Headers()\n    }\n}\n"
@@ -145,15 +146,16 @@ def test_an_imported_member_of_an_object_or_companion_is_bound_at_its_path(tmp_p
             "fun go(): Any = headersOf(\"a\")\nfun other(): Any = helper()\n"
         ),
         "fake/Util.kt": "package fake\n\nfun helper(): Int = 1\n",
-    })
-    by_id = {s.id: s for s in result.symbols}
-    (edge,) = [e for e in _calls(result, "go") if e.is_resolved]
-    assert (by_id[edge.dst].qualified_name, edge.meta["resolved_by"]) == (
-        "okhttp3.Headers.headersOf", "import")
-    # An imported top-level FUNCTION is the linker's: a stub, named by the import.
+    }
+    result = _analyze(tmp_path, files)
+    assert [e.is_resolved for e in _calls(result, "go")] == [False]
+    # An imported top-level function is reported the same way, named by the import.
     stub = _one(_calls(result, "other"), "helper")
     assert _facts(stub) == {}
     assert stub.dst == "kotlin:fake.helper:0-0:helper:unresolved"
+    data = _map(tmp_path / "whole", files)
+    assert _resolved(data, "go", "headersOf") == [("okhttp3.Headers.headersOf", "import")]
+    assert _resolved(data, "other", "helper") == [("fake.helper", "import")]
 
 
 # ------------------------------------------------------- reported, with facts

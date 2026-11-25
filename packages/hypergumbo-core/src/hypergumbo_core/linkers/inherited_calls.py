@@ -1064,14 +1064,14 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     # declaration named by a bare call or a ``new`` (``_declaration_named``).
     # Built only when some file's table names namespaces.
     functions_by_name: dict[str, list[Symbol]] = {}
-    methods_by_name: dict[str, list[Symbol]] = {}
+    members_by_name: dict[str, list[Symbol]] = {}
     existing_constructions: set[tuple[str, str]] = set()
     if any(s.module_kind != MODULES_ARE_FILES for s in ctx.import_scopes.values()):
         for s in ctx.symbols:
             if s.kind == "function":
                 functions_by_name.setdefault(short_name(s.name), []).append(s)
-            elif s.kind == "method":
-                methods_by_name.setdefault(short_name(s.name), []).append(s)
+            elif s.kind == "method" or s.kind in _INVOKED_MEMBER_KINDS:
+                members_by_name.setdefault(short_name(s.name), []).append(s)
         existing_constructions = {
             (e.src, e.dst) for e in ctx.edges
             if e.edge_type == "instantiates" and e.is_resolved
@@ -1084,7 +1084,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         language = caller.language or ""
         answer = _declaration_named(
             str((stub.meta or {}).get("callee_name") or parse_unresolved_name(stub.dst) or ""),
-            caller, table, ctx.import_scopes, functions_by_name, methods_by_name,
+            caller, table, ctx.import_scopes, functions_by_name, members_by_name,
             types_by_last_name, class_symbols,
             functions=not constructs,
             types=constructs or language in _BARE_CALL_MAY_NAME_A_TYPE,
@@ -1281,7 +1281,7 @@ def _declaration_named(
     scope: ImportScope,
     scopes: dict[str, ImportScope],
     functions_by_name: dict[str, list[Symbol]],
-    methods_by_name: dict[str, list[Symbol]],
+    members_by_name: dict[str, list[Symbol]],
     types_by_last_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
     *,
@@ -1302,12 +1302,14 @@ def _declaration_named(
     file's declaration is the one meant: two scripts that each define a
     function of one name are not loaded together.
 
-    A bare call that names no function or type may name a METHOD the file
-    IMPORTS: a member imported by its name (Java ``import static
+    A bare call that names no function or type may name a MEMBER the file
+    IMPORTS: one imported by its name (Java ``import static
     a.b.Util.helper;``, Kotlin ``import a.b.Registry.lookup`` of an object's
-    member), or one a wildcard over a type supplies (``import static
-    a.b.Util.*;``). A method an enclosing scope declares is not bound here:
-    the type the caller is declared in and its ancestors are Site 1's.
+    or a companion's member), or one a wildcard over a type supplies
+    (``import static a.b.Util.*;``). A method, or failing one a field or
+    property holding something callable (``_INVOKED_MEMBER_KINDS``). A member
+    an enclosing scope declares is not bound here: the type the caller is
+    declared in and its ancestors are Site 1's.
     """
     language = call_language(caller.language or "")
 
@@ -1331,11 +1333,12 @@ def _declaration_named(
     if not seen and functions:
         seen, scoped = visible_declarations(
             written, caller.qualified_name, scope,
-            lambda short: same_language(methods_by_name.get(short, ())),
+            lambda short: same_language(members_by_name.get(short, ())),
             caller_path=caller.path, scopes=scopes,
         )
         if scoped != resolved_by.IMPORT:
             return None
+        seen = [s for s in seen or () if s.kind == "method"] or seen
     if not seen or scoped is None:
         return None
     one_name = {dotted(s.qualified_name or "") for s in seen}

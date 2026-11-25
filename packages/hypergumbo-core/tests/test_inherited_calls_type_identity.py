@@ -936,3 +936,18 @@ def test_a_call_in_a_class_body_starts_at_that_class() -> None:
     )
     (edge,) = _named_link(symbols, construct, ImportScope(own_namespace="app"), owner.path)
     assert (edge.dst, edge.meta["resolved_by"]) == (nested.id, "same_module")
+
+
+def test_an_imported_member_that_holds_a_callable_is_bound_when_no_method_is() -> None:
+    """Kotlin ``import cfg.Defaults.retry`` then ``retry()``: the object's
+    method of that name, or failing one its property (a function-typed value)."""
+    prop = _decl("field", "cfg", "Defaults.retry", "cfg/Defaults.kt", lines=(3, 3))
+    caller = _decl("function", "app", "run", "app/Main.kt", lines=(10, 20))
+    stub = make_unresolved_edge("kotlin", caller.id, "retry", 12, "test-pass", "test-run")
+    table = ImportScope(own_namespace="app")
+    table.add_named(module="cfg.Defaults", name="retry")
+    (edge,) = _named_link([prop, caller], stub, table, caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (prop.id, "import")
+    method = _decl("method", "cfg", "Defaults.retry", "cfg/Defaults.kt", lines=(5, 7))
+    (edge,) = _named_link([prop, method, caller], stub, table, caller.path)
+    assert edge.dst == method.id
