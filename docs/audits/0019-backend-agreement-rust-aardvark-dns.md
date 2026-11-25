@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Axis** | backend agreement (ADR-0057 §5, §10 — the only evidence that may change an arbitration default or license an `authoritative_for` declaration) |
-| **Date** | 2026-11-16 |
+| **Date** | 2026-11-24 |
 | **Artifact** | `aardvark-dns-4444d90fee-two-arm-recorded.json` |
 | **Instrument** | `hypergumbo backend-agreement` (`hypergumbo_core.backend_agreement`) |
 | **Outcome** | Measurement, not a verdict: agreement says a value is uncontested, not that it is right. |
@@ -12,7 +12,7 @@
 ```yaml
 kind: backend_agreement
 artifact: aardvark-dns-4444d90fee-two-arm-recorded.json
-date: 2026-11-16
+date: 2026-11-24
 languages:
   - language: rust
     producers: [rust, rust_analyzer]
@@ -60,7 +60,7 @@ languages:
 | edge type | target | both | `rust` only | `rust_analyzer` only |
 |---|---|---|---|---|
 | `calls` | in-repo | 94 | 16 | 6 |
-| `calls` | external | 0 | 245 | 0 |
+| `calls` | external | 0 | 236 | 0 |
 | `decorated_by` | external | 0 | 1 | 0 |
 | `implements` | external | 0 | 2 | 0 |
 | `module_attr_ref` | external | 0 | 26 | 0 |
