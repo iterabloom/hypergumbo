@@ -493,3 +493,14 @@ def test_a_receiver_parameter_is_not_counted_for_a_call_on_a_receiver() -> None:
     assert narrow_by_arity([ext], 1) == []
     assert narrow_by_arity([ext], 1, on_receiver=True) == [ext]
     assert narrow_by_arity([ext], 2) == [ext]
+
+
+def test_a_default_the_declaration_cannot_tell_is_not_required() -> None:
+    """A Kotlin ``override fun delete(path: Path, mustExist: Boolean)`` takes
+    ``mustExist``'s default from the declaration it overrides: ``default`` is
+    None, and a call may omit it. An entry with no ``default`` key at all is
+    read as before: required."""
+    entries = [parameter_entry("path"), parameter_entry("mustExist", default=None)]
+    assert entries[1]["default"] is None
+    assert bounds_of_entries(entries) == ArityBounds(1, 2)
+    assert bounds_of_entries([{"name": "a", "type": None}]) == ArityBounds(1, 1)

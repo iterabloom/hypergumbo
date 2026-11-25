@@ -1068,11 +1068,13 @@ def _kt_declared_parameters(
 
 
 def _kt_parameters_meta(
-    decl: "tree_sitter.Node", source: bytes,
+    decl: "tree_sitter.Node", source: bytes, overrides: bool = False,
 ) -> list[dict[str, Any]] | None:
     """``meta["parameters"]`` of a ``fun`` (``overload_arity.parameter_entry``
     per declared parameter, the empty list for none): ``p: Int = 0`` has a
-    default and ``vararg xs: T`` takes any number. An extension's receiver
+    default and ``vararg xs: T`` takes any number; ``overrides``: the
+    declaration is an ``override``, whose parameters' defaults are the
+    overridden declaration's and are not known here. An extension's receiver
     is not a parameter (``meta["extension_receiver"]``). ``None`` (the key is
     not written: the arity is unknown) when the list does not parse, since a
     parameter lost to an error would otherwise read as one the callable does
@@ -1080,8 +1082,14 @@ def _kt_parameters_meta(
     parameters = find_child_by_type(decl, "function_value_parameters")
     if parameters is None or parameters.has_error:
         return None
+    # An ``override`` may not restate a default: its parameter takes the
+    # overridden declaration's, which this file may not hold. Whether a call
+    # may omit it is then not known here (``default=None``).
+    unknown = None if overrides else False
     return [
-        parameter_entry(p.name or "", p.type_text, default=p.default, variadic=p.vararg)
+        parameter_entry(
+            p.name or "", p.type_text, default=p.default or unknown, variadic=p.vararg,
+        )
         for p in _kt_declared_parameters(parameters, source)
     ]
 
@@ -1925,7 +1933,7 @@ def _extract_parsed_symbols(
                         func_meta = {}
                     func_meta["extension_receiver"] = receiver_type
                     func_is_exported = True
-                parameters = _kt_parameters_meta(node, source)
+                parameters = _kt_parameters_meta(node, source, overrides="override" in modifiers)
                 if parameters is not None:
                     func_meta = {**(func_meta or {}), "parameters": parameters}
 

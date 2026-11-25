@@ -838,3 +838,34 @@ def test_a_stub_an_earlier_linker_resolved_gets_no_second_answer() -> None:
         derived_from=[stub.id, protocol_read.id], resolved_by="qualified",
     )
     assert link_method_call_recovery(_ctx(symbols, [stub, built, contains, answered])).edges == []
+
+
+def test_of_a_classs_overloads_the_one_that_takes_the_arguments_is_recovered() -> None:
+    """``Builder().addHeader("a: b")``: the class declares ``addHeader(line)``
+    and, after it, ``addHeader(name, value)``. The call writes one argument."""
+    from hypergumbo_core.analyze.base import make_unresolved_edge
+    from hypergumbo_core.overload_arity import parameter_entry
+
+    main = _sym("k:App.kt:5-9:main:function", "main", "function", start=5, end=9)
+    cls = _sym("k:B.kt:1-30:Builder:class", "Builder", "class", path="B.kt", end=30)
+    one = _sym("k:B.kt:3-4:Builder.addHeader:method", "Builder.addHeader", "method",
+               path="B.kt", start=3, end=4)
+    one.meta = {"parameters": [parameter_entry("line")]}
+    two = _sym("k:B.kt:6-7:Builder.addHeader:method", "Builder.addHeader", "method",
+               path="B.kt", start=6, end=7)
+    two.meta = {"parameters": [parameter_entry("name"), parameter_entry("value")]}
+    built = _edge(main.id, cls.id, "calls", line=7)
+    contains = [_edge(cls.id, one.id, "contains", line=3), _edge(cls.id, two.id, "contains", line=6)]
+
+    def recovered(argument_count: int | None) -> list[str]:
+        stub = make_unresolved_edge(
+            "kotlin", main.id, "addHeader", 7, "test-pass", "test-run",
+            call_construct="method", argument_count=argument_count,
+        )
+        ctx = _ctx([main, cls, one, two], [built, *contains, stub])
+        return [e.dst for e in link_method_call_recovery(ctx).edges]
+
+    assert recovered(1) == [one.id]
+    assert recovered(2) == [two.id]
+    assert recovered(None) == [two.id]
+    assert recovered(4) == []
