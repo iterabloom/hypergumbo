@@ -515,3 +515,257 @@ def test_end_to_end_a_parent_package_is_no_scope(tmp_path: Path) -> None:
     })
     assert _resolved(data, "open", "Pool") == []
     assert _resolved(data, "serve", "Pool") == [("net.Pool", "import")]
+
+
+# ------------------- overloads: what a declaration takes and a call writes (WI-tosut)
+
+def _symbol(result: AnalysisResult, name: str) -> Any:
+    found = [s for s in result.symbols if s.name == name]
+    assert len(found) == 1, (name, found)
+    return found[0]
+
+
+def test_every_fun_declares_its_parameters_and_nothing_else_does(tmp_path: Path) -> None:
+    """One ``parameter_entry`` per declared parameter, in order: a default
+    value, a ``vararg``, an annotation, a function type with a default; an
+    extension's receiver is not one; a ``fun`` with none has the empty list.
+    A class (its primary constructor has no symbol), a property and an enum
+    entry declare none."""
+    result = _analyze(tmp_path, {"src/a/A.kt": (
+        "package a\n\n"
+        "class A(val x: Int, y: String = \"a\") {\n"
+        "    constructor(z: Long) : this(1)\n"
+        "    fun none() {}\n"
+        "    fun all(a: Int, b: String = \"x\", vararg c: Int, d: (Int) -> Unit = {}) {}\n"
+        "    fun String.ext(@Ann q: Int?, r: List<Int>) = 1\n"
+        "    val p: Int get() = 1\n"
+        "}\n"
+        "interface I {\n    fun abstract(n: Int): Int\n}\n"
+        "enum class E { ONE }\n"
+        "fun top(vararg xs: String) {\n    fun local(k: Int = 2) {}\n}\n"
+    )})
+    entry = lambda name, type_, default=False, variadic=False: (  # noqa: E731
+        {"name": name, "type": type_, "default": default, **({"variadic": True} if variadic else {})}
+    )
+    assert _symbol(result, "A.none").meta["parameters"] == []
+    assert _symbol(result, "A.all").meta["parameters"] == [
+        entry("a", "Int"), entry("b", "String", default=True),
+        entry("c", "Int", variadic=True), entry("d", "(Int) -> Unit", default=True),
+    ]
+    ext = _symbol(result, "A.ext")
+    assert ext.meta["extension_receiver"] == "String"
+    assert ext.meta["parameters"] == [entry("q", "Int?"), entry("r", "List<Int>")]
+    assert _symbol(result, "I.abstract").meta["parameters"] == [entry("n", "Int")]
+    assert _symbol(result, "top").meta["parameters"] == [entry("xs", "String", variadic=True)]
+    assert _symbol(result, "local").meta["parameters"] == [entry("k", "Int", default=True)]
+    for name in ("A", "I", "E", "A.p", "E.ONE"):
+        assert "parameters" not in (_symbol(result, name).meta or {}), name
+
+
+def test_a_parameter_list_that_does_not_parse_declares_no_arity(tmp_path: Path) -> None:
+    """``fun f(vararg)`` lost its parameter to an error: the key is absent
+    (unknown), not the empty list, which would claim ``f`` takes nothing."""
+    result = _analyze(tmp_path, {"src/a/B.kt": "package a\n\nfun f(vararg) {}\nfun g() {}\n"})
+    assert "parameters" not in (_symbol(result, "f").meta or {})
+    assert _symbol(result, "g").meta["parameters"] == []
+
+
+def _counts(result: AnalysisResult, caller: str) -> dict[str, Any]:
+    """callee name -> the ``argument_count`` its one stub from ``caller``
+    carries (absent: ``"-"``)."""
+    out: dict[str, Any] = {}
+    for edge in _calls(result, caller):
+        name = (edge.meta or {}).get("callee_name") or edge.dst.split(":")[-2]
+        assert name not in out, (name, out)
+        out[name] = (edge.meta or {}).get("argument_count", "-")
+    return out
+
+
+def test_every_call_says_how_many_arguments_it_writes(tmp_path: Path) -> None:
+    """Named arguments count, a comment and a trailing comma do not, a
+    trailing lambda is one (after parentheses or without them), a receiver is
+    not one; a spread makes the count unknown. A call of what ``h()`` returns
+    takes the lambda, not ``h``. A property read as a Java getter has no
+    argument list and carries no count."""
+    result = _analyze(tmp_path, {"src/a/C.kt": (
+        "package a\n\n"
+                "open class Base {\n    open fun up(n: Int) {}\n}\n"
+        "class C : Base() {\n"
+        "    override fun up(n: Int) {\n        super.up(n)\n    }\n"
+        "    fun go(x: Svc, arr: IntArray, p: Process) {\n"
+        "        zero()\n"
+        "        two(1, b = \"q\" /* c */,)\n"
+        "        lam(1) { it }\n"
+        "        bare { }\n"
+        "        empty() lbl@{ }\n"
+        "        spread(1, *arr)\n"
+        "        x.recv(1, 2)\n"
+        "        x.recvLam { }\n"
+        "        h()(1) { }\n"
+        "        Thing(1)\n"
+        "        Outer.Inner(1, 2)\n"
+        "        this.inherited(3)\n"
+        "        System.out.println(\"x\")\n"
+        "        val s = p.inputStream\n"
+        "    }\n"
+        "}\n"
+    )})
+    counts = _counts(result, "C.go")
+    assert counts == {
+        "zero": 0, "two": 2, "lam": 2, "bare": 1, "empty": 1, "spread": "-",
+        "recv": 2, "recvLam": 1, "h": 0, "Thing": 1, "Outer.Inner": 2,
+        "inherited": 1, "println": 1, "getInputStream": "-",
+    }
+    assert _counts(result, "C.up") == {"up": 1}
+
+
+def test_the_own_member_bind_takes_the_overload_the_count_admits(tmp_path: Path) -> None:
+    """``connect()`` and ``this.connect(1, 2)`` in a type that declares four
+    ``connect``: each binds one that takes what it writes, though another is
+    declared last; of several that take it (``connect(1, 2)``: lines 5 and 6;
+    ``connect(1)``: lines 6 and 7) the last of those, as before;
+    ``connect(1, 2, 3, 4)`` that none takes is reported with the enclosing
+    type; ``connect(*xs)`` (unknown) takes the last, as before. (``open`` is a
+    modifier the grammar does not take as a function name.)"""
+    result = _analyze(tmp_path, {"src/a/D.kt": (
+        "package a\n\n"
+        "class D {\n"
+        "    fun connect() {}\n"                        # line 4
+        "    fun connect(a: Int, b: Int) {}\n"          # line 5
+        "    fun connect(a: Int, b: Int = 0, c: String = \"\") {}\n"  # line 6: 1 to 3
+        "    fun connect(a: Long) {}\n"                 # line 7
+        "    fun go(xs: IntArray) {\n"
+        "        connect()\n"
+        "        this.connect(1, 2)\n"
+        "        connect(1)\n"
+        "        connect(1, 2, 3, 4)\n"
+        "        connect(*xs)\n"
+        "    }\n"
+        "}\n"
+    )})
+    by_line: dict[int, Edge] = {e.line: e for e in _calls(result, "D.go")}
+    starts = {s.id: s.span.start_line for s in result.symbols if s.name == "D.connect"}
+    assert starts[by_line[9].dst] == 4
+    # Two admit two arguments (lines 5 and 6): the last of them.
+    assert starts[by_line[10].dst] == 6
+    assert starts[by_line[11].dst] == 7
+    assert not by_line[12].is_resolved
+    assert _facts(by_line[12])["enclosing_class"] == "D"
+    assert by_line[12].meta["argument_count"] == 4
+    assert starts[by_line[13].dst] == 7
+
+
+def _overload_targets(data: dict[str, Any], caller: str) -> list[tuple[int, str, str]]:
+    """(call line, target's qualified name + signature, mark) of each resolved
+    call from ``caller``."""
+    nodes = {n["id"]: n for n in data["nodes"]}
+    return sorted(
+        (e["line"], f"{nodes[e['dst']].get('qualified_name')}{nodes[e['dst']].get('signature')}",
+         (e.get("meta") or {}).get("resolved_by"))
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved")
+        and not (e.get("meta") or {}).get("superseded_by")
+        and nodes.get(e["src"], {}).get("name") == caller and e["dst"] in nodes
+    )
+
+
+def test_end_to_end_okhttps_mockwebserver_overloads(tmp_path: Path) -> None:
+    """The measured cases: ``server.takeRequest()`` is the no-argument
+    overload, not ``takeRequest(timeout, unit)`` declared after it, and
+    ``server.start()`` is ``start(port: Int = 0)``, not the private
+    ``start(InetSocketAddress)`` declared last."""
+    data = _map(tmp_path, {
+        "mockwebserver3/MockWebServer.kt": (
+            "package mockwebserver3\n\n"
+            "import java.net.InetSocketAddress\n\n"
+            "class MockWebServer {\n"
+            "    fun takeRequest(): String = \"\"\n"
+            "    fun takeRequest(timeout: Long, unit: Int): String? = null\n"
+            "    fun start(port: Int = 0) {}\n"
+            "    private fun start(inetSocketAddress: InetSocketAddress) {}\n"
+            "}\n"
+        ),
+        "app/UseTest.kt": (
+            "package app\n\nimport mockwebserver3.MockWebServer\n\n"
+            "class UseTest {\n"
+            "    fun go(server: MockWebServer) {\n"
+            "        server.start()\n"
+            "        server.takeRequest()\n"
+            "        server.takeRequest(1L, 2)\n"
+            "    }\n"
+            "}\n"
+        ),
+    })
+    assert _overload_targets(data, "UseTest.go") == [
+        (7, "mockwebserver3.MockWebServer.start(port: Int)", "receiver_type"),
+        (8, "mockwebserver3.MockWebServer.takeRequest(): String", "receiver_type"),
+        (9, "mockwebserver3.MockWebServer.takeRequest(timeout: Long, unit: Int): String?",
+         "receiver_type"),
+    ]
+
+
+def test_end_to_end_a_variadic_overload_takes_what_the_other_cannot(tmp_path: Path) -> None:
+    data = _map(tmp_path, {
+        "log/Log.kt": (
+            "package log\n\nclass Log {\n"
+            "    fun line(fmt: String, vararg args: Any) {}\n"
+            "    fun line(msg: String, level: Int) {}\n}\n"
+        ),
+        "app/Main.kt": (
+            "package app\n\nimport log.Log\n\n"
+            "fun many(l: Log) {\n    l.line(\"a\", 1, 2)\n}\n"
+            "fun one(l: Log) {\n    l.line(\"a\")\n}\n"
+        ),
+    })
+    assert _overload_targets(data, "many") == [
+        (6, "log.Log.line(fmt: String, vararg args: Any)", "receiver_type"),
+    ]
+    assert _overload_targets(data, "one") == [
+        (9, "log.Log.line(fmt: String, vararg args: Any)", "receiver_type"),
+    ]
+
+
+def test_end_to_end_an_inherited_overload_beside_the_types_own(tmp_path: Path) -> None:
+    """``Child`` declares ``send(a)`` and inherits ``send(a, b)``: a call with
+    two arguments, on a ``Child`` or bare inside it, is the inherited one."""
+    data = _map(tmp_path, {
+        "net/Base.kt": "package net\n\nopen class Base {\n    fun send(a: Int, b: Int) {}\n}\n",
+        "net/Child.kt": (
+            "package net\n\nclass Child : Base() {\n"
+            "    fun send(a: Int) {}\n"
+            "    fun relay() {\n        send(1, 2)\n        send(1)\n    }\n}\n"
+        ),
+        "app/Main.kt": (
+            "package app\n\nimport net.Child\n\n"
+            "fun go(c: Child) {\n    c.send(1, 2)\n    c.send(1)\n}\n"
+        ),
+    })
+    assert _overload_targets(data, "go") == [
+        (6, "net.Base.send(a: Int, b: Int)", "receiver_type"),
+        (7, "net.Child.send(a: Int)", "receiver_type"),
+    ]
+    assert _overload_targets(data, "Child.relay") == [
+        (6, "net.Base.send(a: Int, b: Int)", "own_type"),
+        (7, "net.Child.send(a: Int)", "own_type"),
+    ]
+
+
+def test_end_to_end_two_overloads_of_an_extension(tmp_path: Path) -> None:
+    """``fun Conn.ping()`` and ``fun Conn.ping(n, m)``: the receiver is no
+    argument, so ``c.ping()`` is the first and ``c.ping(1, 2)`` the second."""
+    data = _map(tmp_path, {
+        "net/Conn.kt": "package net\n\nclass Conn\n",
+        "net/Ping.kt": (
+            "package net\n\n"
+            "fun Conn.ping(): Int = 0\n"
+            "fun Conn.ping(n: Int, m: Int): Int = n + m\n"
+        ),
+        "app/Main.kt": (
+            "package app\n\nimport net.Conn\nimport net.ping\n\n"
+            "fun go(c: Conn) {\n    c.ping()\n    c.ping(1, 2)\n}\n"
+        ),
+    })
+    assert _overload_targets(data, "go") == [
+        (7, "net.ping(): Int", "receiver_type"),
+        (8, "net.ping(n: Int, m: Int): Int", "receiver_type"),
+    ]
