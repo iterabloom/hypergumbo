@@ -93,6 +93,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     record_partial_parse,
@@ -100,6 +101,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
@@ -911,6 +913,7 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                                 evidence_type="require_alias_call",
                                 confidence=CONFIDENCE_REQUIRE_ALIAS,
+                                resolved_by=resolved_by.IMPORT,
                             )
                             edges.append(edge)
                             require_resolved = True
@@ -936,6 +939,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=TYPED_METHOD_GRADE * typed_lookup.confidence,
                                     meta={"call_construct": "method", "resolution_quality": "typed"},
+                                    resolved_by=resolved_by.RECEIVER_TYPE,
                                 )
                                 edges.append(edge)
                                 typed_resolved = True
@@ -965,6 +969,10 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=UNTYPED_METHOD_GRADE,
                                     meta={"call_construct": "function"},
+                                    resolved_by=resolved_by_for_bare_call(
+                                        callee.kind, callee.name,
+                                        lookup_result.resolved_by, _enclosing_type,
+                                    ),
                                 )
                                 edges.append(edge)
                             else:
@@ -1008,6 +1016,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "function"},
+                                    resolved_by=resolved_by.QUALIFIED,
                                 )
                                 edges.append(edge)
                             else:
@@ -1052,6 +1061,10 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "function"},
+                                resolved_by=resolved_by_for_bare_call(
+                                    callee.kind, callee.name,
+                                    lookup_result.resolved_by, _enclosing_type,
+                                ),
                             )
                             edges.append(edge)
                         else:
