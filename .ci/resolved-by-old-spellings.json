@@ -68,10 +68,10 @@
       "resolution_quality=typed_receiver": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py": {
-      "evidence_type=ast_call_type_inferred": 2,
-      "receiver=qualified": 5,
+      "evidence_type=ast_call_type_inferred": 1,
+      "receiver=qualified": 1,
       "receiver=typed_field": 1,
-      "receiver=typed_var": 2
+      "receiver=typed_var": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py": {
       "resolution_quality=ambiguous": 3

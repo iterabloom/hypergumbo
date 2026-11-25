@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.rust import analyze_rust
+from _rust_shared_pass import analyze_and_link
 
 
 def _write(root: Path, files: dict[str, str]) -> None:
@@ -29,8 +29,9 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 def _edges(root: Path, src_file: str, edge_type: str) -> list[tuple[int, str]]:
-    """(line, dst) of ``src_file``'s edges (ids are repo-relative)."""
-    result = analyze_rust(root)
+    """(line, dst) of ``src_file``'s edges (ids are repo-relative), after the
+    shared pass: a call through an import is bound there (ADR-0064)."""
+    result = analyze_and_link(root)
     return sorted(
         (e.line or 0, e.dst) for e in result.edges
         if e.edge_type == edge_type and e.src.startswith(f"rust:{src_file}:")
@@ -152,7 +153,7 @@ def test_a_local_wrapper_named_like_the_alias_target_is_not_it(tmp_path: Path) -
         "pub fn u() -> i32 { helper() }\n"
     )})
     by_src: dict[str, list[str]] = {}
-    for e in analyze_rust(tmp_path).edges:
+    for e in analyze_and_link(tmp_path).edges:
         if e.edge_type == "calls" and e.src.startswith("rust:src/user.rs:"):
             by_src.setdefault(e.src.split(":")[-2], []).append(e.dst)
     assert by_src["helper"] == ["rust:src/m.rs:1-1:helper:function"], by_src

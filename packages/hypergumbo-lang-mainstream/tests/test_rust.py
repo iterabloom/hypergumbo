@@ -906,8 +906,8 @@ fn decorated() {}
 class TestReexportResolution:
     """Tests for pub use re-export resolution."""
 
-    def test_reexport_call_edges_resolved(self, tmp_path: Path) -> None:
-        """Calls to re-exported symbols should create proper call edges.
+    def test_a_call_no_import_names_is_not_bound(self, tmp_path: Path) -> None:
+        """A call to a name no ``use`` of the caller's file binds is not bound.
 
         When lib.rs re-exports symbols from submodules:
             // src/utils/helper.rs
@@ -921,7 +921,11 @@ class TestReexportResolution:
             // src/main.rs
             fn caller() { helper(); }
 
-        The call edge from caller -> helper should be created.
+        main.rs imports nothing: the only reason to bind ``helper`` was its
+        name, looked up among every declaration of the repository. Since
+        ADR-0064 that is no reason; the call is a stub. (A ``use`` of the
+        re-exporting path would name lib.rs, which does not declare
+        ``helper``: the shared pass does not follow re-exports either.)
         """
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -975,15 +979,9 @@ class TestReexportResolution:
         call_edges = [e for e in result.edges
                       if e.edge_type == "calls" and e.src == caller_id]
 
-        # There should be a call edge to helper
-        assert len(call_edges) >= 1, \
-            f"Expected call edge from caller to helper, got: {call_edges}"
-
-        # The call edge should point to the real helper
-        helper_id = helper_sym.id
-        call_dsts = {e.dst for e in call_edges}
-        assert helper_id in call_dsts, \
-            f"Call edge should point to real helper {helper_id}, got {call_dsts}"
+        # The call is seen, and reported unresolved.
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved, call_edges
+        assert call_edges[0].dst != helper_sym.id
 
 
 class TestRustSignatureExtraction:
@@ -1742,18 +1740,11 @@ fn handler(engine: Engine) {
         )
         assert decoy_parse.id not in resolved_dsts
 
-    def test_cross_file_typed_call_via_resolver_suffix(
+    def test_cross_file_typed_call_reports_the_receiver_type(
         self, tmp_path: Path,
     ) -> None:
-        """Strategy 1.8 falls back to the global ``NameResolver`` when
-        the qualified ``Type::method`` isn't directly in the per-file
-        symbol dicts — covering the resolver-suffix-lookup branch.
-
-        Synthetic construction mirrors ``test_resolver_fallback_for_field_call``:
-        the target ``Service::process`` is deliberately absent from
-        ``global_symbols`` but present in the ``NameResolver``, so the
-        new strategy must walk through to the resolver fallback.
-        """
+        """``svc: Service`` and ``Service::process`` declared in no table of this file:
+        the call is reported with ``receiver_type_hint="Service"`` (ADR-0064)."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             _extract_var_types_rust,
@@ -1761,7 +1752,7 @@ fn handler(engine: Engine) {
             RustAnalyzer,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
         import tree_sitter
         import tree_sitter_rust
 
@@ -1803,7 +1794,7 @@ fn handler(svc: Service) {
         analyzer._field_type_registry = {}
 
         method_syms = {"process": [target]}
-        mr = ListNameResolver(method_syms, ambiguity_threshold=3)
+        mr = method_syms
 
         span_idx = {(1, 3): caller}
 
@@ -1811,24 +1802,19 @@ fn handler(svc: Service) {
             tree, source, "test.rs",
             local_symbols, global_symbols,
             "run", resolver, {},
-            method_resolver=mr,
+            methods_by_short_name=mr,
             span_index=span_idx,
             field_type_registry=analyzer._field_type_registry,
             analyzer=analyzer,
             var_types=_extract_var_types_rust(tree.root_node, source, None),
         )
 
-        typed_var_edges = [
-            e for e in edges
-            if (
-                e.evidence_type == "ast_call_type_inferred"
-                and e.meta is not None
-                and e.meta.get("receiver") == "typed_var"
-            )
-        ]
-        assert len(typed_var_edges) == 1
-        assert typed_var_edges[0].dst == target.id
-        assert typed_var_edges[0].confidence == 0.85
+        # ``Service::process`` is in no table of this file: the typed receiver is
+        # reported with its type, for the shared pass (ADR-0064), instead of a
+        # repository-wide lookup of ``Service::process``.
+        calls = [e for e in edges if e.edge_type == "calls"]
+        assert len(calls) == 1 and not calls[0].is_resolved, calls
+        assert calls[0].meta["receiver_type_hint"] == "Service"
 
 
 # ============================================================================
@@ -2402,7 +2388,7 @@ class TestRustMethodCallAmbiguity:
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -2439,13 +2425,13 @@ class TestRustMethodCallAmbiguity:
             method_reg.setdefault("bar", []).append(sym)
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
         resolved_edges = [
@@ -2458,19 +2444,15 @@ class TestRustMethodCallAmbiguity:
         unresolved = [e for e in edges if not e.is_resolved]
         assert len(unresolved) == 1
 
-    def test_method_call_prefers_same_module(self, tmp_path: Path) -> None:
-        """Method call prefers candidate from the same module path.
-
-        When foo.prove() is called from nova/mod.rs and there are two
-        candidates (nova/nifs.rs::NIFS::prove, neutron/nifs.rs::NIFS::prove),
-        the resolver should prefer the one in the same module tree (nova/).
-        """
+    def test_method_call_does_not_prefer_the_callers_directory(self, tmp_path: Path) -> None:
+        """``x.prove()`` with ``x`` untyped and a ``prove`` in the caller's directory and one
+        elsewhere: nearness is not evidence (ADR-0064); unresolved."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -2512,7 +2494,7 @@ class TestRustMethodCallAmbiguity:
         method_reg: dict[str, list[Symbol]] = {
             "prove": [nova_prove, neutron_prove],
         }
-        mr = ListNameResolver(method_reg, ambiguity_threshold=3)
+        mr = method_reg
         resolver = NameResolver(registry)
         span_idx = {(1, 3): caller}
 
@@ -2520,31 +2502,23 @@ class TestRustMethodCallAmbiguity:
             tree, source_text, "nova/mod.rs",
             registry, {"caller": caller, "NIFS::prove": nova_prove},
             "run1", resolver, {},
-            method_resolver=mr,
+            methods_by_short_name=mr,
             span_index=span_idx,
         )
 
+        # ``x`` has no type: a candidate in the caller's directory is a nearness
+        # guess, not evidence (ADR-0064). Unresolved.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        # Should prefer nova/nifs.rs (same module tree) over neutron/nifs.rs
-        assert call_edges[0].dst == nova_prove.id, (
-            f"Expected nova/nifs.rs::NIFS::prove, got {call_edges[0].dst}"
-        )
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
 
-    def test_cross_crate_single_candidate_method_resolves(self, tmp_path: Path) -> None:
-        """A method call with a single cross-crate candidate still resolves.
-
-        When x.serve() is called from crates/core/src/app.rs and the only
-        candidate is in crates/util/tower/src/lib.rs, the call should
-        resolve (with reduced confidence) rather than being rejected.
-        This tests the soft_hint=True behavior in the Rust analyzer.
-        """
+    def test_single_candidate_method_is_not_bound_to_an_untyped_receiver(self, tmp_path: Path) -> None:
+        """``x.serve()`` with one ``serve`` in the repository and ``x`` untyped: unresolved."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -2579,7 +2553,7 @@ class TestRustMethodCallAmbiguity:
         method_reg: dict[str, list[Symbol]] = {
             "serve": [tower_serve],
         }
-        mr = ListNameResolver(method_reg, ambiguity_threshold=3)
+        mr = method_reg
         resolver = NameResolver(registry)
         span_idx = {(1, 3): caller}
 
@@ -2587,15 +2561,13 @@ class TestRustMethodCallAmbiguity:
             tree, source_text, "crates/core/src/app.rs",
             registry, {"caller": caller, "Server::serve": tower_serve},
             "run1", resolver, {},
-            method_resolver=mr,
+            methods_by_short_name=mr,
             span_index=span_idx,
         )
 
+        # One candidate in the repository is not evidence that ``x`` is a Server.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1, (
-            "Single cross-crate method candidate should resolve, not be rejected"
-        )
-        assert call_edges[0].dst == tower_serve.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
 
     def test_function_call_not_penalized(self, tmp_path: Path) -> None:
         """Regular function calls (not method calls) keep normal confidence.
@@ -2657,18 +2629,14 @@ class TestRustMethodCallAmbiguity:
         # giving 0.80 * 0.313 ≈ 0.25.
         assert call_edges[0].confidence >= 0.20
 
-    def test_method_call_few_candidates_moderate_confidence(self, tmp_path: Path) -> None:
-        """Method call with 2 candidates keeps moderate confidence.
-
-        Below the ambiguity_threshold=3, so the method_resolver returns
-        a result with scaled confidence.
-        """
+    def test_method_call_few_candidates_is_unresolved(self, tmp_path: Path) -> None:
+        """``foo.process()`` with two candidates and ``foo`` untyped: unresolved."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -2705,53 +2673,40 @@ class TestRustMethodCallAmbiguity:
             method_reg.setdefault("process", []).append(sym)
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        # With only 2 candidates, confidence = 0.80 * 1/sqrt(2) ≈ 0.57
-        assert call_edges[0].confidence >= 0.30
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
 
 
 class TestRustScopedIdentifierResolution:
     """Tests for Rust scoped identifier (Foo::bar) call resolution.
 
-    When code calls Foo::bar(), the analyzer should use the full qualified
-    name "Foo::bar" for resolution instead of just "bar". This prevents
-    false edges when multiple types share a method name (e.g., Diff::compute
-    vs Parser::compute).
+    When code calls Foo::bar(), the analyzer binds it only when THIS file
+    declares ``Foo::bar`` (or the path is rooted at ``crate`` / ``self`` /
+    ``super``). Otherwise the call is reported with ``qualifier="Foo"`` and the
+    shared pass decides which ``Foo`` the file means (ADR-0064): the
+    repository-wide names these tests register are no reason to bind.
     """
 
     def _parse_and_extract(
         self, source_text: bytes,
         local_symbols: dict, global_symbols: dict,
         use_aliases: dict | None = None,
-        *,
-        with_method_resolver: bool = False,
     ) -> list:
-        """Helper: parse Rust source and extract edges.
-
-        Args:
-            with_method_resolver: If True, build a ListNameResolver with
-                ambiguity_threshold=3 (matching real analysis flow).
-                Required for tests that exercise ambiguous short names
-                (e.g., multiple ::new methods).
-        """
+        """Helper: parse Rust source and extract edges."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.symbol_resolution import (
-            ListNameResolver,
-            NameResolver,
-        )
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -2765,20 +2720,17 @@ class TestRustScopedIdentifierResolution:
 
         resolver = NameResolver(global_symbols)
 
-        mr = None
-        if with_method_resolver:
-            global_methods: dict[str, list] = {}
-            for sym in global_symbols.values():
-                if sym.kind in ("method", "function"):
-                    short = sym.name.split("::")[-1] if "::" in sym.name else sym.name
-                    global_methods.setdefault(short, []).append(sym)
-            mr = ListNameResolver(global_methods, ambiguity_threshold=3)
-
         return _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, global_symbols,
             "run", resolver, use_aliases or {},
-            method_resolver=mr,
         )
+
+    @staticmethod
+    def _one_stub(edges: list) -> dict:
+        """The meta of the call's one edge, which must be an unresolved stub."""
+        calls = [e for e in edges if e.edge_type == "calls"]
+        assert len(calls) == 1 and not calls[0].is_resolved, [(e.dst, e.meta) for e in calls]
+        return calls[0].meta
 
     def _make_rust_symbol(self, name: str, kind: str = "method"):
         """Helper: create a Rust symbol for testing."""
@@ -2791,8 +2743,9 @@ class TestRustScopedIdentifierResolution:
             origin="test", origin_run_id="run",
         )
 
-    def test_scoped_call_exact_match(self, tmp_path: Path) -> None:
-        """Foo::bar() resolves to Foo::bar symbol via full qualified name."""
+    def test_scoped_call_to_an_unimported_type_is_reported_with_its_owner(self, tmp_path: Path) -> None:
+        """``Diff::compute()`` with ``Diff`` neither declared in nor imported into the file:
+        reported with ``qualifier="Diff"``; a repository-wide ``Diff::compute`` is no reason to bind."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -2811,18 +2764,14 @@ class TestRustScopedIdentifierResolution:
             source, {"main": caller}, global_symbols,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
-        # Full qualified match → high confidence
-        assert call_edges[0].confidence >= 0.70
+        # ``Diff`` is neither declared in nor imported into test.rs: the call is
+        # reported with the owner it names, for the shared pass (ADR-0064).
+        meta = self._one_stub(edges)
+        assert (meta["qualifier"], meta["callee_name"]) == ("Diff", "Diff::compute")
 
-    def test_scoped_call_with_multiple_types(self, tmp_path: Path) -> None:
-        """Diff::compute() resolves to Diff::compute, not Parser::compute.
-
-        This is the core fix: when multiple types share a method name,
-        the scoped call Diff::compute() should find the correct one.
-        """
+    def test_scoped_call_names_its_owner_for_the_shared_pass(self, tmp_path: Path) -> None:
+        """``Diff::compute()`` beside a ``Parser::compute``: the analyzer binds neither; the
+        owner it names is reported, and the shared pass decides which ``Diff`` the file means."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -2851,16 +2800,12 @@ class TestRustScopedIdentifierResolution:
             source, {"main": caller}, global_symbols,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        # Must resolve to Diff::compute, not Parser::compute
-        assert call_edges[0].dst == diff_compute.id
-        # With qualified lookup, should get exact match confidence (0.80),
-        # not ambiguous suffix confidence (0.80 * 0.70 = 0.56)
-        assert call_edges[0].confidence >= 0.70
+        # Neither ``Diff::compute`` nor ``Parser::compute`` is bound here: which
+        # ``Diff`` test.rs means is the shared pass's question (ADR-0064).
+        assert self._one_stub(edges)["qualifier"] == "Diff"
 
-    def test_unscoped_method_still_works(self, tmp_path: Path) -> None:
-        """Regular foo.bar() method calls still resolve via suffix matching."""
+    def test_untyped_method_call_is_not_bound_by_its_name(self, tmp_path: Path) -> None:
+        """``foo.bar()`` with ``foo`` untyped: one ``bar`` in the repository is not ``foo``'s."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -2879,10 +2824,10 @@ class TestRustScopedIdentifierResolution:
             source, {"main": caller}, global_symbols,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        # Should find bar via suffix matching (MyType::bar → "bar" suffix)
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
+        # ``foo`` has no type: one method named ``bar`` in the repository is not
+        # evidence that it is foo's (ADR-0064). Reported with no facts.
+        meta = self._one_stub(edges)
+        assert "qualifier" not in meta and "receiver_type_hint" not in meta
 
     def test_scoped_call_not_in_registry(self, tmp_path: Path) -> None:
         """Unknown::method() doesn't crash, no edge produced."""
@@ -2916,12 +2861,8 @@ class TestRustScopedIdentifierResolution:
         assert unresolved[0].meta["callee_name"] == "Unknown::method"
         assert unresolved[0].dst == "rust:external:0-0:Unknown..method:unresolved"
 
-    def test_scoped_call_falls_back_to_short_name(self, tmp_path: Path) -> None:
-        """When full scoped name not found, falls back to short name lookup.
-
-        If registry has "bar" but not "Foo::bar", we should still find "bar"
-        via the short name fallback.
-        """
+    def test_scoped_call_does_not_fall_back_to_a_free_function(self, tmp_path: Path) -> None:
+        """``Foo::bar()`` is Foo's ``bar``: a free function ``bar`` elsewhere is not a fallback."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -2947,21 +2888,13 @@ class TestRustScopedIdentifierResolution:
             source, {"main": caller}, global_symbols,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
+        # ``Foo::bar()`` names Foo's ``bar``: a free function ``bar`` elsewhere is
+        # not it. Reported with the owner it names.
+        assert self._one_stub(edges)["qualifier"] == "Foo"
 
-    def test_module_qualified_call_strips_module_prefix(self, tmp_path: Path) -> None:
-        """mod_name::Type::method() resolves by stripping the module prefix.
-
-        When code calls codex_agent::CodexAgent::new(), the full scoped name
-        is "codex_agent::CodexAgent::new" but the registry has "CodexAgent::new".
-        The analyzer should try stripping module prefixes from the scoped name.
-
-        This test includes multiple ::new symbols to trigger the ambiguity guard
-        on the bare "new" fallback, ensuring the module-stripped "CodexAgent::new"
-        path is what actually resolves.
-        """
+    def test_module_qualified_call_keeps_its_module_in_the_qualifier(self, tmp_path: Path) -> None:
+        """``codex_agent::CodexAgent::new()``: the module prefix is not stripped to find a
+        ``CodexAgent::new`` by name; the whole owner path is reported."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -3011,21 +2944,14 @@ class TestRustScopedIdentifierResolution:
 
         edges = self._parse_and_extract(
             source, {"run_main": caller}, global_symbols,
-            with_method_resolver=True,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1, (
-            f"Expected 1 call edge for module-qualified call, got {len(call_edges)}"
-        )
-        assert call_edges[0].dst == target.id
+        # The path's module is not this file's and the file binds no ``codex_agent``:
+        # a ``CodexAgent::new`` found by name elsewhere is not it.
+        assert self._one_stub(edges)["qualifier"] == "codex_agent::CodexAgent"
 
     def test_deeply_module_qualified_call(self, tmp_path: Path) -> None:
-        """a::b::Type::method() resolves by stripping module prefixes.
-
-        Tests that even with multiple module segments (a::b::Type::method),
-        the analyzer can resolve to Type::method in the registry.
-        """
+        """``codex_core::config::Config::load()``: the whole owner path is reported."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -3075,22 +3001,13 @@ class TestRustScopedIdentifierResolution:
 
         edges = self._parse_and_extract(
             source, {"main": caller}, global_symbols,
-            with_method_resolver=True,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1, (
-            f"Expected 1 call edge for deeply qualified call, got {len(call_edges)}"
-        )
-        assert call_edges[0].dst == target.id
+        assert self._one_stub(edges)["qualifier"] == "codex_core::config::Config"
 
-    def test_module_qualified_call_via_local_symbols(self, tmp_path: Path) -> None:
-        """mod::Type::method() resolves via local_symbols when target is local.
-
-        Exercises the local_symbols lookup path in Strategy 1b (module prefix
-        stripping). When the target is in the same file's local_symbols dict,
-        it should resolve without needing the global resolver.
-        """
+    def test_module_qualified_call_is_not_bound_to_this_files_namesake(self, tmp_path: Path) -> None:
+        """``my_mod::Agent::init()`` is module my_mod's Agent, not necessarily the
+        ``Agent::init`` this file declares."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -3141,14 +3058,11 @@ class TestRustScopedIdentifierResolution:
 
         edges = self._parse_and_extract(
             source, local_symbols, global_symbols,
-            with_method_resolver=True,
         )
 
-        call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
-        # local_symbols path should give confidence 0.85
-        assert call_edges[0].confidence == 0.85
+        # ``my_mod::Agent`` is the Agent of module my_mod, not necessarily the one
+        # this file declares: the file's table of names does not decide it.
+        assert self._one_stub(edges)["qualifier"] == "my_mod::Agent"
 
 
 class TestRustEnclosingFunctionQualified:
@@ -3360,7 +3274,7 @@ class TestRustScopedFallbackAmbiguity:
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -3397,39 +3311,34 @@ class TestRustScopedFallbackAmbiguity:
             method_reg.setdefault("new", []).append(sym)
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, registry,
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
             span_index={
                 (caller.span.start_line, caller.span.end_line): caller,
             },
         )
 
+        # No ``new`` is bound by its name; the call is reported with the owner it
+        # names (a stub, not a resolution), whatever ``new``'s generic-name guard.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        # The ambiguity guard should suppress the edge — no false resolution
-        assert len(call_edges) == 0, (
-            f"Expected 0 call edges but got {len(call_edges)}: "
-            f"{[e.dst for e in call_edges]}"
-        )
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
+        assert call_edges[0].meta["qualifier"] == "MyType"
 
-    def test_scoped_fallback_single_candidate_resolves(
+    def test_scoped_call_does_not_fall_back_to_a_single_free_function(
         self, tmp_path: Path,
     ) -> None:
-        """Type::method() with 1 candidate for short name resolves correctly.
-
-        When ``UnknownType::compute`` isn't found but ``compute`` has exactly
-        1 candidate, the fallback should produce a call edge.
-        """
+        """``Foo::compute()`` with one free ``compute`` in the repository: not bound to it."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -3462,21 +3371,22 @@ class TestRustScopedFallbackAmbiguity:
         method_reg: dict[str, list[Symbol]] = {"compute": [target]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, registry,
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
             span_index={
                 (caller.span.start_line, caller.span.end_line): caller,
             },
         )
 
+        # ``Foo::compute()`` names Foo's ``compute``; a free ``compute`` is not it.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
+        assert call_edges[0].meta["qualifier"] == "Foo"
 
 
 class TestRustTraitImplEdges:
@@ -3978,7 +3888,7 @@ class TestRustGenericTraitMethodBlocklist:
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4013,13 +3923,13 @@ class TestRustGenericTraitMethodBlocklist:
         method_reg: dict[str, list[Symbol]] = {"into": [target]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
@@ -4040,7 +3950,7 @@ class TestRustGenericTraitMethodBlocklist:
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")  # pragma: no cover
@@ -4081,13 +3991,13 @@ class TestRustGenericTraitMethodBlocklist:
         method_reg: dict[str, list[Symbol]] = {"load": [jolt_load]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "counters.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
@@ -4096,14 +4006,14 @@ class TestRustGenericTraitMethodBlocklist:
             f"{len(call_edges)}: {[e.dst for e in call_edges]}"
         )
 
-    def test_nonblocked_prove_still_resolves(self, tmp_path: Path) -> None:
-        """x.prove() with candidates still resolves (not in blocklist)."""
+    def test_nonblocked_prove_is_emitted_unresolved(self, tmp_path: Path) -> None:
+        """``x.prove()`` (not a blocked name) is emitted, as a stub: ``x`` is untyped."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4137,18 +4047,19 @@ class TestRustGenericTraitMethodBlocklist:
         method_reg: dict[str, list[Symbol]] = {"prove": [target]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
+        # Not blocked, so the call is emitted; but an untyped receiver is bound by
+        # no name (ADR-0064): a stub.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
 
     def test_blocklist_contains_expected_names(self) -> None:
         """Constant contains core trait methods and collection methods."""
@@ -4208,21 +4119,17 @@ class TestRustGenericTraitMethodBlocklist:
                 f"{name} should not be blocked"
             )
 
-    def test_scoped_into_still_resolves_via_strategy1(
+    def test_scoped_into_is_reported_with_its_owner(
         self, tmp_path: Path,
     ) -> None:
-        """StatusRow::into() with full match in registry still resolves.
-
-        The blocklist only affects short-name fallback via method_resolver.
-        When the full scoped name ``StatusRow::into`` exists in global_symbols,
-        Strategy 1 resolves it before the blocklist is consulted.
-        """
+        """``StatusRow::into(x)``: a path call names its owner, so the generic-name
+        blocklist does not silence it; it is reported with ``qualifier="StatusRow"``."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4258,24 +4165,23 @@ class TestRustGenericTraitMethodBlocklist:
         method_reg: dict[str, list[Symbol]] = {"into": [target]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, registry,
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
             span_index={
                 (caller.span.start_line, caller.span.end_line): caller,
             },
         )
 
+        # The path names its owner, so the generic-name blocklist does not
+        # silence it; ``StatusRow`` is not this file's, so the shared pass decides.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1, (
-            f"Expected 1 call edge for scoped StatusRow::into() but got "
-            f"{len(call_edges)}"
-        )
-        assert call_edges[0].dst == target.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
+        assert call_edges[0].meta["qualifier"] == "StatusRow"
 
 
 class TestRustTurbofishCalls:
@@ -4290,18 +4196,14 @@ class TestRustTurbofishCalls:
     ``PublicParams::<E1,E2>::setup``).
     """
 
-    def test_scoped_turbofish_resolves(self, tmp_path: Path) -> None:
-        """PublicParams::<E1,E2>::setup() resolves to PublicParams::setup.
-
-        Type arguments are stripped from the scoped name so Strategy 1
-        matches the registry key.
-        """
+    def test_scoped_turbofish_reports_the_bare_owner(self, tmp_path: Path) -> None:
+        """``PublicParams::<E1,E2>::setup()``: the type arguments are stripped from the reported owner."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4333,40 +4235,32 @@ class TestRustTurbofishCalls:
 
         registry: dict[str, Symbol] = {"PublicParams::setup": target}
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(
-            {"setup": [target]}, ambiguity_threshold=3,
-        )
+        method_resolver = {"setup": [target]}
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, registry,
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
             span_index={
                 (caller.span.start_line, caller.span.end_line): caller,
             },
         )
 
+        # Type arguments are stripped from the owner the call reports.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1, (
-            f"Expected 1 call edge for PublicParams::<E1,E2>::setup() "
-            f"but got {len(call_edges)}"
-        )
-        assert call_edges[0].dst == target.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
+        assert call_edges[0].meta["qualifier"] == "PublicParams"
 
-    def test_method_turbofish_resolves(self, tmp_path: Path) -> None:
-        """x.prove::<E1>() resolves to the prove method.
-
-        The generic_function wrapper around field_expression must be
-        unwrapped so the method call is detected correctly.
-        Uses 'prove' (not in blocklist) to verify turbofish unwrapping.
-        """
+    def test_method_turbofish_is_a_method_call(self, tmp_path: Path) -> None:
+        """``x.prove::<E1>()``: the ``generic_function`` wrapper is unwrapped, so the call is
+        a method call named ``prove``."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4400,34 +4294,30 @@ class TestRustTurbofishCalls:
         method_reg: dict[str, list[Symbol]] = {"prove": [target]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
+        # The turbofish is unwrapped: a METHOD call named ``prove``, reported
+        # with no facts (``x`` is untyped).
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1, (
-            f"Expected 1 call edge for x.prove::<E1>() "
-            f"but got {len(call_edges)}"
-        )
-        assert call_edges[0].dst == target.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
+        assert call_edges[0].meta["callee_name"] == "prove"
+        assert call_edges[0].meta["call_construct"] == "method"
 
-    def test_plain_scoped_call_still_works(self, tmp_path: Path) -> None:
-        """Vec::new() (no turbofish) still resolves correctly.
-
-        Regression check: the turbofish handling must not break plain
-        scoped identifiers.
-        """
+    def test_plain_scoped_call_reports_its_owner(self, tmp_path: Path) -> None:
+        """``Vec::new()`` (no turbofish) reports ``qualifier="Vec"``."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4459,23 +4349,21 @@ class TestRustTurbofishCalls:
 
         registry: dict[str, Symbol] = {"Vec::new": target}
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(
-            {"new": [target]}, ambiguity_threshold=3,
-        )
+        method_resolver = {"new": [target]}
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, registry,
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
             span_index={
                 (caller.span.start_line, caller.span.end_line): caller,
             },
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        assert call_edges[0].dst == target.id
+        assert len(call_edges) == 1 and not call_edges[0].is_resolved
+        assert call_edges[0].meta["qualifier"] == "Vec"
 
     def test_turbofish_method_blocklist_still_applies(
         self, tmp_path: Path,
@@ -4490,7 +4378,7 @@ class TestRustTurbofishCalls:
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -4524,13 +4412,13 @@ class TestRustTurbofishCalls:
         method_reg: dict[str, list[Symbol]] = {"clone": [target]}
 
         resolver = NameResolver(registry)
-        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        method_resolver = method_reg
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
-            method_resolver=method_resolver,
+            methods_by_short_name=method_resolver,
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
@@ -5057,16 +4945,19 @@ impl Server {
 
     def test_cross_file_field_resolution(self, tmp_path: Path) -> None:
         """Field types from one file resolve methods defined in another."""
-        from hypergumbo_lang_mainstream.rust import analyze_rust
+        from _rust_shared_pass import analyze_and_link
 
-        (tmp_path / "app.rs").write_text("""
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "fx"\nversion = "0.1.0"\n')
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "lib.rs").write_text("mod app;\nmod server;\n")
+        (tmp_path / "src" / "app.rs").write_text("""
 pub struct App {}
 
 impl App {
     pub fn run(&self) {}
 }
 """)
-        (tmp_path / "server.rs").write_text("""
+        (tmp_path / "src" / "server.rs").write_text("""
 use crate::app::App;
 
 struct Server {
@@ -5079,28 +4970,27 @@ impl Server {
     }
 }
 """)
-        result = analyze_rust(tmp_path)
+        # ``App::run`` is in another file: the field's type is reported and the
+        # shared pass binds it through ``use crate::app::App`` (ADR-0064).
+        result = analyze_and_link(tmp_path)
 
+        run = next(s for s in result.symbols if s.name == "App::run")
         typed_edges = [
             e for e in result.edges
-            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
+            if e.dst == run.id and e.is_resolved and e.meta.get("resolved_by") == "receiver_type"
         ]
-        assert len(typed_edges) >= 1
+        assert len(typed_edges) == 1
 
-    def test_resolver_fallback_for_field_call(self) -> None:
-        """Strategy 1.5 uses resolver.lookup() when target not in symbols dicts.
-
-        Exercises the fallback path where typed_name (e.g. "App::run") is
-        absent from both local_symbols and global_symbols but found via
-        the resolver's suffix index.
-        """
+    def test_field_call_reports_the_field_type(self) -> None:
+        """``self.app.run()`` with ``App::run`` in no table of this file: reported with
+        the field's type."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
             RustAnalyzer,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -5147,7 +5037,7 @@ impl Server {
         }
 
         method_syms = {"run": [target]}
-        mr = ListNameResolver(method_syms, ambiguity_threshold=3)
+        mr = method_syms
 
         span_idx = {(2, 4): caller}
 
@@ -5155,16 +5045,16 @@ impl Server {
             tree, source, "test.rs",
             local_symbols, global_symbols,
             "run", resolver, {},
-            method_resolver=mr,
+            methods_by_short_name=mr,
             span_index=span_idx,
             field_type_registry=analyzer._field_type_registry,
             analyzer=analyzer,
         )
 
-        typed_edges = [e for e in edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")]
-        assert len(typed_edges) == 1
-        assert typed_edges[0].dst == target.id
-        assert typed_edges[0].confidence == 0.85
+        # ``App::run`` is not in this file: the field's type is reported.
+        calls = [e for e in edges if e.edge_type == "calls"]
+        assert len(calls) == 1 and not calls[0].is_resolved
+        assert calls[0].meta["receiver_type_hint"] == "App"
 
 
     def test_scoped_type_field_call(self, tmp_path: Path) -> None:
@@ -5983,17 +5873,18 @@ class TestRustCyclomaticComplexity:
 
 
 class TestRustBareMethodMagnetGate:
-    """A bare identifier call (``foo()``) must NOT bind a
-    high-confidence ``calls`` edge to a DIFFERENT impl's same-named method on
-    weak short-name (suffix) evidence — the cross-language "magnet" misbind
-    (dozens of bare call sites collapsing onto one arbitrary ``Type::foo``;
-    INV-fahub).
+    """A bare identifier call (``foo()``) must NOT bind a ``calls`` edge to a
+    method by its short name — the cross-language "magnet" misbind (dozens of
+    bare call sites collapsing onto one arbitrary ``Type::foo``; INV-fahub).
 
-    The gate (shared ``defer_bare_method_call`` helper, ``separator="::"``)
-    withholds such a match and instead emits an unresolved edge carrying
-    ``meta.enclosing_class`` (the enclosing impl type) so the inherited_calls
-    Site-1 walker can later recover a genuine inherited implicit-``self``
-    call. Free functions and SAME-impl methods still bind directly.
+    In Rust a bare call never reaches a method (an implicit ``self`` does not
+    exist: the method is ``Self::foo()`` or ``self.foo()``), and a free
+    function of another module only through an import. Since ADR-0064 the
+    analyzer binds a bare call to its own module's item only; the rest is a
+    stub with no facts, which the shared pass reads against the file's import
+    table. So none of the three below binds in the analyzer: the method of
+    another impl, the method of the caller's own impl, and a free function no
+    ``use`` names.
     """
 
     @staticmethod
@@ -6063,18 +5954,12 @@ class TestRustBareMethodMagnetGate:
         assert misbound == [], (
             f"bare foo() misbound to unrelated Gadget::foo (magnet): {misbound}"
         )
-        deferred = [
-            e for e in calls
-            if not e.is_resolved
-            and (e.meta or {}).get("enclosing_class") == "Widget"
-        ]
-        assert len(deferred) == 1, (
-            "expected exactly one deferred unresolved edge carrying "
-            f"enclosing_class=Widget for Site-1 recovery; got {calls}"
-        )
+        stub = [e for e in calls if not e.is_resolved]
+        assert len(stub) == 1 and "enclosing_class" not in (stub[0].meta or {}), calls
 
-    def test_same_impl_method_still_binds(self) -> None:
-        """Bare call to a SAME-impl method (implicit self) still resolves."""
+    def test_bare_call_does_not_reach_the_callers_own_method(self) -> None:
+        """A bare ``helper()`` inside ``impl Widget`` is not ``Widget::helper``:
+        Rust has no implicit ``self``. Bound before by short name; a stub now."""
         from hypergumbo_core.ir import Span, Symbol
 
         source_text = (
@@ -6093,15 +5978,12 @@ class TestRustBareMethodMagnetGate:
         )
         calls = self._run(source_text, {"Widget::helper": widget_helper})
 
-        resolved = [
-            e for e in calls if e.is_resolved and e.dst == widget_helper.id
-        ]
-        assert len(resolved) == 1, (
-            f"same-impl bare helper() should still bind to Widget::helper; got {calls}"
-        )
+        assert [e for e in calls if not e.is_resolved and e.dst != widget_helper.id], calls
+        assert not [e for e in calls if e.is_resolved], calls
 
-    def test_free_function_still_binds(self) -> None:
-        """Bare call to a free function (not a method) still resolves."""
+    def test_bare_call_to_an_unimported_free_function_is_a_stub(self) -> None:
+        """A bare ``compute()`` to a free function of another file that no ``use``
+        names: bound before by its name alone; a stub now (ADR-0064)."""
         from hypergumbo_core.ir import Span, Symbol
 
         source_text = (
@@ -6120,12 +6002,8 @@ class TestRustBareMethodMagnetGate:
         )
         calls = self._run(source_text, {"compute": compute})
 
-        resolved = [
-            e for e in calls if e.is_resolved and e.dst == compute.id
-        ]
-        assert len(resolved) == 1, (
-            f"bare compute() to a free function should still bind; got {calls}"
-        )
+        assert not [e for e in calls if e.is_resolved], calls
+        assert len([e for e in calls if not e.is_resolved]) == 1, calls
 
 
 class TestRustUseAndTypePositionsAreNotAttributeReads:
@@ -6337,6 +6215,9 @@ def test_a_method_call_never_binds_a_free_function(tmp_path: Path) -> None:
     std's ``Path::join`` included (WI-jomik)."""
     from hypergumbo_lang_mainstream.rust import analyze_rust
 
+    from _rust_shared_pass import analyze_and_link
+
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "fx"\nversion = "0.1.0"\n')
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "function.rs").write_text(
         "pub fn join(a: &str) -> String { a.to_string() }\n")
@@ -6345,7 +6226,8 @@ def test_a_method_call_never_binds_a_free_function(tmp_path: Path) -> None:
         "fn u(p: std::path::PathBuf) { let _ = p.join(\"x\").join(\"y\"); }\n"
         "fn v() { let _ = function::join(\"z\"); }\n"
         "fn main() {}\n")
-    result = analyze_rust(tmp_path)
+    # ``function::join`` is bound by the shared pass through ``mod function;``.
+    result = analyze_and_link(tmp_path)
     to_free_join = [
         e for e in result.edges
         if e.edge_type == "calls" and e.dst.endswith("function.rs:1-1:join:function")

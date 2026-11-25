@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 import hypergumbo_core.analyze.base as analyze_base
-from hypergumbo_lang_mainstream.rust import analyze_rust
+from _rust_shared_pass import analyze_and_link
 
 _CARGO = '[package]\nname = "app"\nversion = "0.1.0"\n'
 
@@ -37,7 +37,9 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 def _calls(root: Path) -> list[tuple[str, int, str]]:
-    result = analyze_rust(root)
+    """The calls after the shared pass (ADR-0064): an imported function is
+    bound by the file's import table there, not by the analyzer."""
+    result = analyze_and_link(root)
     # The caller's name is read from its Symbol, never parsed from the id.
     name_of = {s.id: s.name for s in result.symbols}
     return [
@@ -131,7 +133,8 @@ def test_a_field_of_the_enclosing_type_still_reaches_its_method(tmp_path: Path) 
 def test_a_field_typed_by_a_type_parameter_keeps_its_fallback(tmp_path: Path) -> None:
     """Control: ``backend: B`` has no type until the struct is instantiated, so
     it is not a known external type (firecracker's ``Vsock<B>`` with its test
-    backend's ``as_raw_fd``): the short-name fallback still runs."""
+    backend's ``as_raw_fd``): every ``as_raw_fd`` of the tree is the trait
+    ``Backend``'s, and the call binds the trait's declaration."""
     _write(tmp_path, {
         "Cargo.toml": _CARGO,
         "src/lib.rs": (
