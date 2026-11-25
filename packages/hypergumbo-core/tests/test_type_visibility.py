@@ -318,3 +318,46 @@ def test_a_file_of_a_language_of_declared_names_passes_nothing_on() -> None:
     other = ImportScope()
     other.add_named("src/db.ts", "Conn")
     assert _through({"src/index.ts": other}, "Conn", caller, conns) == []
+
+
+# --- which rule answered (the mark of a bind made through the lookup) --------------
+
+
+def _how(written: str, caller: str | None, scope: ImportScope, candidates: list[Symbol],
+         caller_path: str | None = None) -> tuple[list[str] | None, str | None]:
+    def named(short: str) -> list[Symbol]:
+        return [c for c in candidates if c.name == short]
+    found, by = type_visibility.visible_declarations(
+        written, caller, scope, named, caller_path=caller_path,
+    )
+    return (None if found is None else sorted(dotted(s.qualified_name or s.path) for s in found)), by
+
+
+def test_the_lookup_says_which_rule_answered() -> None:
+    """A bind made through the lookup is marked by what scoped it: the
+    caller's own package (``same_module``), an import (``import``: an explicit
+    binding, an alias, a wildcard), or the owner the call site wrote
+    (``qualified``: a rooted or a dotted name). Nothing found: no rule."""
+    conns = [_type("App.Db.Conn"), _type("Legacy.Conn"), _type("App.Web.Conn")]
+    assert _how("Conn", "App.Web.Handler.Get", ImportScope(), conns) == (["App.Web.Conn"], "same_module")
+    imported = ImportScope()
+    imported.add_named("App.Db", "Conn")
+    assert _how("Conn", "Other.Handler.Get", imported, conns) == (["App.Db.Conn"], "import")
+    wildcard = ImportScope()
+    wildcard.add_open_wildcard("Legacy")
+    assert _how("Conn", "Other.Handler.Get", wildcard, conns) == (["Legacy.Conn"], "import")
+    assert _how("Db.Conn", "App.Web.Handler.Get", ImportScope(), conns) == (["App.Db.Conn"], "qualified")
+    assert _how("global::Legacy.Conn", "App.Web.Handler.Get", ImportScope(), conns) == (["Legacy.Conn"], "qualified")
+    assert _how("Missing", "App.Web.Handler.Get", ImportScope(), conns) == ([], None)
+
+
+def test_the_file_rule_says_which_rule_answered() -> None:
+    conns = [_file_type("Conn", "src/main.ts"), _file_type("Conn", "src/db.ts")]
+    assert _how("Conn", None, _file_scope(), conns, caller_path="src/main.ts") == (["src/main.ts"], "same_file")
+    bound = _file_scope()
+    bound.add_named("src/db.ts", "Conn")
+    assert _how("Conn", None, bound, conns, caller_path="src/other.ts") == (["src/db.ts"], "import")
+    ns = _file_scope()
+    ns.add_namespace("src/db.ts", "db")
+    assert _how("db.Conn", None, ns, conns, caller_path="src/other.ts") == (["src/db.ts"], "import")
+    assert _how("Conn", None, _file_scope(), conns, caller_path="src/other.ts") == ([], None)
