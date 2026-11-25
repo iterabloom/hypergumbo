@@ -183,6 +183,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
@@ -210,6 +211,7 @@ from hypergumbo_core.analyze.registry import (
     register_analyzer,
 )
 from hypergumbo_core.analyze.var_scope import ScopedVarTypes
+from hypergumbo_core import resolved_by
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -3702,6 +3704,7 @@ def _extract_edges_from_file(
                     # Get the function name being called
                     is_method_call = False
                     full_scoped_name = None
+                    _qual_by = resolved_by.QUALIFIED  # ``Self::`` makes it own_type
                     if inner.type == "identifier":
                         callee_name = node_text(inner, source)
                     elif inner.type == "field_expression":
@@ -3742,6 +3745,7 @@ def _extract_edges_from_file(
                             impl_type = _get_impl_target(node, source)
                             if impl_type:
                                 full_scoped_name = f"{impl_type}::{full_scoped_name[6:]}"
+                                _qual_by = resolved_by.OWN_TYPE
                     else:
                         callee_name = None
 
@@ -3777,10 +3781,12 @@ def _extract_edges_from_file(
                                         # tokio::spawn(my_task) — bare function ref
                                         ref_name = node_text(arg_child, source)
                                         target = local_symbols.get(ref_name)
+                                        _by = resolved_by.SAME_FILE
                                         if target is None:
                                             lr = resolver.lookup(ref_name, caller_path=_caller_path)
                                             if lr.found and lr.symbol is not None:
                                                 target = lr.symbol
+                                                _by = lr.resolved_by
                                         if target is not None:
                                             edges.append(Edge.create(
                                                 src=current_function.id,
@@ -3790,6 +3796,7 @@ def _extract_edges_from_file(
                                                 evidence_type="async_spawn",
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
+                                                resolved_by=_by,
                                             ))
                             # Don't resolve spawn itself as a callee
                             resolved = True
@@ -3819,6 +3826,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function", "receiver": "qualified"},
+                                    resolved_by=_qual_by,
                                 ))
                                 resolved = True
                             else:
@@ -3851,6 +3859,14 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function", "receiver": "qualified"},
+                                        # The ``use`` path's function, or the
+                                        # ``use`` hint chose; else the written path.
+                                        resolved_by=(
+                                            resolved_by.IMPORT
+                                            if _by_path is not None
+                                            or lookup_result.resolved_by == resolved_by.IMPORT
+                                            else _qual_by
+                                        ),
                                     ))
                                     resolved = True
 
@@ -3875,6 +3891,7 @@ def _extract_edges_from_file(
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                                 meta={"call_construct": "function", "receiver": "qualified"},
+                                                resolved_by=resolved_by.QUALIFIED,
                                             ))
                                             resolved = True
                                             break
@@ -3892,6 +3909,11 @@ def _extract_edges_from_file(
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                                 meta={"call_construct": "function", "receiver": "qualified"},
+                                                resolved_by=(
+                                                    resolved_by.IMPORT
+                                                    if lr.resolved_by == resolved_by.IMPORT
+                                                    else resolved_by.QUALIFIED
+                                                ),
                                             ))
                                             resolved = True
                                             break
@@ -3942,6 +3964,13 @@ def _extract_edges_from_file(
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             meta={"call_construct": "method", "receiver": "typed_field"},
+                                            # ``self.m()``: the impl's own type;
+                                            # ``self.f.m()``: the field's type.
+                                            resolved_by=(
+                                                resolved_by.OWN_TYPE
+                                                if value_node.type == "self"
+                                                else resolved_by.RECEIVER_TYPE
+                                            ),
                                         ))
                                         resolved = True
 
@@ -4024,6 +4053,7 @@ def _extract_edges_from_file(
                                                 "call_construct": "method",
                                                 "receiver": "typed_var",
                                             },
+                                            resolved_by=resolved_by.RECEIVER_TYPE,
                                         ))
                                         resolved = True
 
@@ -4076,6 +4106,7 @@ def _extract_edges_from_file(
                                                 "call_construct": "method",
                                                 "receiver": "typed_var",
                                             },
+                                            resolved_by=resolved_by.RECEIVER_TYPE,
                                         ))
                                         resolved = True
 
@@ -4098,6 +4129,7 @@ def _extract_edges_from_file(
                                 )
                             )
                             _local = local_symbols.get(callee_name)
+                            _by = resolved_by.SAME_FILE
                             if _receiver_is_external:
                                 _local = None
                             if (
@@ -4140,6 +4172,9 @@ def _extract_edges_from_file(
                                             f"{_owner[1]}::{callee_name}", [],
                                         )
                                         _local = _declared[0] if len(_declared) == 1 else None
+                                        # Every method of the name in the tree
+                                        # is this trait's: the name decided.
+                                        _by = resolved_by.NAME
                                     elif _owner[0] == "trait":
                                         # Another type declares the name too
                                         # (``args.mode.update()`` in a file of
@@ -4164,12 +4199,15 @@ def _extract_edges_from_file(
                             if _local is not None:
                                 callee = _local
                                 if inner.type == "identifier":
-                                    callee = _free_fns_by_qname.get(
+                                    callee = (_in_module := _free_fns_by_qname.get(
                                         _make_rust_qualified_name(
                                             _get_rust_mod_path(node, source),
                                             None, callee_name,
                                         ),
-                                    ) or callee
+                                    )) or callee
+                                    if _in_module is not None:
+                                        # The caller's own module's item.
+                                        _by = resolved_by.SAME_MODULE
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=callee.id,
@@ -4179,6 +4217,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
+                                    resolved_by=_by,
                                 ))
                             # Check global symbols via resolver
                             else:
@@ -4197,6 +4236,7 @@ def _extract_edges_from_file(
                                 # of misbound (see below; INV-fahub).
                                 _used_bare_resolver = False
                                 _bare_enclosing_type: str | None = None
+                                _by = resolved_by.NAME
                                 use_method_guard = (
                                     is_method_call or full_scoped_name is not None
                                 )
@@ -4229,6 +4269,14 @@ def _extract_edges_from_file(
                                                 if is_method_call else None
                                             ),
                                         )
+                                        # The caller's directory is a nearness
+                                        # hint, not an import: a hit in it is
+                                        # ``name``; the caller-file pick is not.
+                                        _by = (
+                                            resolved_by.SAME_FILE
+                                            if lookup_result.resolved_by == resolved_by.SAME_FILE
+                                            else resolved_by.NAME
+                                        )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
                                     if (
@@ -4254,6 +4302,7 @@ def _extract_edges_from_file(
                                         lookup_result = LookupResult(
                                             symbol=aliased[0] if aliased is not None else None,
                                         )
+                                        _by = resolved_by.IMPORT
                                     else:
                                         # An unaliased ``use`` path names its
                                         # function too; the exact-name entry
@@ -4267,6 +4316,10 @@ def _extract_edges_from_file(
                                             LookupResult(symbol=_by_path)
                                             if _by_path is not None
                                             else resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
+                                        )
+                                        _by = (
+                                            resolved_by.IMPORT if _by_path is not None
+                                            else lookup_result.resolved_by
                                         )
                                     # The magnet gate applies only to genuinely
                                     # BARE identifier calls (``foo()``). Method /
@@ -4353,6 +4406,13 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta=_meta,
+                                        resolved_by=(
+                                            resolved_by_for_bare_call(
+                                                _sym.kind, _sym.name, _by,
+                                                _bare_enclosing_type, separator="::",
+                                            )
+                                            if _used_bare_resolver else _by
+                                        ),
                                     ))
                                 else:
                                     # Consult use_aliases (WI-volob / WI-mafik)
@@ -4750,19 +4810,28 @@ def _extract_edges_from_file(
                 if tt is not None:
                     for callee_name, call_line in _extract_macro_call_names(tt, source):
                         # Resolve Self:: to actual type
+                        # ``Self::f`` names the impl's own type; ``T::f`` its
+                        # owner; a bare name only the file's table.
+                        _owner_by = (
+                            resolved_by.OWN_TYPE if callee_name.startswith("Self::")
+                            else resolved_by.QUALIFIED
+                        )
                         if callee_name.startswith("Self::"):
                             impl_type = _get_impl_target(node, source)
                             if impl_type:
                                 callee_name = f"{impl_type}::{callee_name[6:]}"
                         # Try qualified name first, then short name
                         target = local_symbols.get(callee_name)
+                        _by = _owner_by if "::" in callee_name else resolved_by.SAME_FILE
                         if target is None and "::" in callee_name:
                             short = callee_name.rsplit("::", 1)[-1]
                             target = local_symbols.get(short)
+                            _by = resolved_by.SAME_FILE
                         if target is None:
                             lr = resolver.lookup(callee_name, caller_path=_caller_path)
                             if lr.found and lr.symbol is not None:
                                 target = lr.symbol
+                                _by = _owner_by if "::" in callee_name else lr.resolved_by
                         if target is not None:
                             # NO ``call_construct`` (WI-dapap). A ``macro_body``
                             # value would name the detector that found the site,
@@ -4780,6 +4849,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                resolved_by=_by,
                             ))
 
     # Emit module_attr_ref edges for scoped attribute reads
