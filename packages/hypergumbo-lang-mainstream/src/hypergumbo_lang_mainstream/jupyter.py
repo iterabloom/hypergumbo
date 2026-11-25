@@ -63,6 +63,7 @@ import warnings
 from pathlib import Path
 from typing import Iterator
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import AnalysisResult, make_file_stable_id, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
@@ -364,6 +365,8 @@ def _analyze_notebook_file(
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
                         origin_run_id=run_id,
+                        # The notebook's own name table.
+                        resolved_by=resolved_by.SAME_FILE,
                     )
                     edges.append(edge)
 
