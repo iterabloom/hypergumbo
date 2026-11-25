@@ -67,8 +67,11 @@ How It Works
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry, and
      read each file's ``using`` directives once (``_csharp_usings``): the
-     table handed to the linkers in ``AnalysisResult.import_scopes``
-     (ADR-0064, piece b), the stable-id type names and the base hints
+     stable-id type names, the base hints, and the table handed to the
+     linkers in ``AnalysisResult.import_scopes`` (ADR-0064, piece b), which
+     says which usings are in scope in the file: its own, then those of its
+     project, every ``global using`` of the project's files and the MSBuild
+     ``<Using>`` items of its project files (``_csharp_project_usings``)
    - Pass 2: Detect calls, instantiations, using directives and method-group
      references
      - A call is bound here only on C#'s own evidence in this file: the
@@ -122,6 +125,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET  # nosec B405 - reading the analysed repository's project files
 from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
@@ -884,13 +888,19 @@ class _CSharpUsings(NamedTuple):
     - ``path_hints``: local name to a dotted path, the shape the run-wide
       ``NameResolver`` takes as a path hint; read by the ``new T()`` lookup
       only (``using A.B.C;`` gives ``C``, ``using static`` is not told apart).
-    - ``scope``: the table handed to the linkers (ADR-0064, piece b).
+    - ``scope``: the table handed to the linkers (ADR-0064, piece b). Here
+      it holds the file's own directives; :func:`_csharp_project_usings`
+      adds the usings of its project before it is handed over.
+    - ``project_wide``: the file's ``global using`` directives as
+      ``(target, alias)`` (``alias`` ``None`` for a namespace), which are in
+      scope in every file of its project.
     """
 
     namespaces: list[str]
     type_aliases: dict[str, str]
     path_hints: dict[str, str]
     scope: ImportScope
+    project_wide: list[tuple[str, Optional[str]]]
 
 
 #: A dotted path of identifiers: what an alias target must be to name a type
@@ -915,6 +925,27 @@ def _strip_type_arguments(text: str) -> str:
     return stripped[len("global::"):] if stripped.startswith("global::") else stripped
 
 
+def _add_using(scope: ImportScope, target: str, alias: Optional[str]) -> None:
+    """``using target;`` (``alias`` ``None``) or ``using alias = target;`` into
+    the table. ``target`` is a dotted path, type arguments already stripped.
+
+    An alias the table already binds is kept: a project's usings are added
+    after the file's own, and C# rejects one alias declared twice in a
+    compilation unit (CS1537), so a second binding is never the meaning.
+    """
+    if alias is None:
+        scope.add_open_wildcard(target)
+        return
+    if scope.named(alias) is not None:
+        return
+    module, _, name = target.rpartition(".")
+    if _DOTTED_PATH.fullmatch(target) is None:
+        # Not a type or namespace path (a tuple): the alias still
+        # shadows, and names nothing the repository declares.
+        module, name = "", target
+    scope.add_named(module=module, name=name, alias=alias)
+
+
 def _csharp_usings(tree: "tree_sitter.Tree", source: bytes) -> _CSharpUsings:
     """Every ``using`` directive of a file, read once (see :class:`_CSharpUsings`).
 
@@ -924,16 +955,19 @@ def _csharp_usings(tree: "tree_sitter.Tree", source: bytes) -> _CSharpUsings:
     "X.Y", name="Z", alias="A")``, ``module=""`` for ``using A = B;``), its
     type arguments dropped. ``using static X.T;`` brings T's static MEMBERS
     into scope by bare name, which the table cannot say: nothing is recorded
-    for it, and a bare call to such a member stays unresolved.
+    for it, and a bare call to such a member stays unresolved. A ``global
+    using`` (not ``static``) is also listed in ``project_wide``.
     """
     namespaces: list[str] = []
     type_aliases: dict[str, str] = {}
     path_hints: dict[str, str] = {}
     scope = ImportScope()
+    project_wide: list[tuple[str, Optional[str]]] = []
     for node in iter_tree(tree.root_node):
         if node.type != "using_directive":
             continue
         static = any(c.type == "static" for c in node.children)
+        is_global = any(c.type == "global" for c in node.children)
         qualified = find_child_by_type(node, "qualified_name")
         first_id = find_child_by_type(node, "identifier")
         equals = next((i for i, c in enumerate(node.children) if c.type == "="), None)
@@ -946,12 +980,9 @@ def _csharp_usings(tree: "tree_sitter.Tree", source: bytes) -> _CSharpUsings:
                 if not static:
                     type_aliases[alias] = node_text(qualified, source)
             target = _strip_type_arguments(node_text(node.children[equals + 1], source))
-            module, _, name = target.rpartition(".")
-            if _DOTTED_PATH.fullmatch(target) is None:
-                # Not a type or namespace path (a tuple): the alias still
-                # shadows, and names nothing the repository declares.
-                module, name = "", target
-            scope.add_named(module=module, name=name, alias=alias)
+            _add_using(scope, target, alias)
+            if is_global:
+                project_wide.append((target, alias))
             continue
         if qualified is not None:
             full_path = node_text(qualified, source)
@@ -963,8 +994,141 @@ def _csharp_usings(tree: "tree_sitter.Tree", source: bytes) -> _CSharpUsings:
         if static or target_node is None:
             continue
         namespaces.append(node_text(target_node, source))
-        scope.add_open_wildcard(_strip_type_arguments(node_text(target_node, source)))
-    return _CSharpUsings(namespaces, type_aliases, path_hints, scope)
+        target = _strip_type_arguments(node_text(target_node, source))
+        _add_using(scope, target, None)
+        if is_global:
+            project_wide.append((target, None))
+    return _CSharpUsings(namespaces, type_aliases, path_hints, scope, project_wide)
+
+
+#: The MSBuild files whose ``<Using>`` items the files of a C# project see.
+_MSBUILD_USING_FILES = ["*.csproj", "Directory.Build.props", "Directory.Build.targets"]
+
+
+def _xml_local_name(name: str) -> str:
+    """An element or attribute name without its XML namespace, lower-cased
+    (an old-style project file puts every element in the MSBuild 2003
+    namespace; MSBuild reads item and attribute names case-insensitively)."""
+    return name.rpartition("}")[2].lower()
+
+
+def _msbuild_usings(path: Path) -> Optional[list[tuple[bool, str, Optional[str]]]]:
+    """The ``<Using>`` items of one MSBuild file, in document order, as
+    ``(include, target, alias)``: ``include`` is False for ``<Using
+    Remove="N" />``. ``None`` when the file cannot be read or is not XML.
+
+    ``Include`` / ``Remove`` may list several items (``A;B``). An item whose
+    value is no dotted path (an MSBuild property ``$(X)``, a wildcard) names
+    nothing this reader can evaluate and is skipped. ``Static="true"`` is
+    ``global using static``, which the table cannot say: skipped. A
+    ``Condition`` on the item, its ``ItemGroup`` or a ``Choose`` around it
+    is not evaluated (see :func:`_csharp_project_usings`).
+    """
+    try:
+        root = ET.fromstring(path.read_bytes())  # noqa: S314  # nosec B314 - a project file of the analysed repository
+    except (OSError, ET.ParseError):
+        return None
+    items: list[tuple[bool, str, Optional[str]]] = []
+    for element in root.iter():
+        if _xml_local_name(element.tag) != "using":
+            continue
+        attrs = {_xml_local_name(k): v.strip() for k, v in element.attrib.items()}
+        if attrs.get("static", "").lower() == "true":
+            continue
+        for key, include in (("include", True), ("remove", False)):
+            for value in attrs.get(key, "").split(";"):
+                target = _strip_type_arguments(value.strip())
+                if _DOTTED_PATH.fullmatch(target) is None:
+                    continue
+                items.append((include, target, (attrs.get("alias") or None) if include else None))
+    return items
+
+
+def _csharp_project_usings(
+    repo_root: Path, usings: dict[Path, _CSharpUsings], run: AnalysisRun,
+) -> None:
+    """Add to each file's table (``usings[f].scope``) the usings in scope in
+    it that are not written in it: C#'s table is "the usings in scope in
+    this file", and two kinds of using apply to every file of a project.
+
+    WHICH PROJECT. A file belongs to the project of the nearest directory at
+    or above it, within ``repo_root``, that holds a ``*.csproj``: a file
+    under two nested projects belongs to the inner one (SDK projects compile
+    every ``.cs`` below them, and a repository nests a project in another
+    only by excluding it from the outer one). A directory with two
+    ``.csproj`` files is ONE project whose MSBuild usings are those of both
+    (the two build the same files; a using either declares is in scope in
+    some build). Files with no such directory form one group of their own:
+    a Unity tree has no project file in the repository and its editor
+    compiles every loose script into one assembly (``Assembly-CSharp``).
+    Not followed: ``<Compile Include="..\\X.cs">`` items that link a file
+    from outside the project's directory, and a project file above
+    ``repo_root``.
+
+    1. ``global using`` directives (namespace and alias) of every file of a
+       project, in every file of it (``_CSharpUsings.project_wide``).
+       ``global using static`` is not recorded, like ``using static``.
+    2. MSBuild ``<Using Include="N" />`` items (``Alias="A"`` too, and
+       ``<Using Remove="N" />``), which the SDK writes into a generated
+       file of ``global using`` lines: read from every
+       ``Directory.Build.props`` from ``repo_root`` down to the project's
+       directory, then the project file, then every
+       ``Directory.Build.targets`` likewise: the order MSBuild evaluates
+       them in, so a ``Remove`` removes what was included before it. MSBuild
+       itself imports only the NEAREST ``Directory.Build.*``, and an outer
+       one only through an ``<Import>`` in it; every one is read here, so a
+       using of an outer file that no import reaches is read as in scope.
+       A ``Condition`` (on the item, its ``ItemGroup``, a ``Choose``) is not
+       evaluated: the using is in scope, a namespace that is in scope in
+       some build configuration. ``<Import Project=...>`` is not followed.
+       The SDK's implicit usings (``<ImplicitUsings>enable``) are not added:
+       they are ``System.*`` namespaces, where the repository declares
+       nothing. A file that is not XML is skipped and named in a warning of
+       the run.
+
+    Each file's table gets them after its own usings, in a fixed order (the
+    files of a project by path), whatever order the files were read in.
+    """
+    by_dir: dict[Path, list[Path]] = {}
+    for path in sorted(find_files(repo_root, _MSBUILD_USING_FILES)):
+        by_dir.setdefault(path.parent, []).append(path)
+    projects = {d for d, paths in by_dir.items() if any(p.suffix.lower() == ".csproj" for p in paths)}
+    read: dict[Path, Optional[list[tuple[bool, str, Optional[str]]]]] = {}
+
+    def msbuild_usings(project: Path) -> list[tuple[str, Optional[str]]]:
+        above = [d for d in (project, *project.parents) if d.is_relative_to(repo_root)][::-1]
+        files = [p for d in above for p in by_dir.get(d, ()) if p.name == "Directory.Build.props"]
+        files += [p for p in by_dir[project] if p.suffix.lower() == ".csproj"]
+        files += [p for d in above for p in by_dir.get(d, ()) if p.name == "Directory.Build.targets"]
+        kept: dict[tuple[str, Optional[str]], None] = {}
+        for path in files:
+            if path not in read:
+                read[path] = _msbuild_usings(path)
+            for include, target, alias in read[path] or ():
+                if include:
+                    kept[(target, alias)] = None
+                else:
+                    for key in [k for k in kept if k[0] == target]:
+                        del kept[key]
+        return list(kept)
+
+    groups: dict[Optional[Path], list[Path]] = {}
+    for cs_file in sorted(usings):
+        project = next((d for d in cs_file.parents if d in projects), None)
+        groups.setdefault(project, []).append(cs_file)
+    for project, members in groups.items():
+        in_scope = [u for f in members for u in usings[f].project_wide]
+        if project is not None:
+            in_scope += msbuild_usings(project)
+        for cs_file in members:
+            for target, alias in in_scope:
+                _add_using(usings[cs_file].scope, target, alias)
+    unread = sorted(str(p.relative_to(repo_root)) for p, items in read.items() if items is None)
+    if unread:
+        run.warnings.append(
+            f"csharp: {len(unread)} MSBuild file(s) are not XML; their <Using> items "
+            f"were not read: {', '.join(unread[:5])}"
+        )
 
 
 def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -1086,10 +1250,10 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
     rel_path: str,
-) -> tuple[FileAnalysis, Optional[ImportScope]]:
-    """Extract symbols from a single C# file, and the table of its ``using``
-    directives (:func:`_csharp_usings`; ``None`` for a file that could not be
-    read).
+) -> tuple[FileAnalysis, Optional[_CSharpUsings]]:
+    """Extract symbols from a single C# file, and what its ``using``
+    directives say (:func:`_csharp_usings`; ``None`` for a file that could not
+    be read).
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
@@ -1112,7 +1276,7 @@ def _extract_symbols_from_file(
     usings = _csharp_usings(tree, source)
     # WI-palus: every type a stable id hashes is written through the aliases.
     with resolving_type_names(_csharp_type_names(tree, source, usings)):
-        return _extract_parsed_symbols(file_path, source, tree, run, rel_path, usings), usings.scope
+        return _extract_parsed_symbols(file_path, source, tree, run, rel_path, usings), usings
 
 
 def _extract_parsed_symbols(
@@ -2625,10 +2789,9 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
 
         # Pass 1: Extract all symbols
         file_analyses: dict[Path, FileAnalysis] = {}
-        # What each file's ``using`` directives bind (ADR-0064, piece b), by
-        # the path ``Symbol.path`` spells; every file read gets one, an empty
-        # one too: its presence says this analyzer hands its calls over.
-        import_scopes: dict[str, ImportScope] = {}
+        # What each file's ``using`` directives say; its table (ADR-0064,
+        # piece b) is handed over once its project's usings are added.
+        file_usings: dict[Path, _CSharpUsings] = {}
         files_skipped = 0
 
         for cs_file in find_csharp_files(repo_root):
@@ -2640,9 +2803,9 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             # find_csharp_files(repo_root) is ABSOLUTE; folding it would make
             # stable_ids location-dependent (the absolute-path regression trap).
             rel_path = str(cs_file.relative_to(repo_root))
-            analysis, import_scope = _extract_symbols_from_file(cs_file, parser, run, rel_path)
-            if import_scope is not None:
-                import_scopes[str(cs_file)] = import_scope
+            analysis, usings = _extract_symbols_from_file(cs_file, parser, run, rel_path)
+            if usings is not None:
+                file_usings[cs_file] = usings
             if analysis.symbols:
                 # WI-lutob: this override bypasses the base analyze()'s shape_id
                 # auto-stamp loop; stamp it here from node_for_symbol.
@@ -2650,6 +2813,12 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                 file_analyses[cs_file] = analysis
             else:
                 files_skipped += 1
+
+        # The usings in scope in each file, by the path ``Symbol.path``
+        # spells; every file read gets a table, an empty one too: its presence
+        # says this analyzer hands its calls over.
+        _csharp_project_usings(repo_root, file_usings, run)
+        import_scopes = {str(f): u.scope for f, u in file_usings.items()}
 
         # Build global symbol registry
         global_symbols: dict[str, Symbol] = {}
