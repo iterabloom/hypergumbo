@@ -66,6 +66,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -287,30 +288,31 @@ _MODULE_NODES = frozenset({"program", "unit"})
 def _resolve_callee(
     node: "tree_sitter.Node", call_name: str, index: SymbolsAt,
     global_symbols: dict[str, Symbol],
-) -> Optional[Symbol]:
-    """The routine a bare call names, in Pascal's lookup order.
+) -> tuple[Optional[Symbol], str]:
+    """The routine a bare call names, in Pascal's lookup order, and what
+    scoped the choice (``resolved_by``).
 
     1. A procedure nested in an enclosing routine (innermost first): it is
        visible only there, so it is never registered globally and is found by
-       its declaration node's POSITION.
+       its declaration node's POSITION (``lexical_scope``).
     2. A member of the enclosing method's class: inside ``TA.Run`` a bare
-       ``Get`` is ``Self.Get`` (registered as ``ta.get``).
-    3. The run's routine of that name.
+       ``Get`` is ``Self.Get`` (registered as ``ta.get``; ``own_type``).
+    3. The run's routine of that name (``name``).
     """
     key = call_name.lower()
     owner: Optional[str] = None
     for proc in _proc_ancestors(node):
         for child in proc.children:
             if child.type == "defProc" and (_get_proc_name(child) or "").lower() == key:
-                return symbol_declared_by(child, index)
+                return symbol_declared_by(child, index), resolved_by.LEXICAL_SCOPE
         if owner is None:
             owner = _proc_owner(_get_proc_name(proc) or "")
     if owner is not None:
         member = global_symbols.get(f"{owner}.{key}".lower())
         if isinstance(member, Symbol):
-            return member
+            return member, resolved_by.OWN_TYPE
     found = global_symbols.get(key)
-    return found if isinstance(found, Symbol) else None
+    return (found if isinstance(found, Symbol) else None), resolved_by.NAME
 
 
 # Pascal builtins to skip during edge extraction
@@ -554,7 +556,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
             caller = _find_caller(node, index, file_anchor)
             if caller is None:  # pragma: no cover - every named defProc is a symbol
                 continue
-            callee = _resolve_callee(node, call_name, index, global_symbols)
+            callee, _by = _resolve_callee(node, call_name, index, global_symbols)
             if callee is not None:
                 edges.append(Edge.create(
                     src=caller.id,
@@ -565,6 +567,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     evidence_lang="pascal",
+                    resolved_by=_by,
                 ))
             else:
                 edges.append(make_unresolved_edge(

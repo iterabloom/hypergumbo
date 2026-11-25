@@ -30,6 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -285,6 +286,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
                                 evidence_lang="janet",
+                                resolved_by=resolved_by.NAME,
                             )
                         else:
                             edge = make_unresolved_edge(

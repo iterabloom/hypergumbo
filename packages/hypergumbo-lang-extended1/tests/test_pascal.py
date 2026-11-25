@@ -372,3 +372,44 @@ class TestPascalCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestPascalResolvedBy:
+    """``meta["resolved_by"]`` per step of ``_resolve_callee`` (audit 0030)."""
+
+    def test_nested_own_class_and_name(self, tmp_path: Path) -> None:
+        (tmp_path / "a.pas").write_text("""\
+program P;
+type
+  TA = class
+    procedure Run;
+    procedure Get;
+  end;
+
+procedure Helper; begin end;
+
+procedure TA.Get; begin end;
+
+procedure TA.Run;
+  procedure Inner; begin end;
+begin
+  Get;
+  Inner;
+  Helper;
+end;
+
+begin
+end.
+""")
+        result = analyze_pascal(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        marks = {
+            by_id[e.dst].name: e.meta["resolved_by"]
+            for e in result.edges if e.edge_type == "calls" and e.dst in by_id
+        }
+        # Inside TA.Run a bare Get is Self.Get.
+        assert marks["TA.Get"] == "own_type"
+        # A procedure nested in the caller, found by position.
+        assert marks["Inner"] == "lexical_scope"
+        # The run's routine of that name.
+        assert marks["Helper"] == "name"

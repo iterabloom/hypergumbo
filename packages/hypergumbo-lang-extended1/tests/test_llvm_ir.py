@@ -502,3 +502,33 @@ define void @foo() {
         result = analyze_llvm_ir(tmp_path)
 
         assert [e for e in result.edges if e.edge_type == "calls"] == []
+
+
+class TestLlvmIrResolvedBy:
+    """``meta["resolved_by"]`` per route of ``_resolve_calls`` (audit 0030)."""
+
+    def test_this_files_define_then_the_resolver(self, tmp_path: Path) -> None:
+        make_llvm_file(tmp_path, "lib.ll", """define void @far() {
+  ret void
+}
+""")
+        make_llvm_file(tmp_path, "main.ll", """declare void @far()
+
+define void @near() {
+  ret void
+}
+
+define void @main() {
+  call void @near()
+  call void @far()
+  ret void
+}
+""")
+        result = analyze_llvm_ir(tmp_path)
+        calls = {e.dst.split(":")[-2]: e for e in result.edges if e.edge_type == "calls"}
+        assert {"near", "far"} <= set(calls)
+        # This file's define of that name.
+        assert calls["near"].meta["resolved_by"] == "same_file"
+        # A declare is not a define: the repo-wide resolver found lib.ll's.
+        assert "lib.ll" in calls["far"].dst
+        assert calls["far"].meta["resolved_by"] == "name"

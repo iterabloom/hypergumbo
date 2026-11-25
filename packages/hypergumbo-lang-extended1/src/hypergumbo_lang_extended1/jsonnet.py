@@ -52,6 +52,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -323,6 +324,8 @@ def _extract_edges_recursive(
                 evidence_type="tree_sitter",
                 confidence=confidence,
                 evidence_lang="jsonnet",
+                # The run-wide table, by the last segment of the name.
+                resolved_by=resolved_by.NAME if callee_id else None,
             )
             edges.append(edge)
 
