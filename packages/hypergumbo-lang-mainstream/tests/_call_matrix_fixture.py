@@ -1316,8 +1316,9 @@ def perl(R, D, B, S, dl, split=False, third=False):
     if split:
         # One package per .pm file. ``use`` ties a file's name to its package
         # (Conn -> Conn.pm), so, as in Java, a directory carries the arm: the
-        # decoy classes live in ``ZLib/`` / ``ALib/``, a library root main never
-        # puts on @INC, and main ``use``s the right classes only.
+        # decoy classes live in ``ZLib/`` / ``ALib/``, a second library root.
+        # main puts it on @INC (FindBin + ``use lib``) and ``use``s R, D
+        # (``scope_decoy_local`` names it) and Child, never S or Spare.
         def module(text):
             return f"{text}\n1;\n"
         files |= {f"{R}.pm": module(cls(R, "execute", 1, pragmas)),
@@ -1327,7 +1328,7 @@ def perl(R, D, B, S, dl, split=False, third=False):
                   f"{side}Lib/{S}.pm": module(cls(S, "ping", 2, pragmas))}
         if third:
             files[f"{side}Lib/Spare.pm"] = module(spare.replace("package Spare;\n", f"package Spare;\n{pragmas}"))
-        classes, uses = "", f"use {R};\nuse Child;\n"
+        classes, uses = "", f'use FindBin qw($Bin);\nuse lib "$Bin/{side}Lib";\nuse {R};\nuse {D};\nuse Child;\n'
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
         child = (f"\npackage Child;\nuse parent -norequire, '{B}';\n")
