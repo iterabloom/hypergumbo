@@ -32,7 +32,9 @@ because its declarations carry no namespace:
 2. otherwise, if the name is an explicit binding of the file's imports
    (``import {Conn as C} from './db'``), the declaration with the ORIGINAL
    name in the file the binding names;
-3. ``ns.Name`` with ``ns`` a namespace binding (``import * as ns``, ``use
+3. otherwise the declarations of that name in the files the caller's file
+   imports wholesale (``use crate::db::*;``); two such files are a tie;
+4. ``ns.Name`` with ``ns`` a namespace binding (``import * as ns``, ``use
    crate::db;``): the declaration ``Name`` of that file.
 
 Nothing else is visible: a global, a library type and a name re-exported
@@ -175,9 +177,10 @@ def _by_file(
         if own:
             return own
         bound = scope.named(head)
-        if bound is None:
-            return []
-        return [c for c in candidates_named(bound.name) if c.path == bound.module]
+        if bound is not None:
+            return [c for c in candidates_named(bound.name) if c.path == bound.module]
+        wildcard_files = set(scope.wildcard_modules)
+        return [c for c in candidates_named(head) if c.path in wildcard_files]
     module = scope.namespace(head)
     if module is None or "." in rest:
         return []

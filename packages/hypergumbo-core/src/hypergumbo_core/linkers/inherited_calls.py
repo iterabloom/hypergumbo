@@ -144,7 +144,7 @@ generic namesake by ``meta["type_arity"]``). None, or two: the call stays
 unresolved, whatever namesakes the repository holds. A file with no table is
 untouched by any of this.
 
-Three more things ride on the same loop, each read only for a file with a
+Four more things ride on the same loop, each read only for a file with a
 table unless said otherwise:
 
 * ``meta["qualifier"]`` (``Util.Helper()``: the call names its owner) goes
