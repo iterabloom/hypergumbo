@@ -1,0 +1,40 @@
+Original commit body from cb1699949305a78276a8c73ec337d2d7ee7b93d1:
+
+ADR-0064 (Proposed): shared call resolution. Step 3 of the program the owner agreed on 2026-11-24. Documentation only.
+
+WHAT IT IS
+The decision document for "one shared call-resolution pass, and unresolved beats a guess". It records the owner's rulings as given in session (quoted where words exist), adopts the `resolved_by` mark that shipped in #2389, states the four pieces the pilot is to build (a declaration index, a per-file import table, call facts on the unresolved edge, a resolver linker), the rollout in batches and its gates, and puts three measurements behind the decision.
+
+THE MEASUREMENTS IT RESTS ON
+1. The fixture in two layouts (#2394): 28 guess cells of 170 with every class in one file, 12 with one class per file.
+2. The census over 51 repositories: 250,319 resolved calls, 29% of them found by a name looked up among every declaration of the repository.
+3. A sample, new in this PR's work: 424 resolved call edges drawn at random per language (C++, C, JavaScript, TypeScript, Swift, Rust, Go, Kotlin) and per mark, judged from source by eight judges who were told nothing about how the pairs were made.
+
+| what scoped the choice | judged | right | wrong | no call / cannot tell | wrong of judged |
+|---|---|---|---|---|---|
+| `name`, more than one candidate in the repository | 120 | 56 | 57 | 7 | 48% |
+| `name`, one candidate | 96 | 81 | 10 | 5 | 10% |
+| `receiver_type`, the owner's name shared by several types | 36 | 19 | 17 | 0 | 47% |
+| `receiver_type`, one such owner | 35 | 33 | 2 | 0 | 6% |
+| `same_file` | 41 | 27 | 14 | 0 | 34% |
+| `class_hint` | 15 | 9 | 6 | 0 | 40% |
+| `qualified` | 17 | 12 | 4 | 1 | 24% |
+| `own_type` | 24 | 24 | 0 | 0 | 0% |
+| `import` | 20 | 20 | 0 | 0 | 0% |
+| `lexical_scope` | 9 | 9 | 0 | 0 | 0% |
+| `same_module` | 6 | 5 | 0 | 1 | 0% |
+
+Of the 110 wrong edges, 68 reach another declaration of the same repository, 14 another overload of the right type, 27 something outside the repository, 1 a target no call can invoke.
+
+Limits: each (language, mark) cell holds 1 to 15 edges; one judge per language; I re-read two `wrong` verdicts against the source and both held. The table separates "not wrong in any sampled edge" from "wrong about half the time"; it does not support a percentage to the digit.
+
+WHAT IS OPEN (the ADR's section "Open for the owner", three decisions)
+- First: what a name-only bind becomes. Recommended: unresolved with the candidates kept when the name has more than one holder; still bound, marked `name`, when it has one.
+- Second: `resolved_by` as a field of `Edge` or the meta key it is.
+- Third: folding the receiver-flavoured `evidence_type` values into `ast_call` plus the mark (it moves published confidences).
+
+OTHER FILES
+ADR-0006, 0007, 0029 and 0037 get a forward pointer to ADR-0064. None is marked superseded: nothing of the shared pass is built, and the README's lifecycle rule ties a supersession status to a decision in effect. The index row says Proposed.
+
+NOT DONE
+No code. The sample's data and the judges' evidence are in the lab notebook, not in the repository.
