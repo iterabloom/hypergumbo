@@ -67,10 +67,11 @@ cannot). ``receiver_type_hint`` carries the project-local type key
 alongside it. This is what lets a catalogued method-kind I/O primitive be
 reached through a typed receiver — see ADR-0051 for why the module slot
 must name the static owner path and never the variable. Function-scoped
-``var_types`` shadowing keeps a rebound name from leaking its old type
-across scopes — for a local's declared, constructor and library-call
-bindings; parameter and constructor-parameter types, and a binding from a
-resolved call's return type, are written file-wide, outside that scoping.
+``var_types`` (``ScopedVarTypes``) keeps a name from carrying its type into
+another function: a local's declared, constructor, library-call and
+return-type bindings and a parameter's type all close with the function that
+binds them (INV-zabud). A constructor property and a property declared outside
+every function are bound for the file.
 
 Library return types (WI-jubim). A receiver that is the VALUE a library
 call returns -- ``Runtime.getRuntime().exec(c)``, or ``val r =
@@ -255,6 +256,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     JAVA_LANG_SYSTEM_FIELDS,
@@ -2070,32 +2072,16 @@ def _extract_edges_from_file(
     # arms an Optional.
     current_function: Optional[Symbol]
 
-    # Track variable types from constructor calls: val x = ClassName()
-    var_types: dict[str, str] = {}
-    # A LOCAL binding closes with its function. Were ``var_types`` file-scoped,
+    # Variable types: var_name -> type. A LOCAL or a PARAMETER closes with its
+    # function (``ScopedVarTypes``). Were the map file-scoped,
     # ``var factory: LoggingEventListener.Factory = ...`` in one method would
     # retype the class FIELD ``factory`` (a ``TestValueFactory``) used in a
     # later method, putting a wrong module in the slot (WI-nasuf; java's
-    # INV-vugon). Each scope is ``(end_byte, shadow)``: what every local in that function
-    # replaced, restored when the walk passes the function's end. Fields and
-    # parameters keep their file-wide binding.
-    scope_stack: list[tuple[int, dict[str, str | None]]] = []
-
-    def _bind_local_type(name: str, type_name: str) -> None:
-        if scope_stack:
-            shadow = scope_stack[-1][1]
-            if name not in shadow:
-                shadow[name] = var_types.get(name)
-        var_types[name] = type_name
-
-    def _close_scopes_before(n: "tree_sitter.Node") -> None:
-        while scope_stack and n.start_byte >= scope_stack[-1][0]:
-            _, shadow = scope_stack.pop()
-            for local_name, shadowed in shadow.items():
-                if shadowed is None:
-                    var_types.pop(local_name, None)
-                else:
-                    var_types[local_name] = shadowed
+    # INV-vugon), and ``fun a(db: Other)`` would type ``val db = make()`` in the
+    # next function (INV-zabud). A property outside every function and a
+    # constructor property (``class C(val svc: Service)``) are bound for the
+    # file.
+    var_types = ScopedVarTypes()
 
     # Build class/object symbols dict for static call resolution
     class_symbols: dict[str, Symbol] = {
@@ -2379,7 +2365,7 @@ def _extract_edges_from_file(
         ))
 
     for node in iter_tree(tree.root_node):
-        _close_scopes_before(node)
+        var_types.close_scopes_before(node)
         # Detect import statements
         if node.type == "import":
             # Get the qualified identifier being imported
@@ -2410,7 +2396,7 @@ def _extract_edges_from_file(
                     if "<" in type_name:
                         type_name = type_name.split("<")[0]
                     if type_name[0].isupper():
-                        var_types[param_name] = type_name
+                        var_types.bind_outer(param_name, type_name)
 
         # Track variable types from property declarations: val x = ClassName()
         elif node.type == "property_declaration":
@@ -2425,7 +2411,7 @@ def _extract_edges_from_file(
             if var_decl and var_name_node:
                 declared = _kt_declared_type(find_child_by_type(var_decl, "user_type"), source)
                 if declared is not None:
-                    _bind_local_type(node_text(var_name_node, source), declared)
+                    var_types[node_text(var_name_node, source)] = declared
             if var_decl and call_expr and var_name_node:
                 # WI-jubim: a row's answer for the whole chain
                 # (``val r = Runtime.getRuntime()``) first; it is a stated
@@ -2435,13 +2421,14 @@ def _extract_edges_from_file(
                     or _kt_chain_root_constructor(call_expr, source)
                 )
                 if _ctor_type:
-                    _bind_local_type(node_text(var_name_node, source), _ctor_type)
+                    var_types[node_text(var_name_node, source)] = _ctor_type
 
         # Function declarations - extract parameter types for type inference
         elif node.type == "function_declaration":
-            scope_stack.append((node.end_byte, {}))
+            var_types.open_scope(node)
             param_types = _extract_param_types(node, source)
-            # Add parameter types to var_types for method call resolution
+            # Parameter types, for method call resolution; they close with the
+            # function like its locals (INV-zabud).
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
 
