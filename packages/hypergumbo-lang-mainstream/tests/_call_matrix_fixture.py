@@ -454,7 +454,8 @@ def scala(R, D, B, S, dl, split=False, third=False):
     if split:
         # One class per file, named by role. The right classes are in package
         # ``model``, the decoys in the decoy package, whose directory sorts after
-        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R and Child.
+        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R, Child
+        # and D (the scope decoys name D); S and Spare stay unreferenced.
         files |= {"model/Store.scala": "package model\n\n" + cls(R, "execute", 1),
                   f"{dec}/Store.scala": f"package {dec}\n\n" + cls(D, "execute", 2),
                   "model/Base.scala": "package model\n\n" + cls(B, "ping", 1),
@@ -462,7 +463,7 @@ def scala(R, D, B, S, dl, split=False, third=False):
                   f"{dec}/Stray.scala": f"package {dec}\n\n" + cls(S, "ping", 2)}
         if third:
             files[f"{dec}/Spare.scala"] = f"package {dec}\n\n" + spare
-        classes = f"import model.{R}\nimport model.Child\n"
+        classes = f"import model.{R}\nimport {dec}.{D}\nimport model.Child\n"
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
         pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B}\n", cls(S, "ping", 2))
