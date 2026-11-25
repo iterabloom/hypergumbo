@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Axis** | backend agreement (ADR-0057 §5, §10 — the only evidence that may change an arbitration default or license an `authoritative_for` declaration) |
-| **Date** | 2026-11-24 |
+| **Date** | 2026-11-25 |
 | **Artifact** | `aardvark-dns-4444d90fee-two-arm-recorded.json` |
 | **Instrument** | `hypergumbo backend-agreement` (`hypergumbo_core.backend_agreement`) |
 | **Outcome** | Measurement, not a verdict: agreement says a value is uncontested, not that it is right. |
@@ -12,14 +12,14 @@
 ```yaml
 kind: backend_agreement
 artifact: aardvark-dns-4444d90fee-two-arm-recorded.json
-date: 2026-11-24
+date: 2026-11-25
 languages:
   - language: rust
     producers: [rust, rust_analyzer]
     nodes: 169
     merged_nodes: 150
-    corroborated_edges: 94
-    superseded_edges: 3
+    corroborated_edges: 55
+    superseded_edges: 26
 ```
 
 ## rust: `rust` (incumbent) vs `rust_analyzer`
@@ -59,14 +59,14 @@ languages:
 
 | edge type | target | both | `rust` only | `rust_analyzer` only |
 |---|---|---|---|---|
-| `calls` | in-repo | 94 | 16 | 6 |
-| `calls` | external | 0 | 236 | 0 |
+| `calls` | in-repo | 55 | 7 | 45 |
+| `calls` | external | 0 | 310 | 0 |
 | `decorated_by` | external | 0 | 1 | 0 |
 | `implements` | external | 0 | 2 | 0 |
 | `module_attr_ref` | external | 0 | 26 | 0 |
 | `references` | in-repo | 0 | 0 | 270 |
 
-Corroborated edges (two distinct pathways, ADR-0057 §13): 94. Superseded external stubs (§14): 3.
+Corroborated edges (two distinct pathways, ADR-0057 §13): 55. Superseded external stubs (§14): 26.
 
 ## Reading
 
@@ -88,6 +88,7 @@ Written by the agent on 2026-09-19 from the tables above; the numbers are the in
   - A live survey of this crate at the recorded rust-analyzer version reads 0 / 150 / 0 / 0 (WI-paluk).
 - **One-sided attributes.** `qualified_name` (150), `signature` (127), `docstring` (63) and `modifiers` (36) come from the syntax arm only: the SCIP translation fills none of them although `SymbolInformation` carries signature documentation. No agreement can be measured on them until it does.
 - **Edges.** The 94 in-repo `calls` both arms emit are exactly the corroborated edges (§13); 16 in-repo calls only tree-sitter sees, 6 only SCIP. (93 / 16 / 7 until WI-lirik, 2026-10-30: `src/test/test.rs:37`'s `config::parse_configs(..)` bound its own enclosing helper and was dropped as a self-loop; it now binds `src/config/mod.rs`, the edge SCIP emits.) The 270 `references` edges are SCIP-only (the syntax arm emits none), and every edge to an external stub — 245 `calls`, 26 `module_attr_ref`, 2 `implements`, 1 `decorated_by` — is tree-sitter-only, since the recorded index resolves nothing outside the crate. Three of the 245 stubs are superseded (§14). (244 before INV-duzom, 2026-09-26: `std::io::Error::new(..)` at `src/server/serve.rs:384`, written with its full path, is no longer suppressed by the generic-method guard.)
+- **Edges since ADR-0064's Rust adapter (2026-11-26): 55 / 7 / 45 in-repo `calls`, 310 external, 26 superseded.** The paragraph above describes 94 / 16 / 6 and 3. The tree-sitter arm no longer binds a call by looking its name up among everything: alone it binds on Rust's own evidence in hand (its own module, a declaration of the file, a rooted path it followed) and reports every other call as a stub with facts, which the shared linkers bind AFTER the merge. The harness stops before those linkers, as the instrument does, so the calls into another file that the arm used to bind (67 of the 68 SCIP calls that lost their twin: a qualifier 29, a receiver type 18, no fact 20) are SCIP's alone here, and SCIP's resolved edge supersedes 26 of the stubs left at those sites. This is not a loss of agreement between the two arms' final answers: measured through the whole pipeline on this crate, the analyzer plus the linkers reach SCIP's target on 118 of the 129 paired SCIP calls (it was 122 twins of the same edges before). It IS a loss of what the instrument and the merge pass can see: corroboration (§13) is granted at the merge, so an edge the linkers reach later is not corroborated. Whether the call linkers should run on the incumbent arm before the merge is an open question for ADR-0057 and ADR-0064 together, not decided here.
 - **What the edge rows describe (2026-10-30, WI-vosop).** They describe the harness's stages, not a survey's, and a live survey of this crate at the recorded rust-analyzer version reads differently for three named reasons:
   - **Self-loops.** A survey dedups with self-loop removal; the harness now does too, which moved tree-sitter-only in-repo `calls` from 19 to 16. The three it removed were false self-bindings (`src/error.rs:105` and `:109`, `src/test/test.rs:37`), which WI-lirik then stopped at the source.
   - **File nodes.** A survey's orchestrator creates file nodes and the harness does not, so the harness has no `imports` edge and no module-level call: live adds `imports` 0 / 16 / 0 in-repo and 0 / 111 / 0 external, and 11 external `calls`.

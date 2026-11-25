@@ -661,3 +661,23 @@ def test_an_integration_test_reaches_its_own_helper_through_a_wildcard(tmp_path:
         if e["type"] == "calls" and e["src"] == src and e.get("is_resolved")
         and not (e.get("meta") or {}).get("superseded_by")
     ) == [("rust:tests/helpers/mod.rs:1-1:setup:function", "import")]
+
+
+def test_a_denylisted_name_on_a_library_type_is_still_withheld(tmp_path: Path) -> None:
+    """``Vec::new()``: ``new`` is a name this analyzer declines to model
+    (``SUPPRESSED_METHOD_NAMES``) and ``Vec`` is the prelude's, so no stub is
+    made, as before the shared pass: a named owner is a fact the linker can
+    bind on only when the owner may be the repository's. ``Conn::new()`` with
+    ``Conn`` imported from a file of the tree does go out, with its owner."""
+    files = {
+        "Cargo.toml": '[package]\nname = "app"\nversion = "0.1.0"\n',
+        "src/lib.rs": "pub mod db;\npub mod main_mod;\n",
+        "src/db.rs": "pub struct Conn;\nimpl Conn { pub fn new() -> Conn { Conn } }\n",
+        "src/main_mod.rs": (
+            "use crate::db::Conn;\n"
+            "pub fn run() { let _v: Vec<u8> = Vec::new(); let _b = Box::new(1); }\n"
+            "pub fn open() { let _c = Conn::new(); }\n"
+        ),
+    }
+    assert _calls(tmp_path / "a", files, "run") == []
+    assert _stub(_calls(tmp_path / "b", files, "open")) == {"callee_name": "new", "qualifier": "Conn"}

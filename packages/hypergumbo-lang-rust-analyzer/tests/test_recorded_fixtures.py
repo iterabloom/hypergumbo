@@ -334,7 +334,7 @@ class TestTheMergePassOnBothArms:
     """The merge pass on committed input (WI-kokiz): it folds exactly the
     150 declarations the anchors pair, leaves the 19 SCIP-only records and
     no tree-sitter-only record, stamps both producers on every merged
-    record, and rewires the edges so the 122 shared call sites collapse."""
+    record, and rewires the edges so the shared call sites collapse."""
 
     def test_the_pass_folds_the_paired_declarations(self) -> None:
         symbols, edges, runs = _both_arms()
@@ -432,7 +432,7 @@ class TestTheMergePassOnBothArms:
     def test_shared_call_sites_are_folded_and_corroborated(self) -> None:
         """WI-kokiz folds the endpoints; WI-binis folds the agreeing edges in
         the same pass (§11) and combines their confidence (§13): every one of
-        the 94 shared call keys becomes ONE edge, corroborated at 0.95 because
+        the shared call keys becomes ONE edge, corroborated at 0.95 because
         the two arms reached it by distinct pathways, both originals kept."""
         symbols, edges, runs = _both_arms()
         tree_sitter_edges = [e for e in edges if e.origin == ["rust"]]
@@ -446,7 +446,7 @@ class TestTheMergePassOnBothArms:
         assert not any(e.src in dropped or e.dst in dropped for e in edges)
         shared = AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
         assert report.edges_folded == AARDVARK_DNS_CALL_SITE_TALLY["edges_absorbed_by_fold"]
-        assert report.corroborated == shared  # 94 survivors, each corroborated
+        assert report.corroborated == shared  # every survivor corroborated
         folded = [e for e in edges if e.origin == ["rust", "scip"]]
         assert len(folded) == shared
         assert all(e.edge_type == "calls" for e in folded)
@@ -556,8 +556,12 @@ class TestSameSiteSupersessionOnBothArms:
     def test_only_the_same_callee_is_superseded(self) -> None:
         """The resolution verdict is imitated as finalize does it
         (a dst that is a real node -> resolved, else a stub), then the rule
-        runs. Three stubs are genuinely superseded; twenty-three share a line
-        and type with a resolved call to a DIFFERENT callee and stay (WI-lihis)."""
+        runs. The stubs SCIP's resolved edge answers at the same site and
+        callee are superseded; those that share a line and type with a
+        resolved call to a DIFFERENT callee stay (WI-lihis). The counts are
+        the recorded module's; since ADR-0064 the tree-sitter arm reports
+        cross-file calls as stubs, so `Result::wrap` is one superseder of
+        fourteen."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         edges = deduplicate_edges(edges)
@@ -577,7 +581,10 @@ class TestSameSiteSupersessionOnBothArms:
         for stub in stamped:
             superseder = by_id[stub.meta["superseded_by"]]
             assert superseder.is_resolved and superseder.edge_type == "calls"
-            assert name_of[superseder.dst] == "Result::wrap"
+            # Same callee by its last segment, never a co-located other one.
+            assert name_of[superseder.dst].rsplit("::", 1)[-1] == (
+                stub.meta["callee_name"].rsplit("::", 1)[-1]
+            )
             assert stub.meta["superseded_by_origin"] == ["scip"]  # only the type-aware arm resolved it
             assert stub.confidence == before[id(stub)] or stub.rank_score == pytest.approx(
                 (before[id(stub)] or stub.confidence) * SUPERSEDED_STUB_RANK_FACTOR

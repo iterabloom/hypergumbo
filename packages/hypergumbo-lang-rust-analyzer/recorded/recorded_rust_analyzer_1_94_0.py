@@ -269,24 +269,41 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # src/test/test.rs:37 ``config::parse_configs(..)`` (after
     # ``use aardvark_dns::config``) binds src/config/mod.rs, the edge SCIP
     # emits (WI-lirik).
-    "twins": 133,
-    "twins_calls_calls": 122,
-    "twins_references_calls": 11,
-    # After the merge pass rewires endpoints (WI-kokiz), the 122 calls/calls
-    # twins fall onto 94 DISTINCT (src, dst, edge_type) keys — SCIP emits one
+    # 133 / 122 / 11 until ADR-0064's Rust adapter. The tree-sitter arm ALONE
+    # now binds a call only on Rust's own evidence in hand (its own module, a
+    # declaration of this file, a rooted path it followed); every other call
+    # goes out as a stub with facts and is bound AFTER the merge, by the shared
+    # linkers, which this harness does not run (it stops where the
+    # backend-agreement instrument reads). Of the 68 SCIP calls that lost
+    # their twin here, 67 are calls into another file (a qualifier 29, a
+    # receiver type 18, no fact 20) and one a `Self::` call inside
+    # `tokio::select!`. Measured through the whole pipeline on this crate, the
+    # analyzer plus the linkers reach the same target as SCIP on 118 of the
+    # 129 paired SCIP calls.
+    "twins": 70,
+    "twins_calls_calls": 61,
+    "twins_references_calls": 9,
+    # After the merge pass rewires endpoints (WI-kokiz), the 61 calls/calls
+    # twins fall onto 55 DISTINCT (src, dst, edge_type) keys — SCIP emits one
     # edge per call occurrence and within-arm dedup already folds repeats —
-    # so deduplicate_edges removes exactly 94 cross-arm duplicates.
-    "shared_call_keys_after_fold": 94,
-    # Edges the fold absorbs into those 94 survivors (WI-binis): the 122 SCIP
+    # so deduplicate_edges removes exactly 55 cross-arm duplicates (94 before
+    # ADR-0064's Rust adapter, see above).
+    "shared_call_keys_after_fold": 55,
+    # Edges the fold absorbs into those 55 survivors (WI-binis): the 61 SCIP
     # twins plus each arm's own repeats of the same key — a producer's repeated
     # call sites are absorbed the same way, their lines unioned into call_lines.
-    "edges_absorbed_by_fold": 150,
+    "edges_absorbed_by_fold": 67,
     # ADR-0057 §14 (WI-lihis), after the fold and the resolution verdict: of
     # the tree-sitter call edges that end at an external stub, how many share
     # a src, a call line, the edge type AND the declared callee name with a
-    # resolved edge from a producer they lack (superseded — every one is a
-    # `wrap` SCIP resolves to `Result::wrap`), and how many share the site and
-    # type but name a DIFFERENT callee (two calls on one line: never demoted).
+    # resolved edge from a producer they lack (superseded), and how many share
+    # the site and type but name a DIFFERENT callee (two calls on one line:
+    # never demoted). Until ADR-0064's Rust adapter the superseded stubs were
+    # three, each a `wrap` SCIP resolves to `Result::wrap`. The tree-sitter arm
+    # now reports with facts the calls it used to bind by name, so SCIP's
+    # resolved edge supersedes 26 of its stubs here (fourteen callees:
+    # `AardvarkError::msg`, `DNSBackend::lookup`, `Result::wrap`, ...); in a
+    # whole run the shared linkers then bind most of those stubs themselves.
     # Includes `std::io::Error::new(..)` at src/server/serve.rs:384, written
     # with its full path, which names its owner, so the generic-method guard
     # does not suppress it (INV-duzom). Also includes the 11 calls in `const`
@@ -294,16 +311,17 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # `SocketAddr` / `Ipv4Addr` / `Ipv6Addr` constants in src/server/serve.rs
     # and src/test/test.rs), anchored on the file rather than dropped
     # (INV-bamij). Those are file-sourced, so AARDVARK_DNS_EDGE_OVERLAP, which
-    # pairs records by symbol, does not see them (236 there).
+    # pairs records by symbol, does not see them (310 there).
     # 256 until INV-zabud: twenty stubs carried a module slot taken from a
     # same-named variable of ANOTHER function (`err.into()` in
     # `impl From<nix::Error>` read `std::io::Error`; `ctrs.push(..)` on a Vec
     # read `std::collections::HashMap`). Each function's own binding now
     # answers: eleven keep a slot of their own or the `external` placeholder,
     # nine fold into a stub of the same name the caller already had.
-    "stub_calls": 247,
-    "superseded_stubs": 3,
-    "co_located_same_type_not_superseded": 23,
+    # 247 / 3 / 23 until ADR-0064's Rust adapter (see above).
+    "stub_calls": 321,
+    "superseded_stubs": 26,
+    "co_located_same_type_not_superseded": 55,
 }
 
 # What `hypergumbo backend-agreement` (ADR-0057 §5, WI-dajif) reads off the
@@ -346,13 +364,15 @@ AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
     "stable_id": (0, 150, 0, 0),
 }
 # Per (edge type, resolved) after the fold: (both producers, rust only, rust_analyzer only).
-# The 94 "both" calls are the corroborated edges; the incumbent emits no
-# `references` edge and the SCIP arm no edge to an external stub.
+# The 55 "both" calls are the corroborated edges (94 until ADR-0064's Rust
+# adapter: the tree-sitter arm reports the rest as stubs the shared linkers
+# bind after the merge, so here they are SCIP's alone, 45); the incumbent
+# emits no `references` edge and the SCIP arm no edge to an external stub.
 AARDVARK_DNS_EDGE_OVERLAP = {
     # The harness's dedup drops self-loops as a survey's does (WI-vosop), and
     # test.rs:37 binds config/mod.rs, corroborated by SCIP (WI-lirik).
-    ("calls", True): (94, 16, 6),
-    ("calls", False): (0, 236, 0),  # see stub_calls
+    ("calls", True): (55, 7, 45),
+    ("calls", False): (0, 310, 0),  # see stub_calls
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
     ("module_attr_ref", False): (0, 26, 0),
