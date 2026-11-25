@@ -258,8 +258,11 @@ def test_super_call_starts_at_the_parent(tmp_path: Path) -> None:
 
 
 def test_this_outside_a_class_is_the_placeholder(tmp_path: Path) -> None:
-    edges = _calls(tmp_path, {"src/a.js": "function f() { this.go(); }\nclass K { go() {} }\n"}, "f")
+    edges = _calls(tmp_path, {
+        "src/a.js": "function f() { this.go(); this.k.stop(); }\nclass K { go() {} stop() {} }\n",
+    }, "f")
     assert _facts(_stub(edges, "go")) == {"call_construct": "method"}
+    assert _facts(_stub(edges, "stop")) == {"call_construct": "method"}
 
 
 def test_typed_receivers_bind_in_this_file_and_carry_their_type_otherwise(tmp_path: Path) -> None:
@@ -284,6 +287,114 @@ def test_typed_receivers_bind_in_this_file_and_carry_their_type_otherwise(tmp_pa
         (e.dst.split(":")[-2], e.meta.get("receiver_type_hint")) for e in edges if not e.is_resolved
     )
     assert hints == [("base", "Own"), ("run", "Remote"), ("run", "Remote")]
+
+
+def test_a_member_s_type_is_what_its_class_says(tmp_path: Path) -> None:
+    """``_class_member_types``: declared (a field annotation, a parameter
+    property) wins; otherwise every assignment must agree, ``null`` aside."""
+    edges = _calls(tmp_path, {
+        "src/a.ts": (
+            "import { Remote } from './remote';\n"
+            "import * as ns from './remote';\n"
+            "class Own { run() {} }\n"
+            "class C {\n"
+            "  annotated: Remote;\n"
+            "  initialized = new Own();\n"
+            "  private nullable: Remote | null = null;\n"
+            "  viaNamespace; fromParam; disagree; untyped; inFunction; inArrow; viaLib; byField;\n"
+            "  either: Remote | Own;\n"
+            "  onEvent = () => { this.byField = new Own(); };\n"
+            "  static shared = new Own();\n"
+            "  constructor(private injected: Remote, readonly ro: Own, plain: Remote, other: Remote) {\n"
+            "    this.viaNamespace = new ns.Remote();\n"
+            "    this.fromParam = plain;\n"
+            "    this.disagree = new Own();\n"
+            "    this.untyped = make();\n"
+            "    this.viaLib = new lib.Thing();\n"
+            "    setup(function () { this.inFunction = new Own(); });\n"
+            "    setup(() => { this.inArrow = new Own(); });\n"
+            "  }\n"
+            "  later() { this.disagree = new Remote(); this.fromParam = null; }\n"
+            "  go() {\n"
+            "    this.annotated.a(); this.initialized.b(); this.nullable.c();\n"
+            "    this.viaNamespace.d(); this.fromParam.e(); this.disagree.f();\n"
+            "    this.untyped.g(); this.injected.h(); this.ro.run(); this.shared.i();\n"
+            "    this.other.j(); this.inFunction.k(); this.inArrow.run();\n"
+            "    this.viaLib.o(); this.byField.p(); this.either.q();\n"
+            "    const x: Remote = make(); x.l();\n"
+            "    const y: Remote = new Own(); y.m();\n"
+            "    let z: string = ''; z.n();\n"
+            "  }\n"
+            "}\n"
+        ),
+        "src/remote.ts": "export class Remote { run() {} }\n",
+    }, "C.go")
+    bound = sorted((e.dst.split(":")[-2], e.evidence_type) for e in edges if e.is_resolved)
+    # ``this.ro.run()`` (a parameter property) and ``this.inArrow.run()`` (an
+    # arrow keeps the class's ``this``): the type is declared in this file.
+    assert bound == [("Own.run", "ast_method_this_property")] * 2
+    hints = {
+        e.dst.split(":")[-2]: e.meta.get("receiver_type_hint")
+        for e in edges if not e.is_resolved and e.meta.get("call_construct") == "method"
+    }
+    assert hints == {
+        "a": "Remote", "b": "Own", "c": "Remote", "d": "ns.Remote", "e": "Remote",
+        "f": None, "g": None, "h": "Remote", "i": None, "j": None, "k": None,
+        "l": "Remote", "m": "Remote", "n": None, "o": None, "p": "Own", "q": None,
+    }
+
+
+def test_a_javascript_member_typed_by_new(tmp_path: Path) -> None:
+    edges = _calls(tmp_path, {
+        "src/a.js": (
+            "import { Remote } from './remote';\n"
+            "class C {\n"
+            "  field = new Remote();\n"
+            "  #hidden = new Remote();\n"
+            "  constructor() { this.made = new Remote(); }\n"
+            "  go() { this.field.a(); this.made.b(); }\n"
+            "}\n"
+        ),
+        "src/remote.js": "export class Remote {}\n",
+    }, "C.go")
+    assert {e.dst.split(":")[-2]: _facts(e) for e in edges} == {
+        "a": {"receiver_type_hint": "Remote", "call_construct": "method"},
+        "b": {"receiver_type_hint": "Remote", "call_construct": "method"},
+    }
+
+
+def test_a_class_expression_owns_its_this(tmp_path: Path) -> None:
+    result = analyze_javascript(_write(tmp_path, {
+        "src/a.js": (
+            "class Own { run() {} }\n"
+            "ns.K = class {\n"
+            "  constructor() { this.o = new Own(); }\n"
+            "  m() {}\n"
+            "  go() { this.m(); this.o.run(); this.missing(); }\n"
+            "};\n"
+            "module.exports = class Exp { c() { this.d(); } d() {} };\n"
+            "class Outer {\n"
+            "  m() {}\n"
+            "  make() { return class { m() {} inner() { this.m(); } }; }\n"
+            "}\n"
+        ),
+    }))
+    by_id = {s.id: s for s in result.symbols}
+    calls = sorted(
+        (by_id[e.src].name, by_id[e.src].span.start_line, e.dst.split(":")[-2],
+         by_id[e.dst].span.start_line if e.dst in by_id else None, (e.meta or {}).get("resolved_by"))
+        for e in result.edges if e.edge_type == "calls"
+    )
+    assert calls == [
+        # Inside a class expression nested in a class declaration, ``this``
+        # is the expression's, not the declaration's.
+        ("Outer.inner", 10, "Outer.m", 10, "own_type"),
+        ("c", 7, "d", 7, "own_type"),
+        ("go", 5, "Own.run", 1, "receiver_type"),
+        ("go", 5, "m", 4, "own_type"),
+        # Not declared by the expression: no class symbol to walk from.
+        ("go", 5, "missing", None, None),
+    ]
 
 
 def test_a_receiver_that_names_a_type_or_a_module_is_a_qualifier(tmp_path: Path) -> None:
@@ -518,3 +629,39 @@ def test_end_to_end_a_commonjs_class_through_require(tmp_path: Path) -> None:
     assert _resolved(data, "go", "run") == [("lib/client.js", "Client.run", "receiver_type")]
     assert _resolved(data, "go", "make") == [("lib/client.js", "Client.make", "qualified")]
     assert _resolved(data, "help", "helper") == [("lib/helpers.js", "helper", "import")]
+
+
+def test_end_to_end_a_member_typed_four_ways_reaches_its_type(tmp_path: Path) -> None:
+    """``this.x.open()`` with ``x`` typed by ``this.x = new T()``, a field
+    initializer, an annotation and a parameter property; ``Conn`` is imported
+    and ``legacy/db.ts`` holds a namesake ``Conn`` with an ``open``."""
+    data = _map(tmp_path, {**_NAMESAKES, "src/main.ts": (
+        "import { Conn } from './db';\n"
+        "export class Assigned { constructor() { this.c = new Conn(); } run() { this.c.open(); } }\n"
+        "export class Initialized { c = new Conn(); run() { this.c.open(); } }\n"
+        "export class Annotated { c: Conn; run() { this.c.open(); } }\n"
+        "export class Injected { constructor(private c: Conn) {} run() { this.c.open(); } }\n"
+    )})
+    for owner in ("Assigned", "Initialized", "Annotated", "Injected"):
+        assert _resolved(data, f"{owner}.run", "open") == [
+            ("src/db.ts", "Conn.open", "receiver_type"),
+        ], owner
+
+
+def test_end_to_end_this_inside_a_class_expression(tmp_path: Path) -> None:
+    """``this.m()`` in ``ns.K = class {...}`` is the expression's own ``m``;
+    another file's ``m`` would tie a bind by name."""
+    data = _map(tmp_path, {
+        "lib/window.js": (
+            "ns.Window = class {\n  m() {}\n  go() { this.m(); }\n};\n"
+        ),
+        "lib/other.js": "export class Other { m() {} }\n",
+    })
+    nodes = {n["id"]: n for n in data["nodes"]}
+    found = [
+        (nodes[e["dst"]]["path"], nodes[e["dst"]]["name"], e["meta"]["resolved_by"])
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+        and nodes.get(e["src"], {}).get("name") == "go"
+    ]
+    assert found == [("lib/window.js", "m", "own_type")]
