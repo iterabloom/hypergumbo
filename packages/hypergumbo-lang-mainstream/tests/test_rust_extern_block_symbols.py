@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from _rust_shared_pass import analyze_and_link
 from hypergumbo_core.cli import main
 from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -255,7 +256,8 @@ class TestAnExternalUseIsNotCapturedAcrossFiles:
             "use crate::ffi::write;\n"
             "fn k() { unsafe { write(1, 0 as *const u8, 0); } }\n",
         )
-        result = analyze_rust(repo)
+        # ``use crate::ffi::write`` is the import table's: the shared pass binds it.
+        result = analyze_and_link(repo)
         names = {s.id: s.name for s in result.symbols}
         out: dict[str, set[str]] = {}
         for e in result.edges:

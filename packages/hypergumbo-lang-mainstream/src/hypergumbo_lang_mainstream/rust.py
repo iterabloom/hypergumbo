@@ -30,9 +30,10 @@ This analyzer uses tree-sitter to parse Rust files and extract:
   the tree (``crate``, ``self``, ``super``, or an in-tree package's name)
   imports the module file it reaches (``_InTreeCrates``); a path into the
   file's own inline modules emits no edge, and any other path imports a
-  ``module`` placeholder. The same layout binds a call or a function value
-  named through a ``use`` path to the one free function of that name in the
-  file it reaches (``_rust_function_in_module``)
+  ``module`` placeholder. The same layout binds a function VALUE named
+  through a ``use`` path to the one free function of that name in the file
+  it reaches (``_rust_function_in_module``), and gives each file's import
+  table its files (a CALL through a ``use`` path is the shared pass's)
 - Axum route handlers (.route("/path", get(handler)))
 - Actix-web route attributes (#[get("/path")], #[post("/path")]), recorded in
   ``meta["annotations"]`` for the framework YAML patterns to match
@@ -49,49 +50,57 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    function inherits ``#[cfg(test)]`` from an enclosing test module (so
    the slicer can exclude test helpers) and its impl block's attributes
    (e.g. PyO3 ``#[pymethods]``), which are written once on the impl.
-2. Pass 2: Extract call edges through a ladder of resolution strategies
-   (1 full scoped name, 1b module-prefix-stripped name, 1.5
-   self.field.method(), 1.8 typed local/param var.method(), 1.9 chained
-   call receiver typed by return type, 2 short-name fallback), plus
-   ``implements`` edges, ``async_spawn`` call edges for a bare function
-   reference passed to a spawn function, calls appearing only
-   inside macro bodies, ``references`` edges
+2. Pass 2: Extract call edges, ``implements`` edges, ``async_spawn`` call
+   edges for a bare function reference passed to a spawn function, calls
+   appearing only inside macro bodies, ``references`` edges
    (``evidence_type="function_reference"``) for a function named as a value
    (``Cmd { run: handler }``, ``let f = handler``, ``xs.iter().map(parse)``;
    ``_is_rust_value_position``), ``module_attr_ref`` edges, use edges, and
-   Axum usage contexts
-   - A call (or macro-body call) in no function -- a ``static`` / ``const``
-     initialiser, a top-level macro -- is anchored on the file (INV-bamij).
-   - A bare identifier call that the short-name fallback (2) binds in this
-     file prefers the free function the CALLER's own module declares, since
-     the one-symbol-per-name map keeps whichever same-named item came last
-     (INV-lopus: a root ``now()`` bound to ``mod helpers``' ``now``).
-   - A method or ``Type::`` call that reaches the short-name fallback (2)
-     takes this file's one-symbol-per-name entry only when the file
-     declares the name once, or twice for one type (``#[cfg]``
-     alternatives). Two unrelated owners are a tie, which the list
-     resolver refuses. A trait and its implementations are one method:
-     the call binds the trait's declaration when nothing else in the tree
-     has the name (INV-hupis; before it, the entry was whichever
-     same-named method the file declared last).
-   - Local types (strategies 1.8/1.9) come from a var-type map kept per
-     function (``ScopedVarTypes``): parameters, ``let`` annotations, constructor / struct-literal
-     initializers, enum-variant destructuring patterns,
-     ``let x = recv.method()`` chained through the return-type registry,
-     and ``let x = function()`` (also ``function().method()``) through
-     the declared return type of the one function the name reaches from
-     this file. A binding belongs to the ``fn`` that makes it, first writer
-     in the function wins: a name typed in one function does not type the
-     same name in another (INV-zabud).
+   Axum usage contexts, and build each file's import table.
+   - The import table (ADR-0064, piece b; ``_rust_import_scope``): every
+     ``use`` and ``mod m;`` binding whose path the crate layout
+     (``_InTreeCrates.locate``, the resolver the ``imports`` edges use) turns
+     into a FILE of the tree, as an ``ImportScope`` whose modules are files:
+     a path ending at a module file is a namespace binding, a path going on
+     to an item an explicit binding, ``use ...::*`` of a module file a
+     wildcard. Libraries are left out. ``analyze`` returns the tables in
+     ``AnalysisResult.import_scopes``; the ``inherited_calls`` linker reads
+     them.
+   - A call is BOUND here only on Rust's own evidence in hand (ADR-0064): an
+     item of the caller's own module (a bare ``f()`` or tuple-struct
+     ``W(x)``, ``same_module``; INV-lopus), or of a module of this file a
+     wildcard opens (``use super::*`` in ``mod tests``, ``import``); the item
+     a path names in this file (``Foo::new()`` with ``impl Foo`` here,
+     ``qualified``; ``Self::new()``, ``own_type``); a path rooted at
+     ``crate`` / ``self`` / ``super`` / an in-tree crate, followed to the
+     file that declares the item (``_rust_path_target``, ``qualified``); a
+     method of the receiver's known type declared in this file (``self``, a
+     ``self`` field chain, a typed local or parameter, a call whose return
+     type is known; ``receiver_type`` / ``own_type``); and, for a receiver of
+     no type or of a type parameter, the trait's own declaration when every
+     method of the name in the tree is that trait's (INV-hupis; ``name``).
+   - Every other call is REPORTED: an unresolved stub with
+     ``qualifier`` (the owner a path call writes, ``db::connect``,
+     ``Conn::new``) or ``receiver_type_hint`` (the receiver's type), or no
+     fact for a bare name, which the linker looks up in the import table. A
+     name looked up among every declaration of the run, a nearness hint (the
+     caller's directory) or this file's one-symbol-per-name table is no
+     reason to bind, and none is consulted for a call outside macro bodies.
+   - Local types come from a var-type map kept per function
+     (``ScopedVarTypes``): parameters, ``let`` annotations, constructor /
+     struct-literal initializers, enum-variant destructuring patterns,
+     ``let x = recv.method()`` chained through the return-type registry, and
+     ``let x = function()`` (also ``function().method()``) through the
+     declared return type of the one function the name reaches from this
+     file. A binding belongs to the ``fn`` that makes it, first writer in
+     the function wins (INV-zabud).
    - Generic trait methods (``into``, ``clone``, ...; the shared
-     ``SUPPRESSED_METHOD_NAMES`` set) are barred from short-name
-     resolution, and a bare call that matches a *different* impl's method
-     only by short name is deferred rather than bound (INV-fahub); both
-     guard against one method absorbing unrelated calls.
+     ``SUPPRESSED_METHOD_NAMES`` set) emit no stub on an untyped receiver.
    - An unresolved external call still records its owning module on the
-     ``ExternalRef``, rebuilt from ``use`` aliases, written type paths,
-     and the inferred type of a field or chained receiver, so
-     I/O-primitive catalogs can match it.
+     ``ExternalRef``, rebuilt from ``use`` aliases, written type paths, and
+     the inferred type of a field or chained receiver, so I/O-primitive
+     catalogs can match it; a name the import table binds to a file of the
+     tree is not attributed to a module that way.
    - ``impl Trait for T`` with a trait outside the analyzed files yields
      an unresolved ``implements`` edge at confidence 0.70; std traits are
      filtered out, except ``Display``/``From``/``Error``/``Default`` on
@@ -182,8 +191,6 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     ancestor_labels,
-    defer_bare_method_call,
-    resolved_by_for_bare_call,
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
@@ -217,7 +224,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     extract_preceding_doc_comment,
 )
 
-from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult
+from hypergumbo_core.import_scope import MODULES_ARE_FILES, ImportScope
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1314,18 +1321,6 @@ def _make_rust_qualified_name(
         parts.append(impl_target)
     parts.append(name)
     return sep.join(parts)
-
-
-def _rust_method_candidate(sym: Symbol) -> bool:
-    """A method call ``x.f()`` reaches a METHOD, never a free function.
-
-    The shared resolver's call-shape filter (WI-jomik). The method pool also
-    holds free functions, for ``module::f()`` paths, so without this filter a
-    lone free ``fn join`` would bind every ``p.join("x")`` in the crate --
-    std's ``Path::join`` included.
-    Calling a function-valued field needs ``(x.f)()``, which is not this shape.
-    """
-    return sym.kind == "method"
 
 
 def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -2776,6 +2771,7 @@ def _use_tree_bindings(
     prefix: str,
     source: bytes,
     out: dict[str, str],
+    wildcards: "list[str] | None" = None,
 ) -> None:
     """Record ``alias -> full path`` for one node of a Rust use-tree.
 
@@ -2785,11 +2781,15 @@ def _use_tree_bindings(
     is a group inside a group -- so the same six node shapes appear at every
     depth and the only thing that changes is the prefix.
 
-    Wildcards are the one shape that deliberately yields nothing: the set of
+    Wildcards are the one shape that deliberately yields no name: the set of
     names ``use a::*;`` brings into scope is a property of the imported
-    module, which the analyzer cannot see, so registering anything here would
-    invent a binding rather than record one.  This holds at the top level
-    and inside a group, where a wildcard must not suppress its siblings.
+    module, which the analyzer cannot see, so registering anything in ``out``
+    would invent a binding rather than record one.  This holds at the top
+    level and inside a group, where a wildcard must not suppress its
+    siblings. The wildcard's own path (``a``) goes into ``wildcards`` when the
+    caller passes one: the file's import table records the module a wildcard
+    opens (ADR-0064), and the linker, which knows every declaration, decides
+    what a name then means.
     """
     kind = node.type
 
@@ -2808,7 +2808,7 @@ def _use_tree_bindings(
         )
         inner = _join_use_path(prefix, head.strip().rstrip(":"))
         for item in list_node.named_children:
-            _use_tree_bindings(item, inner, source, out)
+            _use_tree_bindings(item, inner, source, out, wildcards)
         return
 
     if kind == "use_as_clause":
@@ -2852,7 +2852,13 @@ def _use_tree_bindings(
         if text:
             full = _join_use_path(prefix, text)
             out[full.rsplit("::", 1)[-1]] = full
-    # Anything else -- ``use_wildcard``, and the ``visibility_modifier`` that
+        return
+    if kind == "use_wildcard" and wildcards is not None:
+        written = node_text(node, source).rstrip("*").rstrip(":")
+        opened = _join_use_path(prefix, written) if written else prefix
+        if opened:
+            wildcards.append(opened)
+    # Anything else -- a wildcard, and the ``visibility_modifier`` that
     # ``pub use`` puts beside the use-tree -- binds no name.
 
 
@@ -2948,6 +2954,19 @@ class _InTreeCrates:
 
         ``rel`` itself is returned for a path that stays in the current file
         (``self::`` / ``super::`` inside an inline module)."""
+        located = self.locate(rel, import_path, inline_depth)
+        return located[0] if located is not None else None
+
+    def locate(
+        self, rel: str, import_path: str, inline_depth: int = 0,
+    ) -> "tuple[str, list[str], int] | None":
+        """Where ``import_path`` lands from ``rel``: the file (``resolve``),
+        the segments left after the module files the path walked through
+        (the item, ``Type::f``, an inline module's path), and how many of the
+        ``inline_depth`` enclosing inline modules those segments are relative
+        to (0: the file's root). ``use crate::db::Conn`` from anywhere is
+        ``("src/db.rs", ["Conn"], 0)``; ``super::f`` written two inline
+        modules deep is ``(rel, ["f"], 1)``. None as for ``resolve``."""
         segments = [s for s in import_path.split("::") if s and s != "*"]
         if not segments:
             return None
@@ -2969,7 +2988,8 @@ class _InTreeCrates:
             while rest and rest[0] == "super" and inline_depth > 0:
                 inline_depth, rest = inline_depth - 1, rest[1:]
             if inline_depth > 0:
-                return rel  # still inside this file's inline modules
+                # Still inside this file's inline modules.
+                return rel, rest, inline_depth
             while rest and rest[0] == "super":
                 if module_dir == crate_dir / "src":
                     return None  # above the crate root
@@ -2996,12 +3016,13 @@ class _InTreeCrates:
         best = self._module_file(module_dir, crate_dir)
         if best is None:
             return None
+        walked = 0
         for segment in rest:
             nxt = self._module_file(module_dir / segment, crate_dir)
             if nxt is None:
                 break
-            best, module_dir = nxt, module_dir / segment
-        return str(best)
+            best, module_dir, walked = nxt, module_dir / segment, walked + 1
+        return str(best), rest[walked:], 0
 
 
 def _inline_mod_depth(node: "tree_sitter.Node") -> int:
@@ -3047,6 +3068,201 @@ def _extract_use_aliases(
         for child in node.named_children:
             _use_tree_bindings(child, "", source, aliases)
     return aliases
+
+
+#: What a binding of ``_rust_use_bindings`` is: a name a ``use`` binds, a
+#: module a ``use ...::*`` opens, or a child module a ``mod m;`` declares.
+_USE_NAME, _USE_WILDCARD, _MOD_DECLARED = "use", "wildcard", "mod"
+
+
+def _rust_use_bindings(
+    root: "tree_sitter.Node", source: bytes,
+) -> "Iterator[tuple[str, str, str, tuple[str, ...]]]":
+    """Every binding a file's ``use`` declarations and bodyless ``mod m;``
+    items make, as ``(kind, local name, path as written, inline modules)``.
+
+    The use-tree walk is ``_use_tree_bindings``, the one the alias map uses,
+    with the wildcards kept. A top-level ``use { a::b, c };`` is walked item
+    by item, as the imports edges walk it. The inline modules are the ``mod
+    x { }`` blocks around the declaration, outermost first: ``super`` leaves
+    them first (``_InTreeCrates.locate``). ``mod m;`` binds ``m`` to the
+    child module's file, written ``self::m``. ``extern crate`` is not read.
+    """
+    for node in iter_tree(root):
+        if node.type == "use_declaration":
+            names: dict[str, str] = {}
+            wildcards: list[str] = []
+            for child in node.named_children:
+                items = child.named_children if child.type == "use_list" else [child]
+                for item in items:
+                    _use_tree_bindings(item, "", source, names, wildcards)
+            mods = tuple(_get_rust_mod_path(node, source))
+            for local, path in names.items():
+                yield _USE_NAME, local, path, mods
+            for path in wildcards:
+                yield _USE_WILDCARD, "", path, mods
+        elif node.type == "mod_item" and node.child_by_field_name("body") is None:
+            name_node = node.child_by_field_name("name")
+            if name_node is not None:
+                name = node_text(name_node, source)
+                yield _MOD_DECLARED, name, f"self::{name}", tuple(_get_rust_mod_path(node, source))
+
+
+def _rust_import_scope(
+    bindings: "list[tuple[str, str, str, tuple[str, ...]]]",
+    rel: str,
+    crates: "_InTreeCrates",
+) -> ImportScope:
+    """What a file's imports bind, as the table the shared call-resolution
+    pass reads (ADR-0064, piece b): its modules are repo-relative FILES.
+
+    A path is turned into a file by the analyzer's own crate layout
+    (``_InTreeCrates.locate``), the same resolver as the ``imports`` edges:
+
+    * a path that ends at a module file is a NAMESPACE binding (``use
+      crate::db;``, ``use crate::db::{self}``, ``use crate::db as d;``,
+      ``mod db;``): ``db::connect()`` is the function ``connect`` of that
+      file;
+    * a path that goes on past its last module file names an ITEM of that
+      file, an EXPLICIT binding of the item's name (``use crate::db::Conn
+      as C;``: ``C`` is ``Conn`` of ``db.rs``). An item in an inline module
+      of the file (``use crate::db::inner::f``) is bound to the file and
+      its own name: the table is per file;
+    * a wildcard that ends at a module file opens that file (``use
+      crate::db::*;``); one that ends past it opens an enum or a type
+      (``use self::Kind::*;``) and is not recorded.
+
+    Not recorded: a path the layout does not reach (a library: ``std``, a
+    registry crate; or a module the layout cannot find, which includes
+    every path of a tree analysed without its ``Cargo.toml``); ``mod m;``
+    inside an inline module; a local name two declarations of the file bind
+    to two different things (``mod a { use x::f; } mod b { use y::f; }``:
+    the table is per file, and a guess between them is not made). A binding
+    to a file that only re-exports the name (``pub use``) is recorded as
+    written: the lookup finds no declaration there.
+    """
+    scope = ImportScope(module_kind=MODULES_ARE_FILES)
+    bound: dict[str, tuple[str, str]] = {}
+    conflicted: set[str] = set()
+    for kind, local, path, mods in bindings:
+        located = crates.locate(rel, path, len(mods))
+        if located is None:
+            continue
+        file, rest, _ = located
+        if kind == _USE_WILDCARD:
+            if not rest:
+                scope.add_open_wildcard(file)
+            continue
+        if kind == _MOD_DECLARED and (rest or file == rel):
+            continue
+        binding = (file, rest[-1] if rest else "")
+        if bound.setdefault(local, binding) != binding:
+            conflicted.add(local)
+    for local, (file, name) in bound.items():
+        if local in conflicted:
+            continue
+        if name:
+            scope.add_named(file, name, alias=local)
+        else:
+            scope.add_namespace(file, local)
+    return scope
+
+
+#: The kinds a path call can name: a function, a method or associated
+#: function, a tuple struct (``crate::m::Wrapper(x)``), an enum variant.
+_RUST_PATH_CALLABLE_KINDS = frozenset({"function", "method", "struct", "field"})
+
+
+def _rust_path_target(
+    path: str,
+    rel: str,
+    mod_path: list[str],
+    scope: ImportScope,
+    decls_by_path: "dict[tuple[str, str], list[Symbol]]",
+    crates: "_InTreeCrates | None",
+) -> "Symbol | None":
+    """The item a path call names when the path is ROOTED where the module
+    layout reads it: ``crate::db::connect()``, ``self::helper()``,
+    ``super::Conn::new()``, ``other_crate::f()`` (an in-tree crate the file
+    does not bind to something else). The layout gives the file and the
+    segments left (``_InTreeCrates.locate``); the item is the declaration of
+    that file whose qualified name they spell, inline modules included
+    (``super::f`` two inline modules deep is ``outer::f``). One declaration,
+    or ``None``. A path whose head is a ``use`` or ``mod`` binding is not
+    looked at here: the import table is the shared pass's to read."""
+    if crates is None:
+        return None
+    head = path.split("::", 1)[0]
+    rooted = head in ("crate", "self", "super") or (
+        head in crates.by_name
+        and scope.named(head) is None and scope.namespace(head) is None
+    )
+    located = crates.locate(rel, path, len(mod_path)) if rooted else None
+    if located is None or not located[1]:
+        return None
+    file, rest, levels = located
+    found = [
+        s for s in decls_by_path.get((file, "::".join([*mod_path[:levels], *rest])), ())
+        if s.kind in _RUST_PATH_CALLABLE_KINDS
+    ]
+    return found[0] if len(found) == 1 else None
+
+
+def _rust_in_file_globs(
+    bindings: "list[tuple[str, str, str, tuple[str, ...]]]",
+    rel: str,
+    crates: "_InTreeCrates",
+) -> "dict[tuple[str, ...], list[tuple[str, ...]]]":
+    """The wildcard imports of a file that open a module OF THIS FILE: for
+    each inline module path (``()`` the file's root), the module paths its
+    ``use ...::*;`` declarations open. ``#[cfg(test)] mod tests { use
+    super::*; }`` opens the root from ``("tests",)``; ``use self::jsonb::*;``
+    at the root opens ``("jsonb",)``. The import table is per file and
+    cannot say this; the analyzer follows it itself (``_rust_own_module_item``)."""
+    opened: dict[tuple[str, ...], list[tuple[str, ...]]] = {}
+    for kind, _, path, mods in bindings:
+        if kind != _USE_WILDCARD:
+            continue
+        located = crates.locate(rel, path, len(mods))
+        if located is not None and located[0] == rel:
+            _, rest, levels = located
+            opened.setdefault(mods, []).append((*mods[:levels], *rest))
+    return opened
+
+
+def _rust_own_module_item(
+    name: str,
+    node: "tree_sitter.Node",
+    source: bytes,
+    items_by_qname: dict[str, Symbol],
+    in_file_globs: "dict[tuple[str, ...], list[tuple[str, ...]]]",
+) -> "tuple[Symbol, str] | None":
+    """The item a bare name means in the module the call is written in, and
+    the mark: the file's free function (or tuple struct) whose qualified name
+    is the call's inline ``mod`` path plus ``name`` (``same_module``). A
+    module's items are visible in it without an import; another module's,
+    the same file's included, only through one (INV-lopus). The imports
+    followed here are the wildcards that open a module of this same file
+    (``_rust_in_file_globs``; ``use super::*;`` in every ``#[cfg(test)] mod
+    tests``), transitively, as Rust's glob imports are; one item found
+    through them is ``import``, two different ones are a tie and ``None``."""
+    start = tuple(_get_rust_mod_path(node, source))
+    found = items_by_qname.get(_make_rust_qualified_name(list(start), None, name))
+    if found is not None:
+        return found, resolved_by.SAME_MODULE
+    seen, todo, hits = {start}, list(in_file_globs.get(start, ())), set()
+    while todo:
+        module = todo.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        item = items_by_qname.get(_make_rust_qualified_name(list(module), None, name))
+        if item is not None:
+            hits.add(item.id)
+            found = item
+        else:
+            todo.extend(in_file_globs.get(module, ()))
+    return (found, resolved_by.IMPORT) if found is not None and len(hits) == 1 else None
 
 
 def _extract_macro_call_names(
@@ -3136,7 +3352,8 @@ _RUST_VALUE_PARENTS: dict[str, str | None] = {
     "return_expression": None,
 }
 
-#: What a ``Type`` in a ``Type::f`` value path may be declared as.
+#: What a ``Type`` in a ``Type::f`` value path may be declared as; also what
+#: declares a type a receiver can have.
 _RUST_TYPE_KINDS: frozenset[str] = frozenset({
     "struct", "enum", "trait", "type_alias",
 })
@@ -3420,15 +3637,318 @@ def _rust_free_fn_return_types(
     return return_type
 
 
-def _rust_use_path_of_call(full_scoped_name: str, use_aliases: dict[str, str]) -> "str | None":
-    """The absolute path a SCOPED call names through the file's ``use``
-    bindings: ``m::h()`` after ``use a::m``, or a path written from ``crate`` /
-    ``self`` / ``super``. A bare ``h()`` after ``use a::b::h`` needs no
-    rewriting: its ``use_aliases`` entry is already the path."""
-    head, _, tail = full_scoped_name.partition("::")
-    if head in use_aliases:
-        return f"{use_aliases[head]}::{tail}"
-    return full_scoped_name if head in ("crate", "self", "super") else None
+
+def _rust_unresolved_slots(
+    inner: "tree_sitter.Node",
+    source: bytes,
+    full_scoped_name: "str | None",
+    callee_name: str,
+    is_method_call: bool,
+    use_aliases: dict[str, str],
+    _var_types: dict[str, str],
+    _var_type_paths: dict[str, str],
+    field_receiver_type: "str | None",
+    analyzer: "RustAnalyzer | None",
+    free_fn_return_type: "Callable[[str], str | None] | None",
+) -> "tuple[str, str, ExternalRef | None, bool]":
+    """The module and name slots of an unresolved call's stub, and whether a
+    ``use`` binding or an absolute path named its module explicitly.
+
+    Returns ``(module_hint, unresolved_name, ext_ref, has_explicit_binding)``.
+    Consult use_aliases (WI-volob / WI-mafik) to attribute the external call
+    to its source module via the structured ExternalRef. Three cases:
+    (1) qualified ``fs::read_to_string``: ``fs`` is in use_aliases, resolved
+    to ``std::fs`` for the module slot. (2) bare ``write`` after ``use
+    std::fs::write``: ``std::fs::write`` is split into module + name; an
+    explicit use binding takes precedence over the generic-trait-method
+    guard, because the binding tells exactly which module owns the callable.
+    (3) aliased terminal ``mkdir`` after ``use ... as mkdir``: same as (2),
+    the name field gets the underlying ``create_dir``, not the alias. All
+    three short-circuit the 6-seg dst rebuild path and its parsing hazards
+    (WI-tihup). Then, for a method call, the receiver's type recovered by
+    the three arms below.
+    """
+    ext_ref: ExternalRef | None = None
+    module_hint = "external"
+    unresolved_name = full_scoped_name or callee_name
+    has_explicit_binding = False
+    if full_scoped_name and "::" in full_scoped_name:
+        head, _, tail = full_scoped_name.partition("::")
+        # The ABSOLUTE path, then one split on
+        # its last ``::``. In call position the
+        # last segment is the callee and the
+        # rest is the item that owns it (a
+        # module, a type, an enum), which is the
+        # (module, name) pair the slots carry:
+        # ``fs::File::open`` after ``use
+        # std::fs;`` is module ``std::fs::File``
+        # + name ``open``, and a path written in
+        # full splits the same way (INV-duzom).
+        absolute: str | None = None
+        if head in use_aliases:
+            absolute = f"{use_aliases[head]}::{tail}"
+        elif (
+            (head in _RUST_ABSOLUTE_PATH_ROOTS
+             or full_scoped_name.startswith("::"))
+            and _PLAIN_RUST_PATH.fullmatch(
+                full_scoped_name,
+            )
+        ):
+            absolute = full_scoped_name.lstrip(":")
+        if absolute is not None:
+            mod, _, name = absolute.rpartition("::")
+            module_hint = mod
+            unresolved_name = name
+            ext_ref = ExternalRef(
+                lang="rust",
+                module_path=mod,
+                name=name,
+            )
+            has_explicit_binding = True
+    elif callee_name in use_aliases:
+        full_path = use_aliases[callee_name]
+        if "::" in full_path:
+            mod, _, name = full_path.rpartition("::")
+            module_hint = mod
+            unresolved_name = name
+            ext_ref = ExternalRef(
+                lang="rust",
+                module_path=mod,
+                name=name,
+            )
+            has_explicit_binding = True
+    # A TYPED receiver whose type is EXTERNAL
+    # must keep its type. The typed strategies
+    # above (1.5 / 1.8 / 1.9) resolve
+    # ``Type::method`` against first-party
+    # symbols only, so an external receiver
+    # type misses, ``resolved`` stays False,
+    # and control arrives here — where the
+    # module slot would otherwise be rebuilt
+    # from ``use_aliases`` alone, and a METHOD
+    # name is never in ``use_aliases``. The
+    # edge would then carry the bare
+    # ``external`` placeholder, which
+    # ``_lookup_named_entry`` refuses
+    # (correctly — an untyped method call must
+    # not match a method-kind entry), leaving
+    # the method half of rust.yaml unreachable
+    # (INV-linub L3).
+    #
+    # DELIBERATELY NARROW. This changes the
+    # module SLOT only; it does NOT set
+    # ``has_explicit_binding``, so which edges
+    # get emitted — including the
+    # generic-trait-method suppression below —
+    # does not change. Widening emission is a
+    # separate question.
+    if (
+        not has_explicit_binding
+        and is_method_call
+        and (_var_types or _var_type_paths)
+    ):
+        _recv = inner.child_by_field_name("value")
+        if (
+            _recv is not None
+            and _recv.type == "identifier"
+        ):
+            _rn = node_text(_recv, source)
+            _rt = _var_types.get(_rn)
+            _full = use_aliases.get(_rt) if _rt else None
+            # The alias must be a PATH. A
+            # single-segment alias carries no
+            # module and would put a bare type
+            # name in the module slot.
+            if not (_full and "::" in _full):
+                # ...and when the type was never
+                # imported BY NAME there is no
+                # alias to find, however plainly
+                # the source wrote the path:
+                # `f: &mut std::fs::File` is
+                # normalized to `File`, and
+                # `File` is not in use_aliases
+                # because nothing was imported.
+                # Fall back to the path the
+                # source actually wrote.
+                _full = _var_type_paths.get(_rn)
+            if _full and "::" in _full:
+                module_hint = _full
+                ext_ref = ExternalRef(
+                    lang="rust",
+                    module_path=_full,
+                    name=callee_name,
+                )
+    # The FIELD receiver's type, when the
+    # identifier arm above found nothing. The
+    # arm above requires ``_recv.type ==
+    # "identifier"``, so ``self.f.write_all(..)``
+    # never reaches it -- the receiver node is a
+    # ``field_expression``. Strategy 1.5 already
+    # resolved that chain through the struct
+    # field-type registry; this is the same
+    # module-slot recovery applied to the type it
+    # computed (WI-dizag).
+    #
+    # Same narrowness as the identifier arm:
+    # module SLOT only, ``has_explicit_binding``
+    # untouched, so which edges get emitted --
+    # including the generic-trait-method
+    # suppression below -- does not change.
+    if (
+        ext_ref is None
+        and not has_explicit_binding
+        and is_method_call
+        and field_receiver_type
+    ):
+        # A scoped type names its own module;
+        # a bare one needs the use-alias that
+        # brought it in (``use std::fs::File``).
+        _ft = field_receiver_type
+        _fpath = (
+            _ft if "::" in _ft
+            else use_aliases.get(_ft)
+        )
+        if _fpath and "::" in _fpath:
+            module_hint = _fpath
+            ext_ref = ExternalRef(
+                lang="rust",
+                module_path=_fpath,
+                name=callee_name,
+            )
+    # The CHAINED receiver's type, when neither
+    # arm above found one.
+    # ``File::create(p)?.write_all(..)`` leaves no
+    # intermediate variable for the var_types
+    # walker, so the identifier arm cannot see it
+    # and the field arm does not apply. Strategy
+    # 1.9 above infers the type through
+    # ``_infer_type_from_rust_rhs`` but uses it
+    # only for the in-repo ``Type::method``
+    # lookup, which an EXTERNAL type misses. This
+    # is the same module-slot recovery the other
+    # two arms perform, applied to that inferred
+    # type, and qualified the same way: a scoped
+    # type names its own module, a bare one needs
+    # the ``use`` alias that brought it in, so the
+    # slot carries ``std::fs::File`` rather than
+    # the bare ``File`` the helper returns
+    # (WI-papar).
+    #
+    # Same narrowness as the other two arms:
+    # module SLOT only. ``has_explicit_binding``
+    # is untouched, so which edges get emitted --
+    # including the generic-trait suppression
+    # below -- does not change.
+    # TWO GUARDS:
+    #
+    # (a) THE CALL'S OWN CALLEE MUST NOT BE A
+    #     PROJECTOR. In `File::create(p).unwrap()`
+    #     the receiver of `unwrap` is the
+    #     `Result<File, E>`, not the `File`, so
+    #     carrying `std::fs::File` here attributes
+    #     `unwrap` to a type that does not declare
+    #     it.
+    #
+    # (b) THE RECEIVER MUST HAVE BEEN UNWRAPPED.
+    #     `File::create(p)` evaluates to a RESULT;
+    #     only `File::create(p)?` or
+    #     `File::create(p).unwrap()` evaluates to a
+    #     `File`. Nothing here knows whether a
+    #     library associated function is fallible,
+    #     so a RAW `Type::assoc()` receiver is
+    #     withheld -- the standing discipline is to
+    #     withhold, never pick-first.
+    _proj_call = callee_name in _RUST_RESULT_PROJECTORS
+    if (
+        ext_ref is None
+        and not has_explicit_binding
+        and is_method_call
+        and not _proj_call
+    ):
+        _cr = inner.child_by_field_name("value")
+        _unwrapped = False
+        if _cr is not None:
+            if _cr.type == "try_expression":
+                _unwrapped = True
+            elif _cr.type == "call_expression":
+                _cf = _find_child_by_field(_cr, "function")
+                if (
+                    _cf is not None
+                    and _cf.type == "field_expression"
+                ):
+                    _cfl = _find_child_by_field(_cf, "field")
+                    _unwrapped = (
+                        _cfl is not None
+                        and node_text(_cfl, source)
+                        in _RUST_RESULT_PROJECTORS
+                    )
+        if not _unwrapped:
+            _cr = None
+        _ct = (
+            _infer_type_from_rust_rhs(
+                _cr, source, _var_types,
+                getattr(
+                    analyzer,
+                    "_method_return_type_registry",
+                    None,
+                ) or {},
+                free_fn_return_type,
+            )
+            if _cr is not None
+            and _cr.type in (
+                "call_expression", "try_expression",
+            )
+            else None
+        )
+        # `_infer_type_from_rust_rhs` normalises a
+        # scoped path to a BARE name, so
+        # `std::fs::File::create(p)?` comes back as
+        # `File` and the written path is gone --
+        # the package-stripped hazard ADR-0051
+        # names. Recover it from the source the
+        # way `_var_type_paths` does for
+        # annotations: a scoped callee names its
+        # own module.
+        _written = None
+        _inner_call = _cr
+        for _ in range(4):
+            if _inner_call is None:
+                break
+            if _inner_call.type == "try_expression":
+                _inner_call = next(
+                    (c for c in _inner_call.children
+                     if c.is_named), None,
+                )
+                continue
+            break
+        if (
+            _inner_call is not None
+            and _inner_call.type == "call_expression"
+        ):
+            _icf = _find_child_by_field(
+                _inner_call, "function",
+            )
+            if (
+                _icf is not None
+                and _icf.type == "scoped_identifier"
+            ):
+                _ip = _find_child_by_field(_icf, "path")
+                if _ip is not None:
+                    _written = node_text(_ip, source)
+        _cpath = (
+            _ct if _ct and "::" in _ct
+            else (use_aliases.get(_ct) if _ct else None)
+            or (_written if _written and "::" in _written
+                else None)
+        )
+        if _cpath and "::" in _cpath:
+            module_hint = _cpath
+            ext_ref = ExternalRef(
+                lang="rust",
+                module_path=_cpath,
+                name=callee_name,
+            )
+    return module_hint, unresolved_name, ext_ref, has_explicit_binding
 
 
 def _extract_edges_from_file(
@@ -3440,7 +3960,7 @@ def _extract_edges_from_file(
     run_id: str,
     resolver: "NameResolver",
     use_aliases: dict[str, str],
-    method_resolver: ListNameResolver | None = None,
+    methods_by_short_name: "dict[str, list[Symbol]] | None" = None,
     span_index: dict[tuple[int, int], Symbol] | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
     analyzer: "RustAnalyzer | None" = None,
@@ -3449,6 +3969,10 @@ def _extract_edges_from_file(
     var_type_paths: ScopedVarTypes | None = None,
     file_functions: list[Symbol] | None = None,
     free_fn_return_type: "Callable[[str], str | None] | None" = None,
+    import_scope: ImportScope | None = None,
+    decls_by_path: "dict[tuple[str, str], list[Symbol]] | None" = None,
+    file_structs: "list[Symbol] | None" = None,
+    in_file_globs: "dict[tuple[str, ...], list[tuple[str, ...]]] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -3458,9 +3982,9 @@ def _extract_edges_from_file(
         use_aliases: Dict mapping local names to import paths for disambiguation.
         field_type_registry: Aggregated struct field types for receiver resolution.
         analyzer: RustAnalyzer instance for resolve_receiver_type() calls.
-        method_resolver: Optional ListNameResolver with ambiguity_threshold for
-            method-specific lookups.  When provided, used for method calls
-            (``foo.bar()``) to guard against 3+ ambiguous candidates.
+        methods_by_short_name: Every method and free function of the run by
+            short name, foreign declarations left out; read only to tell
+            whether all methods of a name are one trait's.
         span_index: Optional line-span index for enclosing function detection.
             Built from global_symbols to avoid name collisions in symbol_by_name.
         kind_index: Multi-value short-name → [Symbol] index used by the
@@ -3482,8 +4006,18 @@ def _extract_edges_from_file(
             types.
         file_functions: Every function / method this file declares (the
             per-file list, not the one-per-name ``local_symbols``). A bare
-            identifier call prefers the free function its own module declares
+            identifier call binds the free function its own module declares
             (INV-lopus).
+        import_scope: This file's import table (``_rust_import_scope``):
+            which names a ``use`` or ``mod`` binds to which file. A path
+            call whose head it binds is the shared pass's to resolve.
+        decls_by_path: The run's declarations by ``(file, qualified name)``,
+            for a path call rooted at ``crate`` / ``self`` / ``super`` / an
+            in-tree crate (``_rust_path_target``).
+        file_structs: This file's structs: a bare ``Wrapper(x)`` constructs
+            the tuple struct its own module declares.
+        in_file_globs: The wildcard imports of this file that open a module
+            of this file (``_rust_in_file_globs``).
     """
     _caller_path = str(file_path)
     edges: list[Edge] = []
@@ -3510,6 +4044,17 @@ def _extract_edges_from_file(
         s.qualified_name: s for s in (file_functions or ())
         if s.kind == "function" and s.qualified_name
     }
+    # What a bare call can reach in its own module: those functions, and a
+    # tuple struct (``Wrapper(x)``) when no function has its name.
+    _items_by_qname: dict[str, Symbol] = {
+        s.qualified_name: s for s in (file_structs or ()) if s.qualified_name
+    }
+    _items_by_qname.update(_free_fns_by_qname)
+    import_scope = import_scope if import_scope is not None else ImportScope(
+        module_kind=MODULES_ARE_FILES,
+    )
+    crates = analyzer.in_tree_crates() if analyzer is not None else None
+    in_file_globs = in_file_globs or {}
     # This file's methods by short name. ``local_symbols`` keeps one symbol
     # per short name, the last one declared, so with two of a name its entry
     # is a pick by declaration order (INV-hupis).
@@ -3751,1014 +4296,288 @@ def _extract_edges_from_file(
 
                     if callee_name:
                         resolved = False
-                        # Strategy 1.5 resolves a self.field receiver's type
-                        # and uses it to find a first-party symbol. When the
-                        # field's type is EXTERNAL that lookup misses and the
-                        # call falls through to the unresolved branch, so the
-                        # type is carried here for that branch to put in the
-                        # module slot instead of the bare ``external``
-                        # placeholder -- as it does for ``_var_types``
-                        # (WI-dizag).
+                        # Every call this file's own evidence does not settle is REPORTED, with what
+                        # the call site says about its target, and the shared pass decides
+                        # (ADR-0064): ``qualifier`` the owner a path call names (``Conn::new``,
+                        # ``db::connect``), ``receiver_hint`` the type a receiver is known to have.
+                        # The type is also kept in ``field_receiver_type`` for the module slot of an
+                        # external call (WI-dizag).
+                        qualifier: str | None = None
+                        receiver_hint: str | None = None
                         field_receiver_type: str | None = None
+                        _line = node.start_point[0] + 1
 
                         # Async spawn detection: tokio::spawn(task()),
                         # tokio::task::spawn(task()), rayon::spawn(task())
                         # Create a call edge to the spawned task, not to spawn itself.
+                        # A spawned call or ``async { }`` block is walked on its own; a bare
+                        # function name is the task: the item of the caller's own module, or,
+                        # through the file's imports, the shared pass's to find.
                         if full_scoped_name in _SPAWN_FUNCTIONS:
                             args_node = _find_child_by_field(node, "arguments")
-                            if args_node:
-                                for arg_child in args_node.children:
-                                    if arg_child.type == "call_expression":
-                                        # The spawned task is itself a call — it will
-                                        # be processed when iter_tree reaches it, so
-                                        # just skip creating an edge to spawn().
-                                        pass
-                                    elif arg_child.type == "async_block":
-                                        # async { ... } — calls inside will be
-                                        # visited by iter_tree normally.
-                                        pass
-                                    elif arg_child.type == "identifier":
-                                        # tokio::spawn(my_task) — bare function ref
-                                        ref_name = node_text(arg_child, source)
-                                        target = local_symbols.get(ref_name)
-                                        _by = resolved_by.SAME_FILE
-                                        if target is None:
-                                            lr = resolver.lookup(ref_name, caller_path=_caller_path)
-                                            if lr.found and lr.symbol is not None:
-                                                target = lr.symbol
-                                                _by = lr.resolved_by
-                                        if target is not None:
-                                            edges.append(Edge.create(
-                                                src=current_function.id,
-                                                dst=target.id,
-                                                edge_type="calls",
-                                                line=node.start_point[0] + 1,
-                                                evidence_type="async_spawn",
-                                                origin=PASS_ID,
-                                                origin_run_id=run_id,
-                                                resolved_by=_by,
-                                            ))
+                            for arg_child in args_node.children if args_node else ():
+                                if arg_child.type != "identifier":
+                                    continue
+                                ref_name = node_text(arg_child, source)
+                                task = _rust_own_module_item(
+                                    ref_name, node, source, _items_by_qname, in_file_globs,
+                                )
+                                if task is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=task[0].id,
+                                        edge_type="calls",
+                                        line=_line,
+                                        evidence_type="async_spawn",
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                        resolved_by=task[1],
+                                    ))
+                                elif import_scope.named(ref_name) is not None:
+                                    edges.append(make_unresolved_edge(
+                                        "rust", current_function.id, ref_name, _line, PASS_ID, run_id,
+                                    ))
                             # Don't resolve spawn itself as a callee
                             resolved = True
 
-                        # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
-                        # This gives precise resolution for qualified calls.
-                        #
-                        # Every bind in this branch resolves a
-                        # ``Type::method`` scoped call whose target type the CALL
-                        # SITE named explicitly, so the edge carries
-                        # ``meta.receiver="qualified"``. Without it the
-                        # language-agnostic magnet detector would count a
-                        # qualified associated-function call to a method-kind
-                        # symbol (a ``SamplesBuffer::new`` with many callers) as
-                        # a receiver-blind cross-class magnet even though every
-                        # one is correct; the detector excludes ``qualified``
-                        # edges, and this stamps the producer half (INV-fahub).
+                        # A PATH call, ``Type::f()`` / ``a::b::f()``. Bound here on two kinds of
+                        # evidence only: this file declares the item the path spells (an ``impl``
+                        # here of the type named here; ``Self::`` is the impl's own type), or the
+                        # path is rooted where the module layout reads it (``crate`` / ``self`` /
+                        # ``super`` / an in-tree crate) and the file it reaches declares the item.
+                        # A path through a ``use`` or ``mod`` binding is the import table's, and the
+                        # shared pass reads it (``qualifier``). Every bind carries
+                        # ``receiver="qualified"``: the call site named the target's owner, which
+                        # the receiver-blind magnet detector excludes (INV-fahub).
                         if not resolved and full_scoped_name and full_scoped_name != callee_name:
-                            if full_scoped_name in local_symbols:
-                                callee = local_symbols[full_scoped_name]
+                            target = local_symbols.get(full_scoped_name)
+                            _by = _qual_by
+                            if target is None:
+                                target = _rust_path_target(
+                                    full_scoped_name, file_path, _get_rust_mod_path(node, source),
+                                    import_scope, decls_by_path or {}, crates,
+                                )
+                                _by = resolved_by.QUALIFIED
+                            if target is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=callee.id,
+                                    dst=target.id,
                                     edge_type="calls",
-                                    line=node.start_point[0] + 1,
+                                    line=_line,
                                     evidence_type="ast_call",
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function", "receiver": "qualified"},
-                                    resolved_by=_qual_by,
+                                    resolved_by=_by,
                                 ))
                                 resolved = True
                             else:
-                                import_hint = use_aliases.get(callee_name)
-                                # ``config::parse_configs(..)`` after
-                                # ``use app::config`` names the function in
-                                # config's file; a lookup by name alone can
-                                # bind a same-named function elsewhere, the
-                                # caller itself included (WI-lirik).
-                                _by_path = _rust_use_path_function(
-                                    _rust_use_path_of_call(full_scoped_name, use_aliases),
-                                    file_path, kind_index or {},
-                                    analyzer.in_tree_crates() if analyzer is not None else None,
+                                qualifier = full_scoped_name.rpartition("::")[0]
+
+                        # A METHOD call on a receiver whose type is known: ``self`` and a
+                        # ``self``-rooted field chain (the impl's type, the struct field
+                        # registry), a typed local or parameter, a call whose return type is
+                        # known. The type's method declared in THIS file binds; otherwise the
+                        # type is the fact the call reports. A local or parameter whose type was
+                        # written as a path (``db::Conn``) names a type of another module, so a
+                        # same-named type of this file is not looked at.
+                        if not resolved and is_method_call:
+                            value_node = inner.child_by_field_name("value")
+                            recv_type: str | None = None
+                            look_here = True
+                            through_field = False
+                            typed_by = resolved_by.RECEIVER_TYPE
+                            if value_node is not None and analyzer is not None:
+                                # ``self`` is the impl's type; the shared walker answers
+                                # nothing in a run whose structs declare no field.
+                                _impl_type = _get_impl_target(node, source)
+                                recv_type = (
+                                    _impl_type if value_node.type == "self"
+                                    else analyzer.resolve_receiver_type(value_node, source, _impl_type)
                                 )
-                                lookup_result = (
-                                    LookupResult(symbol=_by_path)
-                                    if _by_path is not None
-                                    else resolver.lookup(
-                                        full_scoped_name, path_hint=import_hint, caller_path=_caller_path,
+                                if recv_type is not None:
+                                    field_receiver_type = recv_type
+                                    through_field = True
+                                    # ``self.m()``: the impl's own type; ``self.f.m()``: the field's type.
+                                    typed_by = (
+                                        resolved_by.OWN_TYPE if value_node.type == "self"
+                                        else resolved_by.RECEIVER_TYPE
                                     )
+                                elif value_node.type == "field_expression" and _var_types:
+                                    # A VAR-ROOTED field chain, ``h.f.write_all(..)`` with ``h`` a
+                                    # typed parameter or local: ``resolve_var_field_chain`` is the
+                                    # sibling of the ``self`` walk. Its type is reported, not
+                                    # bound here (WI-dizag).
+                                    field_receiver_type = analyzer.resolve_var_field_chain(
+                                        value_node, source, _var_types,
+                                    )
+                                    receiver_hint = field_receiver_type
+                            if recv_type is None and value_node is not None:
+                                if value_node.type == "identifier":
+                                    recv_name = node_text(value_node, source)
+                                    recv_type = _var_types.get(recv_name)
+                                    written = _var_type_paths.get(recv_name)
+                                    look_here = not (written and "::" in written)
+                                    receiver_hint = written or recv_type
+                                elif value_node.type == "call_expression":
+                                    # ``Cmd::parse().run()``: the receiver ``Cmd::parse()`` yields
+                                    # ``Cmd`` (associated-fn path); ``get_db().execute()`` the
+                                    # declared return type of ``get_db`` (WI-lohup).
+                                    recv_type = _infer_type_from_rust_rhs(
+                                        value_node, source, _var_types,
+                                        getattr(analyzer, "_method_return_type_registry", None) or {},
+                                        free_fn_return_type,
+                                    )
+                                    receiver_hint = recv_type
+                            elif recv_type is not None:
+                                receiver_hint = recv_type
+                            target = (
+                                local_symbols.get(f"{recv_type.rsplit('::', 1)[-1]}::{callee_name}")
+                                if recv_type and look_here else None
+                            )
+                            if target is not None:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=target.id,
+                                    edge_type="calls",
+                                    line=_line,
+                                    evidence_type=(
+                                        "ast_call" if through_field else "ast_call_type_inferred"
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    meta={
+                                        "call_construct": "method",
+                                        "receiver": "typed_field" if through_field else "typed_var",
+                                    },
+                                    resolved_by=typed_by,
+                                ))
+                                resolved = True
+
+                        # ``recv.m()`` where every method of that name in the tree is one
+                        # trait's (its declaration and its implementations, two or more of them
+                        # in this file), on a receiver of no type or of a type no declaration of
+                        # the tree is named after (a type parameter, ``backend: B``): the
+                        # trait's own declaration is the one symbol that does not depend on
+                        # which ``impl`` came last (INV-hupis). The name decided, and the mark
+                        # says so. A receiver whose type the tree may declare is the shared
+                        # pass's.
+                        if not resolved and is_method_call and (
+                            receiver_hint is None
+                            or not any(
+                                c.kind in _RUST_TYPE_KINDS for c in (kind_index or {}).get(
+                                    receiver_hint.split("<", 1)[0].rsplit("::", 1)[-1], (),
                                 )
-                                if lookup_result.found and lookup_result.symbol is not None:
+                            )
+                        ):
+                            _local = local_symbols.get(callee_name)
+                            _here = _file_methods.get(callee_name, [])
+                            _owners_here = {_method_owner.get(m.id) for m in _here}
+                            _owner = next(iter(_owners_here)) if len(_owners_here) == 1 else None
+                            if (
+                                _local is not None and _local.kind == "method"
+                                and len(_here) > 1 and _owner is not None and _owner[0] == "trait"
+                                and all(
+                                    _method_owner.get(c.id) == _owner
+                                    for c in (methods_by_short_name or {}).get(callee_name, [])
+                                    if c.kind == "method"
+                                )
+                            ):
+                                _declared = (kind_index or {}).get(f"{_owner[1]}::{callee_name}", [])
+                                if len(_declared) == 1:
                                     edges.append(Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=_declared[0].id,
                                         edge_type="calls",
-                                        line=node.start_point[0] + 1,
+                                        line=_line,
                                         evidence_type="ast_call",
-                                        resolution_score=lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
-                                        meta={"call_construct": "function", "receiver": "qualified"},
-                                        # The ``use`` path's function, or the
-                                        # ``use`` hint chose; else the written path.
-                                        resolved_by=(
-                                            resolved_by.IMPORT
-                                            if _by_path is not None
-                                            or lookup_result.resolved_by == resolved_by.IMPORT
-                                            else _qual_by
-                                        ),
+                                        meta={"call_construct": "function"},
+                                        resolved_by=resolved_by.NAME,
                                     ))
                                     resolved = True
 
-                                # Strategy 1b: Strip module prefixes from
-                                # the scoped name.  For
-                                # codex_agent::CodexAgent::new, try
-                                # "CodexAgent::new" before falling back to
-                                # bare "new" (which has many ambiguous
-                                # candidates).
-                                if not resolved:
-                                    parts = full_scoped_name.split("::")
-                                    for i in range(1, len(parts) - 1):
-                                        suffix = "::".join(parts[i:])
-                                        if suffix in local_symbols:
-                                            callee = local_symbols[suffix]
-                                            edges.append(Edge.create(
-                                                src=current_function.id,
-                                                dst=callee.id,
-                                                edge_type="calls",
-                                                line=node.start_point[0] + 1,
-                                                evidence_type="ast_call",
-                                                origin=PASS_ID,
-                                                origin_run_id=run_id,
-                                                meta={"call_construct": "function", "receiver": "qualified"},
-                                                resolved_by=resolved_by.QUALIFIED,
-                                            ))
-                                            resolved = True
-                                            break
-                                        lr = resolver.lookup(
-                                            suffix, path_hint=import_hint, caller_path=_caller_path,
-                                        )
-                                        if lr.found and lr.symbol is not None:
-                                            edges.append(Edge.create(
-                                                src=current_function.id,
-                                                dst=lr.symbol.id,
-                                                edge_type="calls",
-                                                line=node.start_point[0] + 1,
-                                                evidence_type="ast_call",
-                                                resolution_score=lr.confidence,
-                                                origin=PASS_ID,
-                                                origin_run_id=run_id,
-                                                meta={"call_construct": "function", "receiver": "qualified"},
-                                                resolved_by=(
-                                                    resolved_by.IMPORT
-                                                    if lr.resolved_by == resolved_by.IMPORT
-                                                    else resolved_by.QUALIFIED
-                                                ),
-                                            ))
-                                            resolved = True
-                                            break
-
-                        # Strategy 1.5: Resolve self.field.method() via
-                        # field type registry.  Fires for method calls where
-                        # the receiver is a field_expression rooted at self.
-                        # Known receiver type makes even blocklisted methods
-                        # (e.g. Client::send) unambiguous.
-                        if (
-                            not resolved
-                            and is_method_call
-                            and analyzer is not None
-                            and field_type_registry
-                        ):
-                            value_node = inner.child_by_field_name("value")
-                            if value_node is not None:
-                                impl_target = _get_impl_target(
-                                    node, source,
-                                )
-                                receiver_type = analyzer.resolve_receiver_type(
-                                    value_node, source, impl_target,
-                                )
-                                if receiver_type is not None:
-                                    # Keep it whether or not the first-party
-                                    # lookup below succeeds (WI-dizag).
-                                    field_receiver_type = receiver_type
-                                    # Strip module prefix from scoped types
-                                    # (e.g., "std::sync::Mutex" → "Mutex")
-                                    # because symbols are stored with bare names.
-                                    bare_type = receiver_type.rsplit("::", 1)[-1]
-                                    typed_name = f"{bare_type}::{callee_name}"
-                                    target = (
-                                        local_symbols.get(typed_name)
-                                        or global_symbols.get(typed_name)
-                                    )
-                                    if target is None:
-                                        lookup = resolver.lookup(typed_name, caller_path=_caller_path)
-                                        if lookup.found and lookup.symbol:
-                                            target = lookup.symbol
-                                    if target is not None:
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=target.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="ast_call",
-                                            origin=PASS_ID,
-                                            origin_run_id=run_id,
-                                            meta={"call_construct": "method", "receiver": "typed_field"},
-                                            # ``self.m()``: the impl's own type;
-                                            # ``self.f.m()``: the field's type.
-                                            resolved_by=(
-                                                resolved_by.OWN_TYPE
-                                                if value_node.type == "self"
-                                                else resolved_by.RECEIVER_TYPE
-                                            ),
-                                        ))
-                                        resolved = True
-
-                        # A VAR-ROOTED field chain, ``h.f.write_all(..)`` with
-                        # ``h`` a typed parameter or local (WI-dizag). Strategy
-                        # 1.5 above handles only ``self``-rooted chains
-                        # (``resolve_receiver_type`` returns None for a
-                        # non-self root), which would leave
-                        # ``field_receiver_type`` None and give the module-slot
-                        # recovery downstream nothing to consume.
-                        # ``resolve_var_field_chain`` is the sibling walk: root
-                        # ``h`` -> ``Holder`` via ``_var_types``, field ``f`` ->
-                        # ``File`` via the same struct field-type registry. It
-                        # sets the type ONLY; like the ``_var_types`` recovery
-                        # it does not set ``has_explicit_binding`` or
-                        # ``resolved``, so which edges are emitted does not
-                        # change, and the module slot is rebuilt from the
-                        # recovered type exactly as the ``self.field`` case is.
-                        if (
-                            field_receiver_type is None
-                            and is_method_call
-                            and analyzer is not None
-                            and _var_types
-                        ):
-                            _vnode = inner.child_by_field_name("value")
-                            if (
-                                _vnode is not None
-                                and _vnode.type == "field_expression"
-                            ):
-                                _vt = analyzer.resolve_var_field_chain(
-                                    _vnode, source, _var_types,
-                                )
-                                if _vt is not None:
-                                    field_receiver_type = _vt
-
-                        # Strategy 1.8 (WI-titor):
-                        # ``var.method()`` where ``var`` is a typed local
-                        # / parameter / let-binding tracked in
-                        # ``_var_types``. Resolves the receiver type
-                        # without consulting the field_type_registry (so
-                        # it covers parameters and let-bindings, not
-                        # just ``self.field``). Fires after the
-                        # self-field strategy because that one has the
-                        # stronger 0.88-confidence ``typed_field``
-                        # signal; fires before the short-name fallback
-                        # because typed receivers should win short-name
-                        # ambiguity and bypass the generic-trait-method
-                        # blocklist (the receiver type is known).
-                        if (
-                            not resolved
-                            and is_method_call
-                            and _var_types
-                        ):
-                            value_node = inner.child_by_field_name("value")
-                            if value_node is not None and value_node.type == "identifier":
-                                recv_name = node_text(value_node, source)
-                                recv_type = _var_types.get(recv_name)
-                                if recv_type:
-                                    typed_name = f"{recv_type}::{callee_name}"
-                                    target = (
-                                        local_symbols.get(typed_name)
-                                        or global_symbols.get(typed_name)
-                                    )
-                                    if target is None:
-                                        lookup = resolver.lookup(
-                                            typed_name, caller_path=_caller_path,
-                                        )
-                                        if lookup.found and lookup.symbol:
-                                            target = lookup.symbol
-                                    if target is not None:
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=target.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="ast_call_type_inferred",
-                                            origin=PASS_ID,
-                                            origin_run_id=run_id,
-                                            meta={
-                                                "call_construct": "method",
-                                                "receiver": "typed_var",
-                                            },
-                                            resolved_by=resolved_by.RECEIVER_TYPE,
-                                        ))
-                                        resolved = True
-
-                        # Strategy 1.9: receiver is itself a call expression —
-                        # infer its return type and resolve the outer method
-                        # against it. `Cmd::parse().run()`: the receiver
-                        # `Cmd::parse()` yields `Cmd` (associated-fn path), so
-                        # `.run()` resolves to `Cmd::run` (WI-lohup). Reuses the
-                        # let-binding RHS type-inference helper, so it also
-                        # covers `obj.foo().bar()` when foo's return type is
-                        # known. These chained calls leave no intermediate
-                        # variable for the var_types walker to type, so the
-                        # typed_var strategy above misses them.
-                        if not resolved and is_method_call:
-                            chained_recv = inner.child_by_field_name("value")
-                            if (
-                                chained_recv is not None
-                                and chained_recv.type == "call_expression"
-                            ):
-                                recv_type = _infer_type_from_rust_rhs(
-                                    chained_recv, source, _var_types,
-                                    getattr(
-                                        analyzer,
-                                        "_method_return_type_registry", None,
-                                    ) or {},
-                                    free_fn_return_type,
-                                )
-                                if recv_type:
-                                    # The inferred receiver type is a concrete
-                                    # in-tree type, so its method is keyed by the
-                                    # qualified `Type::method` name in the local
-                                    # (same-file) or global registry — no resolver
-                                    # disambiguation needed (unlike the typed_var
-                                    # strategy, which may face short-name ambiguity).
-                                    typed_name = f"{recv_type}::{callee_name}"
-                                    target = (
-                                        local_symbols.get(typed_name)
-                                        or global_symbols.get(typed_name)
-                                    )
-                                    if target is not None:
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=target.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="ast_call_type_inferred",
-                                            origin=PASS_ID,
-                                            origin_run_id=run_id,
-                                            meta={
-                                                "call_construct": "method",
-                                                "receiver": "typed_var",
-                                            },
-                                            resolved_by=resolved_by.RECEIVER_TYPE,
-                                        ))
-                                        resolved = True
-
-                        # Strategy 2: Fall back to short name
-                        if not resolved:
-                            # When the receiver's type is known to be
-                            # EXTERNAL (``self.items: Vec<u8>``, a
-                            # ``use std::collections::VecDeque`` field) and the
-                            # typed lookup above missed, a same-named
-                            # first-party method is not the callee --
-                            # ``self.items.push(x)`` must not bind the enclosing
-                            # ``push`` -- so the short name binds nothing. A
-                            # type parameter is not that evidence (WI-lirik).
-                            _receiver_is_external = (
-                                is_method_call
-                                and field_receiver_type is not None
-                                and _rust_type_is_external(
-                                    field_receiver_type, use_aliases,
-                                    analyzer.in_tree_crates() if analyzer is not None else None,
-                                )
+                        # A BARE call ``f()`` reaches the item its own module declares (the
+                        # inline ``mod`` path counts: INV-lopus); anything else it names through
+                        # an import is the shared pass's.
+                        if not resolved and inner.type == "identifier":
+                            own = _rust_own_module_item(
+                                callee_name, node, source, _items_by_qname, in_file_globs,
                             )
-                            _local = local_symbols.get(callee_name)
-                            _by = resolved_by.SAME_FILE
-                            if _receiver_is_external:
-                                _local = None
-                            if (
-                                _local is not None
-                                and inner.type != "identifier"
-                                and _local.kind == "method"
-                            ):
-                                # ``x.execute()`` / ``T::execute()`` that no
-                                # typed strategy answered. The table's entry
-                                # is the last ``execute`` declared in the
-                                # file, whoever declares it (INV-hupis).
-                                _here = _file_methods.get(callee_name, [])
-                                _owners_here = {_method_owner.get(m.id) for m in _here}
-                                _owner = next(iter(_owners_here)) if len(_owners_here) == 1 else None
-                                if len(_owners_here) > 1:
-                                    # Unrelated owners in this file: the list
-                                    # resolver below sees them all and refuses
-                                    # the tie.
-                                    _local = None
-                                elif len(_here) > 1 and _owner is not None:
-                                    _everywhere = [
-                                        c for c in (
-                                            method_resolver.registry.get(callee_name, [])
-                                            if method_resolver is not None else _here
-                                        ) if c.kind == "method"
-                                    ]
-                                    if is_method_call and _owner[0] == "trait" and all(
-                                        _method_owner.get(c.id) == _owner for c in _everywhere
-                                    ):
-                                        # One trait and its implementations,
-                                        # and nothing else in the tree is
-                                        # named so: one method, declared
-                                        # once. ``recv.m()`` is a call to the
-                                        # trait's method, the one symbol that
-                                        # does not depend on which ``impl``
-                                        # comes last. A path call names its
-                                        # owner itself (``<X as Other>::m``),
-                                        # and this file's trait may not be it.
-                                        _declared = (kind_index or {}).get(
-                                            f"{_owner[1]}::{callee_name}", [],
-                                        )
-                                        _local = _declared[0] if len(_declared) == 1 else None
-                                        # Every method of the name in the tree
-                                        # is this trait's: the name decided.
-                                        _by = resolved_by.NAME
-                                    elif _owner[0] == "trait":
-                                        # Another type declares the name too
-                                        # (``args.mode.update()`` in a file of
-                                        # ``impl Flag for X``), so the receiver
-                                        # may be that type; or the call is a
-                                        # path call.
-                                        _local = None
-                                    # ``("type", X)``: two ``impl X`` blocks
-                                    # declare it (``#[cfg]`` alternatives) --
-                                    # one method of one type; the entry stays.
-                            if (
-                                _local is not None
-                                and inner.type != "identifier"
-                                and _local.meta
-                                and "ffi_import" in _local.meta
-                            ):
-                                # A foreign declaration is reached by its bare
-                                # name only. ``SystemTime::now()`` beside an
-                                # ``extern { fn now(); }`` is not a call to it
-                                # (INV-lopus).
-                                _local = None
-                            if _local is not None:
-                                callee = _local
-                                if inner.type == "identifier":
-                                    callee = (_in_module := _free_fns_by_qname.get(
-                                        _make_rust_qualified_name(
-                                            _get_rust_mod_path(node, source),
-                                            None, callee_name,
-                                        ),
-                                    )) or callee
-                                    if _in_module is not None:
-                                        # The caller's own module's item.
-                                        _by = resolved_by.SAME_MODULE
+                            if own is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=callee.id,
+                                    dst=own[0].id,
                                     edge_type="calls",
-                                    line=node.start_point[0] + 1,
+                                    line=_line,
                                     evidence_type="ast_call",
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "function"},
-                                    resolved_by=_by,
+                                    resolved_by=own[1],
                                 ))
-                            # Check global symbols via resolver
-                            else:
-                                # Use method_resolver (ambiguity guard: 3+ candidates
-                                # → unresolved) for: (a) method calls (foo.bar()),
-                                # (b) scoped identifier fallback (Type::new() where
-                                # full "Type::new" wasn't found).  Both are
-                                # method-like calls that should not resolve to
-                                # arbitrary same-name symbols.
-                                # Bare->method magnet gate: track whether this
-                                # candidate came from the bare (non-method,
-                                # non-scoped) ``resolver.lookup`` path, plus the
-                                # enclosing impl type, so a weak short-name hit
-                                # on a DIFFERENT impl's method can be deferred
-                                # to the inherited_calls Site-1 walker instead
-                                # of misbound (see below; INV-fahub).
-                                _used_bare_resolver = False
-                                _bare_enclosing_type: str | None = None
-                                _by = resolved_by.NAME
-                                use_method_guard = (
-                                    is_method_call or full_scoped_name is not None
+                                resolved = True
+
+                        if not resolved:
+                            module_hint, unresolved_name, ext_ref, has_explicit_binding = (
+                                _rust_unresolved_slots(
+                                    inner, source, full_scoped_name, callee_name, is_method_call,
+                                    use_aliases, _var_types, _var_type_paths, field_receiver_type,
+                                    analyzer, free_fn_return_type,
                                 )
-                                if use_method_guard and method_resolver is not None:
-                                    if callee_name in _RUST_GENERIC_TRAIT_METHODS or _receiver_is_external:
-                                        # Generic trait methods (.into(), .clone(),
-                                        # .len(), etc.) cannot be resolved without
-                                        # receiver type info — skip lookup to avoid
-                                        # false edges.
-                                        lookup_result = LookupResult(symbol=None)
-                                    else:
-                                        # Pass the caller's directory as a soft
-                                        # path_hint to prefer same-module methods
-                                        # over cross-module ones with the same name
-                                        # (e.g., nova/nifs.rs over neutron/nifs.rs
-                                        # when called from nova/). A tie inside it
-                                        # with none in this file is a guess and
-                                        # stays unresolved (WI-jomik).
-                                        caller_dir = (
-                                            file_path.rsplit("/", 1)[0]
-                                            if "/" in file_path else ""
-                                        )
-                                        lookup_result = method_resolver.lookup(
-                                            callee_name,
-                                            path_hint=caller_dir if caller_dir else None,
-                                            soft_hint=True,
-                                            caller_path=_caller_path,
-                                            admit=(
-                                                _rust_method_candidate
-                                                if is_method_call else None
-                                            ),
-                                        )
-                                        # The caller's directory is a nearness
-                                        # hint, not an import: a hit in it is
-                                        # ``name``; the caller-file pick is not.
-                                        _by = (
-                                            resolved_by.SAME_FILE
-                                            if lookup_result.resolved_by == resolved_by.SAME_FILE
-                                            else resolved_by.NAME
-                                        )
-                                else:
-                                    import_hint = use_aliases.get(callee_name)
-                                    if (
-                                        import_hint is not None
-                                        and import_hint.rsplit("::", 1)[-1] != callee_name
-                                    ):
-                                        # ``use m::helper as h3; h3()`` calls
-                                        # the function the alias's PATH names.
-                                        # A lookup of the name ``h3`` finds
-                                        # nothing, and a lookup of ``helper``
-                                        # prefers a same-named function of THIS
-                                        # file (e.g. a wrapper around the
-                                        # aliased one). So the path is
-                                        # resolved: in the tree, the function
-                                        # in the module file it names
-                                        # (``_rust_function_in_module``, as for
-                                        # function values); outside, nothing
-                                        # (WI-silam).
-                                        aliased = _rust_function_in_module(
-                                            import_hint, file_path, kind_index or {},
-                                            analyzer.in_tree_crates() if analyzer is not None else None,
-                                        )
-                                        lookup_result = LookupResult(
-                                            symbol=aliased[0] if aliased is not None else None,
-                                        )
-                                        _by = resolved_by.IMPORT
-                                    else:
-                                        # An unaliased ``use`` path names its
-                                        # function too; the exact-name entry
-                                        # below is whichever same-named
-                                        # function registered last (WI-lirik).
-                                        _by_path = _rust_use_path_function(
-                                            import_hint, file_path, kind_index or {},
-                                            analyzer.in_tree_crates() if analyzer is not None else None,
-                                        )
-                                        lookup_result = (
-                                            LookupResult(symbol=_by_path)
-                                            if _by_path is not None
-                                            else resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
-                                        )
-                                        _by = (
-                                            resolved_by.IMPORT if _by_path is not None
-                                            else lookup_result.resolved_by
-                                        )
-                                    # The magnet gate applies only to genuinely
-                                    # BARE identifier calls (``foo()``). Method /
-                                    # scoped calls that fall through here purely
-                                    # because no ``method_resolver`` was supplied
-                                    # keep their existing suffix resolution —
-                                    # production guards those via the
-                                    # method_resolver ambiguity threshold.
-                                    _used_bare_resolver = not use_method_guard
-                                    _bare_enclosing_type = _get_impl_target(node, source)
-                                _sym = lookup_result.symbol
-                                # A BARE call (``foo()``) that resolves
-                                # only to a DIFFERENT impl's method on weak
-                                # short-name (suffix / ambiguous) evidence is a
-                                # magnet — withhold it and defer to the
-                                # inherited_calls Site-1 walker via
-                                # ``enclosing_class`` rather than binding a
-                                # high-confidence false edge. Free functions,
-                                # same-impl methods, and exact / import-scoped
-                                # hits still bind. Same-impl ``self.m()`` /
-                                # ``Type::m()`` calls take the method_resolver
-                                # guard path, and same-file free functions are
-                                # caught by the ``local_symbols`` check above, so
-                                # this gate only fires on the cross-impl magnet
-                                # (INV-fahub).
-                                _defer = (
-                                    _used_bare_resolver
-                                    and _sym is not None
-                                    and defer_bare_method_call(
-                                        _sym.kind, _sym.name,
-                                        lookup_result.match_type,
-                                        _bare_enclosing_type,
-                                        separator="::",
-                                    )
+                            )
+                            if qualifier is not None and import_scope.namespace(qualifier) is not None:
+                                # ``m::f()`` through ``mod m;``: the shared pass looks up the
+                                # callee by its own name in the module's file.
+                                unresolved_name = callee_name
+                            _bound_head = (
+                                qualifier.split("::", 1)[0] if qualifier is not None
+                                else callee_name if inner.type == "identifier" else None
+                            )
+                            if _bound_head is not None and (
+                                import_scope.named(_bound_head) is not None
+                                or import_scope.namespace(_bound_head) is not None
+                            ):
+                                # The import table binds it to a file of this tree: no
+                                # library module is named, whatever the ``use`` path spells
+                                # (``crate_b::helper`` is a crate of this workspace), and the
+                                # name is the one written here, which the table maps (``h3``
+                                # of ``use crate::m::helper as h3``).
+                                module_hint, ext_ref = "external", None
+                                if qualifier is None:
+                                    unresolved_name = callee_name
+                            # The denylist exists because a generic-trait NAME on an untypable
+                            # receiver (``x.clone()``, ``v.into()``) cannot be bound honestly,
+                            # and emitting it blind floods the graph with edges. A receiver
+                            # whose type the signature DECLARES (``sock: &UdpSocket`` ->
+                            # ``std::net::UdpSocket``) is the evidence the denylist lacks:
+                            # ``sock.send`` on it is the catalogued net_send sink, emitted with
+                            # the type in the slot (INV-pamis). A named owner, or a receiver
+                            # type that is not provably a library's, is a fact the shared pass
+                            # can bind on, so the stub is emitted too.
+                            if (
+                                has_explicit_binding
+                                or ext_ref is not None
+                                or callee_name not in _RUST_GENERIC_TRAIT_METHODS
+                                or qualifier is not None
+                                or (
+                                    receiver_hint is not None
+                                    and not _rust_type_is_external(receiver_hint, use_aliases, crates)
                                 )
-                                # A foreign declaration in ANOTHER file does
-                                # not capture a name this file binds by ``use``
-                                # to a path outside the crate. After
-                                # ``use std::fs::write;``, ``write(p, b)`` is
-                                # std's, whatever ``extern { fn write(); }``
-                                # the repository declares elsewhere -- binding
-                                # it there would turn a real fs_write into a
-                                # call to libc's ``write`` declaration
-                                # (INV-lopus).
-                                if (
-                                    _used_bare_resolver
-                                    and _sym is not None
-                                    and _sym.meta
-                                    and "ffi_import" in _sym.meta
-                                    and use_aliases.get(callee_name, "")
-                                    .lstrip(":").split("::", 1)[0]
-                                    not in ("", "crate", "self", "super")
-                                ):
-                                    _defer = True
-                                if (
-                                    lookup_result.found
-                                    and _sym is not None
-                                    and not _defer
-                                ):
-                                    # A scoped ``Type::method()`` call that
-                                    # resolves *here* (Strategy 1 missed it; the
-                                    # cross-package survey ``method_resolver`` / bare-name
-                                    # fallback bound it) still named its target type at the
-                                    # call site, so it is a *qualified* call, not a
-                                    # receiver-blind magnet — stamp ``receiver="qualified"``
-                                    # (mirroring the Strategy-1 sites) so
-                                    # ``find_receiver_blind_magnets`` excludes it. The
-                                    # branch is reachable only through the full-survey
-                                    # method_resolver (isolated ``analyze_rust`` runs --
-                                    # cross-file, nested modules, ``use`` aliases, generics,
-                                    # ``::new`` ambiguity, re-exports -- all bind via
-                                    # Strategy 1; WI-fazaj),
-                                    # so it carries ``# pragma: no cover``.
-                                    _meta = {"call_construct": "function"}
-                                    if full_scoped_name is not None:  # pragma: no cover
-                                        _meta["receiver"] = "qualified"
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=_sym.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        evidence_type="ast_call",
-                                        resolution_score=lookup_result.confidence,
-                                        origin=PASS_ID,
-                                        origin_run_id=run_id,
-                                        meta=_meta,
-                                        resolved_by=(
-                                            resolved_by_for_bare_call(
-                                                _sym.kind, _sym.name, _by,
-                                                _bare_enclosing_type, separator="::",
-                                            )
-                                            if _used_bare_resolver else _by
-                                        ),
-                                    ))
-                                else:
-                                    # Consult use_aliases (WI-volob / WI-mafik)
-                                    # to attribute the external call to its
-                                    # source module via the structured
-                                    # ExternalRef. Three cases:
-                                    # (1) qualified ``fs::read_to_string``:
-                                    #     ``fs`` is in use_aliases → resolve
-                                    #     to ``std::fs`` for the module slot.
-                                    # (2) bare ``write`` after ``use std::fs::write``:
-                                    #     ``write`` is in use_aliases → split
-                                    #     ``std::fs::write`` into module + name.
-                                    #     An explicit use binding takes
-                                    #     precedence over the generic-trait-
-                                    #     method guard — the binding tells
-                                    #     us exactly which module owns the
-                                    #     callable.
-                                    # (3) aliased terminal ``mkdir`` after
-                                    #     ``use ... as mkdir``: same as (2),
-                                    #     name field gets the underlying
-                                    #     ``create_dir``, not the alias.
-                                    # All three short-circuit the 6-seg dst
-                                    # rebuild path and its parsing hazards
-                                    # (WI-tihup).
-                                    ext_ref: ExternalRef | None = None
-                                    module_hint = "external"
-                                    unresolved_name = full_scoped_name or callee_name
-                                    has_explicit_binding = False
-                                    if full_scoped_name and "::" in full_scoped_name:
-                                        head, _, tail = full_scoped_name.partition("::")
-                                        # The ABSOLUTE path, then one split on
-                                        # its last ``::``. In call position the
-                                        # last segment is the callee and the
-                                        # rest is the item that owns it (a
-                                        # module, a type, an enum), which is the
-                                        # (module, name) pair the slots carry:
-                                        # ``fs::File::open`` after ``use
-                                        # std::fs;`` is module ``std::fs::File``
-                                        # + name ``open``, and a path written in
-                                        # full splits the same way (INV-duzom).
-                                        absolute: str | None = None
-                                        if head in use_aliases:
-                                            absolute = f"{use_aliases[head]}::{tail}"
-                                        elif (
-                                            (head in _RUST_ABSOLUTE_PATH_ROOTS
-                                             or full_scoped_name.startswith("::"))
-                                            and _PLAIN_RUST_PATH.fullmatch(
-                                                full_scoped_name,
-                                            )
-                                        ):
-                                            absolute = full_scoped_name.lstrip(":")
-                                        if absolute is not None:
-                                            mod, _, name = absolute.rpartition("::")
-                                            module_hint = mod
-                                            unresolved_name = name
-                                            ext_ref = ExternalRef(
-                                                lang="rust",
-                                                module_path=mod,
-                                                name=name,
-                                            )
-                                            has_explicit_binding = True
-                                    elif callee_name in use_aliases:
-                                        full_path = use_aliases[callee_name]
-                                        if "::" in full_path:
-                                            mod, _, name = full_path.rpartition("::")
-                                            module_hint = mod
-                                            unresolved_name = name
-                                            ext_ref = ExternalRef(
-                                                lang="rust",
-                                                module_path=mod,
-                                                name=name,
-                                            )
-                                            has_explicit_binding = True
-                                    # A TYPED receiver whose type is EXTERNAL
-                                    # must keep its type. The typed strategies
-                                    # above (1.5 / 1.8 / 1.9) resolve
-                                    # ``Type::method`` against first-party
-                                    # symbols only, so an external receiver
-                                    # type misses, ``resolved`` stays False,
-                                    # and control arrives here — where the
-                                    # module slot would otherwise be rebuilt
-                                    # from ``use_aliases`` alone, and a METHOD
-                                    # name is never in ``use_aliases``. The
-                                    # edge would then carry the bare
-                                    # ``external`` placeholder, which
-                                    # ``_lookup_named_entry`` refuses
-                                    # (correctly — an untyped method call must
-                                    # not match a method-kind entry), leaving
-                                    # the method half of rust.yaml unreachable
-                                    # (INV-linub L3).
-                                    #
-                                    # DELIBERATELY NARROW. This changes the
-                                    # module SLOT only; it does NOT set
-                                    # ``has_explicit_binding``, so which edges
-                                    # get emitted — including the
-                                    # generic-trait-method suppression below —
-                                    # does not change. Widening emission is a
-                                    # separate question.
-                                    if (
-                                        not has_explicit_binding
-                                        and is_method_call
-                                        and (_var_types or _var_type_paths)
-                                    ):
-                                        _recv = inner.child_by_field_name("value")
-                                        if (
-                                            _recv is not None
-                                            and _recv.type == "identifier"
-                                        ):
-                                            _rn = node_text(_recv, source)
-                                            _rt = _var_types.get(_rn)
-                                            _full = use_aliases.get(_rt) if _rt else None
-                                            # The alias must be a PATH. A
-                                            # single-segment alias carries no
-                                            # module and would put a bare type
-                                            # name in the module slot.
-                                            if not (_full and "::" in _full):
-                                                # ...and when the type was never
-                                                # imported BY NAME there is no
-                                                # alias to find, however plainly
-                                                # the source wrote the path:
-                                                # `f: &mut std::fs::File` is
-                                                # normalized to `File`, and
-                                                # `File` is not in use_aliases
-                                                # because nothing was imported.
-                                                # Fall back to the path the
-                                                # source actually wrote.
-                                                _full = _var_type_paths.get(_rn)
-                                            if _full and "::" in _full:
-                                                module_hint = _full
-                                                ext_ref = ExternalRef(
-                                                    lang="rust",
-                                                    module_path=_full,
-                                                    name=callee_name,
-                                                )
-                                    # The FIELD receiver's type, when the
-                                    # identifier arm above found nothing. The
-                                    # arm above requires ``_recv.type ==
-                                    # "identifier"``, so ``self.f.write_all(..)``
-                                    # never reaches it -- the receiver node is a
-                                    # ``field_expression``. Strategy 1.5 already
-                                    # resolved that chain through the struct
-                                    # field-type registry; this is the same
-                                    # module-slot recovery applied to the type it
-                                    # computed (WI-dizag).
-                                    #
-                                    # Same narrowness as the identifier arm:
-                                    # module SLOT only, ``has_explicit_binding``
-                                    # untouched, so which edges get emitted --
-                                    # including the generic-trait-method
-                                    # suppression below -- does not change.
-                                    if (
-                                        ext_ref is None
-                                        and not has_explicit_binding
-                                        and is_method_call
-                                        and field_receiver_type
-                                    ):
-                                        # A scoped type names its own module;
-                                        # a bare one needs the use-alias that
-                                        # brought it in (``use std::fs::File``).
-                                        _ft = field_receiver_type
-                                        _fpath = (
-                                            _ft if "::" in _ft
-                                            else use_aliases.get(_ft)
-                                        )
-                                        if _fpath and "::" in _fpath:
-                                            module_hint = _fpath
-                                            ext_ref = ExternalRef(
-                                                lang="rust",
-                                                module_path=_fpath,
-                                                name=callee_name,
-                                            )
-                                    # The CHAINED receiver's type, when neither
-                                    # arm above found one.
-                                    # ``File::create(p)?.write_all(..)`` leaves no
-                                    # intermediate variable for the var_types
-                                    # walker, so the identifier arm cannot see it
-                                    # and the field arm does not apply. Strategy
-                                    # 1.9 above infers the type through
-                                    # ``_infer_type_from_rust_rhs`` but uses it
-                                    # only for the in-repo ``Type::method``
-                                    # lookup, which an EXTERNAL type misses. This
-                                    # is the same module-slot recovery the other
-                                    # two arms perform, applied to that inferred
-                                    # type, and qualified the same way: a scoped
-                                    # type names its own module, a bare one needs
-                                    # the ``use`` alias that brought it in, so the
-                                    # slot carries ``std::fs::File`` rather than
-                                    # the bare ``File`` the helper returns
-                                    # (WI-papar).
-                                    #
-                                    # Same narrowness as the other two arms:
-                                    # module SLOT only. ``has_explicit_binding``
-                                    # is untouched, so which edges get emitted --
-                                    # including the generic-trait suppression
-                                    # below -- does not change.
-                                    # TWO GUARDS:
-                                    #
-                                    # (a) THE CALL'S OWN CALLEE MUST NOT BE A
-                                    #     PROJECTOR. In `File::create(p).unwrap()`
-                                    #     the receiver of `unwrap` is the
-                                    #     `Result<File, E>`, not the `File`, so
-                                    #     carrying `std::fs::File` here attributes
-                                    #     `unwrap` to a type that does not declare
-                                    #     it.
-                                    #
-                                    # (b) THE RECEIVER MUST HAVE BEEN UNWRAPPED.
-                                    #     `File::create(p)` evaluates to a RESULT;
-                                    #     only `File::create(p)?` or
-                                    #     `File::create(p).unwrap()` evaluates to a
-                                    #     `File`. Nothing here knows whether a
-                                    #     library associated function is fallible,
-                                    #     so a RAW `Type::assoc()` receiver is
-                                    #     withheld -- the standing discipline is to
-                                    #     withhold, never pick-first.
-                                    _proj_call = callee_name in _RUST_RESULT_PROJECTORS
-                                    if (
-                                        ext_ref is None
-                                        and not has_explicit_binding
-                                        and is_method_call
-                                        and not _proj_call
-                                    ):
-                                        _cr = inner.child_by_field_name("value")
-                                        _unwrapped = False
-                                        if _cr is not None:
-                                            if _cr.type == "try_expression":
-                                                _unwrapped = True
-                                            elif _cr.type == "call_expression":
-                                                _cf = _find_child_by_field(_cr, "function")
-                                                if (
-                                                    _cf is not None
-                                                    and _cf.type == "field_expression"
-                                                ):
-                                                    _cfl = _find_child_by_field(_cf, "field")
-                                                    _unwrapped = (
-                                                        _cfl is not None
-                                                        and node_text(_cfl, source)
-                                                        in _RUST_RESULT_PROJECTORS
-                                                    )
-                                        if not _unwrapped:
-                                            _cr = None
-                                        _ct = (
-                                            _infer_type_from_rust_rhs(
-                                                _cr, source, _var_types,
-                                                getattr(
-                                                    analyzer,
-                                                    "_method_return_type_registry",
-                                                    None,
-                                                ) or {},
-                                                free_fn_return_type,
-                                            )
-                                            if _cr is not None
-                                            and _cr.type in (
-                                                "call_expression", "try_expression",
-                                            )
-                                            else None
-                                        )
-                                        # `_infer_type_from_rust_rhs` normalises a
-                                        # scoped path to a BARE name, so
-                                        # `std::fs::File::create(p)?` comes back as
-                                        # `File` and the written path is gone --
-                                        # the package-stripped hazard ADR-0051
-                                        # names. Recover it from the source the
-                                        # way `_var_type_paths` does for
-                                        # annotations: a scoped callee names its
-                                        # own module.
-                                        _written = None
-                                        _inner_call = _cr
-                                        for _ in range(4):
-                                            if _inner_call is None:
-                                                break
-                                            if _inner_call.type == "try_expression":
-                                                _inner_call = next(
-                                                    (c for c in _inner_call.children
-                                                     if c.is_named), None,
-                                                )
-                                                continue
-                                            break
-                                        if (
-                                            _inner_call is not None
-                                            and _inner_call.type == "call_expression"
-                                        ):
-                                            _icf = _find_child_by_field(
-                                                _inner_call, "function",
-                                            )
-                                            if (
-                                                _icf is not None
-                                                and _icf.type == "scoped_identifier"
-                                            ):
-                                                _ip = _find_child_by_field(_icf, "path")
-                                                if _ip is not None:
-                                                    _written = node_text(_ip, source)
-                                        _cpath = (
-                                            _ct if _ct and "::" in _ct
-                                            else (use_aliases.get(_ct) if _ct else None)
-                                            or (_written if _written and "::" in _written
-                                                else None)
-                                        )
-                                        if _cpath and "::" in _cpath:
-                                            module_hint = _cpath
-                                            ext_ref = ExternalRef(
-                                                lang="rust",
-                                                module_path=_cpath,
-                                                name=callee_name,
-                                            )
-                                    # The denylist exists because a
-                                    # generic-trait NAME on an untypable receiver
-                                    # (``x.clone()``, ``v.into()``) cannot be bound
-                                    # honestly, and emitting it blind floods the
-                                    # graph with edges. A receiver whose
-                                    # type the signature DECLARES (``sock:
-                                    # &UdpSocket`` -> ``std::net::UdpSocket``) is the
-                                    # evidence the denylist lacks: ``sock.send`` on
-                                    # it is the catalogued net_send sink, emitted
-                                    # with the type in the slot. Untyped receivers
-                                    # keep the denylist and its disclosure
-                                    # (INV-pamis).
-                                    if (
-                                        has_explicit_binding
-                                        or ext_ref is not None
-                                        or callee_name not in _RUST_GENERIC_TRAIT_METHODS
-                                    ):
-                                        edges.append(make_unresolved_edge(
-                                            "rust", current_function.id, unresolved_name,
-                                            node.start_point[0] + 1, PASS_ID, run_id,
-                                            module_hint=module_hint,
-                                            dst_ref=ext_ref,
-                                            # Disclosure parity: stamp the
-                                            # construct so
-                                            # ``verify_claims.untyped_receiver_sites``
-                                            # can name this site. The
-                                            # unresolved-external path is the
-                                            # population the disclosure exists
-                                            # for; without the stamp, catalogued
-                                            # method sinks reached here would go
-                                            # unreported (INV-fibis).
-                                            call_construct=(
-                                                "method" if is_method_call else None
-                                            ),
-                                            # Carry the enclosing impl type on the
-                                            # deferred magnet so the Site-1
-                                            # inherited_calls walker can recover a
-                                            # genuine inherited call (INV-fahub).
-                                            enclosing_class=(
-                                                _bare_enclosing_type if _defer else None
-                                            ),
-                                        ))
+                            ):
+                                edges.append(make_unresolved_edge(
+                                    "rust", current_function.id, unresolved_name,
+                                    _line, PASS_ID, run_id,
+                                    module_hint=module_hint,
+                                    dst_ref=ext_ref,
+                                    # Disclosure parity: stamp the construct so
+                                    # ``verify_claims.untyped_receiver_sites`` can name this
+                                    # site (INV-fibis).
+                                    call_construct=("method" if is_method_call else None),
+                                    qualifier=qualifier,
+                                    receiver_type_hint=receiver_hint,
+                                ))
 
         # Detect calls inside macro bodies (tokio::select!, assert!, etc.).
         # Tree-sitter parses macro bodies as flat token_tree, not structured
@@ -4954,12 +4773,12 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
     "serde", "tokio", "async_trait", "tracing", "instrument",
 })
 
-# Generic trait method names that create false-positive in-degree when resolved
-# via method_resolver.  Without receiver type information, calls like `x.into()`
-# or `v.push()` resolve to arbitrary concrete implementations (e.g.,
-# one `StatusRow::into` absorbing every `.into()` in a crate).  These method
-# names are blocked from short-name resolution; fully-scoped calls like
-# `StatusRow::into()` still resolve via Strategy 1.
+# Generic trait method names that created false-positive in-degree when resolved
+# by short name.  Without receiver type information, calls like `x.into()`
+# or `v.push()` resolved to arbitrary concrete implementations (e.g.,
+# one `StatusRow::into` absorbing every `.into()` in a crate).  An untyped
+# call of one of these names emits no edge at all (no name lookup is made for
+# any untyped call any more, ADR-0064); a typed or path call emits its stub.
 #
 # The set lives in ``hypergumbo_core.analyzer_disclosure`` and is imported
 # here rather than declared here (INV-polad).  It is not only a resolution policy:
@@ -5151,6 +4970,19 @@ class RustAnalyzer(TreeSitterAnalyzer):
     # with ``_seen_files``.
     _method_owner: "dict[str, tuple[str, str]] | None" = None
     _free_fn_return: "dict[str, str] | None" = None
+    # ADR-0064: each file's import table, filled by the edge pass and handed
+    # to the linkers in ``AnalysisResult.import_scopes``; reset with
+    # ``_seen_files``.
+    _import_scopes: "dict[str, ImportScope] | None" = None
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """The base two-pass analysis, with every file's import table
+        (``_rust_import_scope``) in the result: a file with no ``use`` has an
+        empty one, which still tells the linkers that this file's calls are
+        reported for the shared pass to resolve."""
+        result = super().analyze(repo_root, max_files)
+        result.import_scopes = dict(self._import_scopes or {})
+        return result
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -5162,6 +4994,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
             self._crates = None
             self._method_owner = {}
             self._free_fn_return = {}
+            self._import_scopes = {}
         self._seen_files[1][rel_path] = file_path
         owners = self._method_owner if self._method_owner is not None else {}
         self._method_owner = owners
@@ -5226,7 +5059,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
         under the trait-kind guard, a manufactured unresolved-trait id).
         The cache is keyed on ``global_symbols``
         identity to auto-invalidate between ``analyze()`` runs (matches
-        the ``_mr_cache`` pattern below).
+        the ``_run_index_cache`` pattern below).
         """
         global_symbols[symbol.name] = symbol
         cache = getattr(self, "_kind_index_cache", None)
@@ -5247,28 +5080,41 @@ class RustAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and use edges from a Rust file."""
-        # Build method resolver lazily (once per analyze() call).
-        # Keyed on global_symbols identity to invalidate between runs.
-        cache = getattr(self, "_mr_cache", None)
+        # Pull the kind-segregated multi-value index populated by
+        # register_symbol so the impl_item handler can prefer
+        # ``trait Foo`` over ``struct Foo`` when both share a short name
+        # (WI-milak / BUG-04). Empty-fallback for synthetic callers that
+        # bypass register_symbol; with an empty index the impl_item
+        # handler finds no trait and emits the unresolved-trait edge.
+        kind_cache = getattr(self, "_kind_index_cache", None)
+        if kind_cache is not None and kind_cache[0] is global_symbols:
+            kind_index = kind_cache[1]
+        else:
+            kind_index = {}
+
+        # Two run-wide indexes, built once per analyze() call (keyed on
+        # global_symbols identity): every method and free function by short
+        # name, foreign (``extern``-block) declarations left out, which say
+        # whether all methods of a name are one trait's (INV-hupis); and
+        # every declaration by (file, qualified name), where a path call
+        # rooted at ``crate`` / ``self`` / ``super`` finds its item.
+        cache = getattr(self, "_run_index_cache", None)
         if cache is None or cache[0] is not global_symbols:
             global_methods: dict[str, list[Symbol]] = {}
             for sym in global_symbols.values():
-                # A foreign (``extern``-block) declaration is reached only by
-                # its own name, never through a receiver or a ``Type::`` path
-                # -- it has no owner. Pooled here, an ``extern`` ``now`` could
-                # be the only ``now`` and bind every ``Instant::now()`` in the
-                # repository to wasm's ``Date.now``. This pool serves exactly
-                # the method / scoped-path fallback, so the declaration stays
-                # out (INV-lopus).
                 if sym.meta and "ffi_import" in sym.meta:
                     continue
                 if sym.kind in ("method", "function"):
                     short = sym.name.split("::")[-1] if "::" in sym.name else sym.name
                     global_methods.setdefault(short, []).append(sym)
-            mr = ListNameResolver(global_methods, ambiguity_threshold=3)
-            self._mr_cache = (global_symbols, mr)
-        else:
-            mr = cache[1]
+            decls: dict[tuple[str, str], list[Symbol]] = {}
+            for same_named in kind_index.values():
+                for sym in same_named:
+                    if sym.path and sym.qualified_name:
+                        decls.setdefault((sym.path, sym.qualified_name), []).append(sym)
+            self._run_index_cache = (global_symbols, global_methods, decls)
+            cache = self._run_index_cache
+        _, global_methods, decls = cache
 
         # Build span index from EVERY declaration of this file (INV-midag).
         # local_symbols (symbol_by_name) loses entries when short names
@@ -5287,18 +5133,6 @@ class RustAnalyzer(TreeSitterAnalyzer):
             (s.span.start_line, s.span.end_line): s
             for s in file_syms if s.span is not None
         }
-
-        # Pull the kind-segregated multi-value index populated by
-        # register_symbol so the impl_item handler can prefer
-        # ``trait Foo`` over ``struct Foo`` when both share a short name
-        # (WI-milak / BUG-04). Empty-fallback for synthetic callers that
-        # bypass register_symbol; with an empty index the impl_item
-        # handler finds no trait and emits the unresolved-trait edge.
-        kind_cache = getattr(self, "_kind_index_cache", None)
-        if kind_cache is not None and kind_cache[0] is global_symbols:
-            kind_index = kind_cache[1]
-        else:
-            kind_index = {}
 
         # Pre-compute the per-function var_types from let bindings
         # and parameter declarations, consulting the cross-file
@@ -5320,11 +5154,17 @@ class RustAnalyzer(TreeSitterAnalyzer):
             tree.root_node, source,
         )
 
+        # This file's import table, kept for the run's result (``analyze``),
+        # and the wildcards that open a module of this same file.
+        use_bindings = list(_rust_use_bindings(tree.root_node, source))
+        import_scope = _rust_import_scope(use_bindings, rel_path, self.in_tree_crates())
+        if self._import_scopes is not None:
+            self._import_scopes[rel_path] = import_scope
         return _extract_edges_from_file(
             tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
-            method_resolver=mr,
+            methods_by_short_name=global_methods,
             span_index=span_idx,
             field_type_registry=self._field_type_registry,
             analyzer=self,
@@ -5333,6 +5173,13 @@ class RustAnalyzer(TreeSitterAnalyzer):
             var_type_paths=var_type_paths,
             file_functions=file_syms,
             free_fn_return_type=free_fn_return_type,
+            import_scope=import_scope,
+            decls_by_path=decls,
+            file_structs=[
+                s for s in self.file_symbols(local_symbols)
+                if s.path == rel_path and s.kind == "struct"
+            ],
+            in_file_globs=_rust_in_file_globs(use_bindings, rel_path, self.in_tree_crates()),
         )
 
     def extract_usage_contexts_from_file(

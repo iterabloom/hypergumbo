@@ -25,12 +25,13 @@ implementations are ONE method, declared once: ``recv.fd()`` on a receiver
 nothing types binds the trait's declaration, provided every ``fd`` in the
 tree belongs to that trait (another type's ``fd`` anywhere, and the receiver
 could be that type). A path call (``<X as Other>::fd(..)``) names its owner
-in its own text and is not bound through this file's trait. Two ``impl``
-blocks of one type that both declare the method (``#[cfg]`` alternatives)
-are one method too, and keep the name lookup.
+in its own text and is not bound through this file's trait.
 
-Kept, and stated by a test each: with ONE method of the name in the file an
-untyped receiver still binds it by name.
+Changed by the shared call-resolution pass (ADR-0064): a receiver nothing
+types binds nothing by its method's name alone, not with one method of the
+name in the tree, and not with two ``impl`` blocks of one type (``#[cfg]``
+alternatives) declaring it: those say the two declarations are one method,
+not that the receiver is of that type.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py
 from __future__ import annotations
@@ -157,8 +158,10 @@ def test_a_use_path_through_a_child_module_names_its_function(tmp_path: Path, de
     assert _reached(data, tmp_path, "via_import", "helper") == ["1"]
 
 
-def test_one_method_of_the_name_is_still_reached_by_an_untyped_receiver(tmp_path: Path) -> None:
-    """Kept behaviour, stated: with a single candidate the short name still binds."""
+def test_one_method_of_the_name_is_not_reached_by_an_untyped_receiver(tmp_path: Path) -> None:
+    """``x`` comes from a library: a single method of the name in the tree is
+    not evidence that ``x`` is of its type (ADR-0064: a name looked up among
+    everything is not a reason to bind)."""
     data = _survey(tmp_path, {"src/lib.rs": _impl("Conn", "execute", 1) + (
         "pub fn via_ext() {\n    let x = extlib::make();\n    x.execute();\n}\n"
     )})
@@ -166,7 +169,8 @@ def test_one_method_of_the_name_is_still_reached_by_an_untyped_receiver(tmp_path
     (src,) = [n["id"] for n in data["nodes"] if n["name"] == "via_ext"]
     reached = [nodes[e["dst"]]["name"] for e in data["edges"]
                if e["type"] == "calls" and e["src"] == src and e["dst"] in nodes]
-    assert "Conn::execute" in reached
+    assert "Conn::execute" in {n["name"] for n in data["nodes"]}, "reach"
+    assert "Conn::execute" not in reached
 
 
 def _dst_names(data: dict, caller: str) -> set[str]:
@@ -283,16 +287,17 @@ def test_implementations_in_other_files_are_still_the_one_trait_method(tmp_path:
     assert not _dst_names(data, "Holder::get") & {"A::fd", "C::fd"}
 
 
-def test_two_impl_blocks_of_one_type_are_one_method(tmp_path: Path) -> None:
-    """``#[cfg]`` alternatives of ``Conn::execute``: one type's method, still reached by name
-    (kept behaviour: exactly one METHOD of the name in the caller's file)."""
+def test_two_impl_blocks_of_one_type_do_not_type_an_untyped_receiver(tmp_path: Path) -> None:
+    """``#[cfg]`` alternatives of ``Conn::execute`` are one type's method, but ``x``
+    comes from a library: nothing says it is a ``Conn`` (ADR-0064)."""
     data = _survey(tmp_path, {"src/lib.rs": (
         "pub struct Conn;\n\n"
         "#[cfg(unix)]\nimpl Conn {\n    pub fn execute(&self) -> i32 { 1 }\n}\n\n"
         "#[cfg(windows)]\nimpl Conn {\n    pub fn execute(&self) -> i32 { 1 }\n}\n\n"
         "pub fn via_ext() {\n    let x = extlib::make();\n    x.execute();\n}\n"
     )})
-    assert _dst_names(data, "via_ext") & {"Conn::execute"}
+    assert "Conn::execute" in {n["name"] for n in data["nodes"]}, "reach"
+    assert not _dst_names(data, "via_ext") & {"Conn::execute"}
 
 
 def test_a_path_call_that_names_another_trait_does_not_bind_this_files_trait(tmp_path: Path) -> None:
