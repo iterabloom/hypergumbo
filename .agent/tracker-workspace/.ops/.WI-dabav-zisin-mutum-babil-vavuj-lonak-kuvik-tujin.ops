@@ -1,0 +1,21 @@
+- op: create  # 4409
+  at: '2026-11-25T19:08:42Z'  # 4409
+  by: agent  # 4409
+  actor: jgstern_agent  # 4409
+  clock: 1  # 4409
+  nonce: '4409'  # 4409
+  data:  # 4409
+    kind: work_item  # 4409
+    title: "Stubs of one name from one caller collapse before the linkers run: the second call's receiver type or qualifier is lost (432 Kotlin stubs)"  # 4409
+    status: todo_hard  # 4409
+    priority: 2  # 4409
+    parent:  # 4409
+    tags:  # 4409
+    - analysis_quality  # 4409
+    - shared_call_resolution  # 4409
+    isbefore: []  # 4409
+    duplicate_of: []  # 4409
+    not_duplicate_of: []  # 4409
+    pr_ref:  # 4409
+    description: "STATEMENT: two calls of one name from one caller that carry different facts (a receiver type, a qualifier) are both seen by the linkers. OBSERVED: unresolved stubs of one name from one caller share an edge id, and all_analyzers keeps the first by id before any linker runs; the second call's facts are dropped. Every call of a multi-line chain starts on the chain's line, so EmptyTags.plus(..).plus(..) keeps one stub and loses the qualifier EmptyTags. Measured by the Kotlin adapter on okhttp and detekt-core: 432 stubs lose their facts (103 a receiver_type_hint, 11 a qualifier). Of 9 Kotlin edges a blind judge found right before the batch and unresolved after it, 5 are this (handshakeCertificates.sslSocketFactory() twice, EmptyTags.plus twice, compositeConfig.subConfig). It is the largest single cause of right edges lost by the Kotlin adapter. Not the same as the dedup that leaves a stub open beside its answer (a separate item): here the facts never reach a linker.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 4409
+    fields: {}  # 4409

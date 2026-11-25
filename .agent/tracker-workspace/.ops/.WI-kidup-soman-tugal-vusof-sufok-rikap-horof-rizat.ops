@@ -28,3 +28,19 @@
   clock: 2  # 92df
   nonce: 92df  # 92df
   message: "Measurement for decision 1 (what a name-only bind becomes), from the step 4 pilot (branch jgstern-agent/feat/shared-call-resolution-pilot; scoreboard ~/hypergumbo_lab_notebook/pilot_11252026/final/SCOREBOARD.md; ADR-0064 section \"What the pilot built and measured\").\nWHAT THE PILOT BRANCH DOES, pending this decision: option (a) with the part of (b) the call facts support, as ONE linker (linkers/single_holder_name.py) for JavaScript/TypeScript and Rust; C# has no name bind. It is one linker to remove or widen.\nWHY IT WAS BUILT BEFORE THE DECISION: the first JS/TS and Rust adapters deleted every by-name bind (my brief; stricter than the ADR's recommendation). Resolved calls fell 22,688 -> 11,092 and 11,561 -> 4,768; of 15 lost edges read in each, 13 and 10 were right. In 10,652 of the 11,805 lost JS/TS calls the name had exactly one holder.\nMEASURED WITH THE STEP (14 repositories, edges read in the source, seed 20261125): JS/TS 7,757 binds restored to their earlier target, 14 right of 15; 78 with no earlier bind of that name, 14 of 15. Rust 1,549 restored, 13 of 15; 14 with no earlier bind, 5 right of 14 (std names: WI-natir). C#, were it on: 314 new binds, 10 right and 5 wrong of 15 (string.Join, task.AsTask(), stopwatch.Start()), which is why the step runs only where the analyzer screens library names (WI-sahaz).\nWHAT THE DECISION NOW TURNS ON: (1) keep the step as built (one holder binds, marked name, 0.7); (2) remove it (JS/TS loses about 7,800 resolved calls at 14-of-15 right, Rust about 1,600 at 13-of-15); (3) add the missing half of (b), a fact for \"the receiver's first name is not declared in the file\" (the one JS/TS wrong in the restored sample was Promise.all bound to the repository's one `all`). Decisions 2 and 3 (resolved_by as a field; folding the evidence types) were not touched by the pilot."  # 92df
+- op: update  # 9beb
+  at: '2026-11-25T17:00:46Z'  # 9beb
+  by: agent  # 9beb
+  actor: jgstern_agent  # 9beb
+  clock: 3  # 9beb
+  nonce: 9beb  # 9beb
+  set: {}  # 9beb
+  add:  # 9beb
+    tags: [awaits_bakeoff_validation]  # 9beb
+- op: discuss  # 57ba
+  at: '2026-11-25T17:00:47Z'  # 57ba
+  by: agent  # 57ba
+  actor: jgstern_agent  # 57ba
+  clock: 4  # 57ba
+  nonce: 57ba  # 57ba
+  message: "The pilot merged as PR #2411 (dev 619ebe7ac, 2026-11-26). Its description states resolved-call counts before and after on 14 repositories (C# 5,572 to 7,621; JS/TS 23,102 to 23,401; Rust 11,561 to 9,533), measured by the agent's own runs and hand samples, not by a bakeoff cycle: tagged awaits_bakeoff_validation for that reason. Decision 1 is still open and the name step (linkers/single_holder_name.py) is what dev now does for JavaScript/TypeScript and Rust pending it; decisions 2 and 3 untouched."  # 57ba

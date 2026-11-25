@@ -1,0 +1,21 @@
+- op: create  # dd33
+  at: '2026-11-25T19:08:55Z'  # dd33
+  by: agent  # dd33
+  actor: jgstern_agent  # dd33
+  clock: 1  # dd33
+  nonce: dd33  # dd33
+  data:  # dd33
+    kind: work_item  # dd33
+    title: "A receiver that is the result of a call has no stub fact: the name step is off for PHP because of it (2 of 15 new binds right)"  # dd33
+    status: todo_hard  # dd33
+    priority: 2  # dd33
+    parent:  # dd33
+    tags:  # dd33
+    - analysis_quality  # dd33
+    - shared_call_resolution  # dd33
+    isbefore: []  # dd33
+    duplicate_of: []  # dd33
+    not_duplicate_of: []  # dd33
+    pr_ref:  # dd33
+    description: "STATEMENT: the single-holder name step can tell a receiver that is the result of a call from a receiver that is a variable nobody typed, and refuses a name bind on the first when the call is a library's. OBSERVED: no stub fact says that a receiver is a call result. With the name step turned on for PHP (arm php_after_r1_flag_on): of 15 calls it bound that nothing bound before, 2 were right (13 are Laravel $table->foreign(..)->references(..)->on('users') bound to the repository's one on()); of 15 it bound to the target the old by-name lookup had chosen, 9 were right (wrong: Storage::disk('s3')->put, response()->json(), a Dropbox client's setAccessToken). So the name step is OFF for PHP and 294 single-holder calls on untyped receivers are unresolved; of 15 lost PHP edges read by a blind judge, 8 were right before. A screen of the language's own library names cannot hold a framework's names. Related: the return type of a callee the linker resolves would type most of these receivers.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # dd33
+    fields: {}  # dd33
