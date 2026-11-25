@@ -84,8 +84,8 @@ How It Works
        enclosing type's own method (``own_type``) or a method of the
        receiver's known type (``receiver_type``). Every other call is
        emitted unresolved with the facts the shared pass reads
-       (``receiver_type_hint``, ``qualifier``, ``enclosing_class``; see
-       ``_extract_edges_from_file``), and ``inherited_calls`` decides from
+       (``receiver_type_hint``, ``qualifier``, ``enclosing_class``,
+       ``super_receiver``; see ``_extract_edges_from_file``), and ``inherited_calls`` decides from
        the file's table; neither the file's short-name table nor a run-wide
        lookup of the callee's name binds a call (ADR-0064). An unresolved
        call's module slot is the receiver only when that names a type
@@ -2150,9 +2150,11 @@ def _extract_edges_from_file(
     - a receiver that names a type or a namespace path (``Util.Helper()``,
       ``Ns.Util.Helper()``) and is no variable or member known here:
       ``qualifier``, the receiver as written;
-    - a bare call, ``this.M()``, ``base.M()``: ``enclosing_class``, unless a
-      local function or a local variable of that name is in scope (then it
-      calls nothing the graph holds).
+    - a bare call, ``this.M()``: ``enclosing_class``, unless a local
+      function or a local variable of that name is in scope (then it calls
+      nothing the graph holds);
+    - ``base.M()``: ``enclosing_class`` and ``super_receiver``, always (the
+      walk starts at the parent, so the caller's own override is skipped).
 
     Neither the file's short-name table nor a run-wide lookup of the callee's
     name is a reason to bind a call any more: a name looked up among every
@@ -2349,17 +2351,24 @@ def _extract_edges_from_file(
                 else None
             )
 
-            # A bare call, ``this.M()``, ``base.M()``: the enclosing type's own
-            # method in this file; else the linker walks the type's ancestors
-            # from the caller's own type (ADR-0029). A local function or a
-            # local variable of that name hides every member: the call reaches
-            # nothing the graph holds. ``base.M()`` calls the BASE type's M,
-            # never the enclosing type's own (the override it is usually
-            # written in): where the own type declares M no fact the shared
-            # pass reads says "start at the parent", so that call stays
-            # unresolved; where it does not, the walk from the own type is the
-            # walk from its base.
-            if receiver is None or receiver.type in ("this", "base"):
+            # ``base.M()`` calls the BASE type's M, never the enclosing type's
+            # own (the override it is usually written in): the linker walks
+            # the enclosing type's ancestors, starting at its parent
+            # (``super_receiver``), whether or not the own type declares M.
+            if receiver is not None and receiver.type == "base":
+                edges.append(make_unresolved_edge(
+                    "csharp", current_function.id, callee_name, line,
+                    PASS_ID, run.execution_id,
+                    enclosing_class=enclosing_cls, super_receiver=True,
+                ))
+                continue
+
+            # A bare call, ``this.M()``: the enclosing type's own method in
+            # this file; else the linker walks the type's ancestors from the
+            # caller's own type (ADR-0029). A local function or a local
+            # variable of that name hides every member: the call reaches
+            # nothing the graph holds.
+            if receiver is None or receiver.type == "this":
                 hidden = receiver is None and (
                     callee_name in declared_locals
                     or _local_function_in_scope(node, callee_name, source)
@@ -2368,9 +2377,6 @@ def _extract_edges_from_file(
                     local_symbols.get(f"{enclosing_cls}.{callee_name}")
                     if enclosing_cls and not hidden else None
                 )
-                if own is not None and receiver is not None and receiver.type == "base":
-                    hidden = True
-                    own = None
                 if own is not None:
                     bind(current_function, node, own, resolved_by.OWN_TYPE,
                          {"call_construct": "method"})

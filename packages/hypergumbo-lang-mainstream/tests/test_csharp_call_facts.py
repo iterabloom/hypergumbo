@@ -12,8 +12,9 @@ linker decides from the caller's file's ``using`` table
   ``new``, a field, the declared return type of a call this file resolves);
 * ``qualifier``: a receiver that can name a type or namespace path and is no
   variable or member this file knows;
-* ``enclosing_class``: a bare, ``this.`` or ``base.`` call, unless a local
-  function or a local variable of that name is in scope.
+* ``enclosing_class``: a bare or ``this.`` call, unless a local function or
+  a local variable of that name is in scope; a ``base.`` call, always, with
+  ``super_receiver`` (the walk starts at the parent).
 
 The first half pins what the analyzer emits, route by route. The second half
 runs the whole pipeline for the four cases the shared pass exists for.
@@ -400,12 +401,13 @@ def test_a_bare_call_binds_only_the_enclosing_types_own_method(tmp_path: Path) -
     assert len(own) == 2 and {(e.meta or {})["resolved_by"] for e in own} == {"own_type"}
     stubs = {(e.meta or {})["callee_name"]: _facts(e) for e in edges if not e.is_resolved}
     # ``Elsewhere`` is Other's: not this type's, so the shared pass walks
-    # Main's ancestors, never the file's table of short names. ``base.Up()``
-    # with no ``Up`` of Main's own: the walk from Main is the walk from Base.
+    # Main's ancestors, never the file's table of short names. ``base.Up()``:
+    # the walk starts at Main's parent.
     assert stubs == {
         "Elsewhere": {"enclosing_class": "Main"}, "Inherited": {"enclosing_class": "Main"},
         "Up": {"enclosing_class": "Main"},
     }
+    assert [e.meta.get("super_receiver") for e in edges if not e.is_resolved] == [None, None, True]
 
 
 def test_base_call_from_its_own_override_is_not_the_override(tmp_path: Path) -> None:
@@ -416,11 +418,14 @@ def test_base_call_from_its_own_override_is_not_the_override(tmp_path: Path) -> 
             "}\n"
         ),
     }, "Main.Twice")
-    # The own ``Twice`` is the caller itself; ``base.Twice()`` is Base's. No
-    # fact says "start at the parent": unresolved, and no type for its result.
+    # The own ``Twice`` is the caller itself; ``base.Twice()`` is Base's:
+    # handed over to start at the parent. Its result has no known type.
     assert not any(e.is_resolved for e in edges)
-    assert sorted(((e.meta or {})["callee_name"], tuple(_facts(e).items())) for e in edges) == [
-        ("Go", (("call_construct", "method"),)), ("Twice", ()), ("Twice", ()),
+    assert sorted(((e.meta or {})["callee_name"], tuple(_facts(e).items()),
+                   (e.meta or {}).get("super_receiver")) for e in edges) == [
+        ("Go", (("call_construct", "method"),), None),
+        ("Twice", (("enclosing_class", "Main"),), True),
+        ("Twice", (("enclosing_class", "Main"),), True),
     ]
 
 
@@ -503,6 +508,24 @@ def test_end_to_end_a_bare_call_to_an_inherited_method(tmp_path: Path) -> None:
         "App/Child.cs": "namespace App { public class Child : Base { public void Run() { Ping(); } } }\n",
     })
     assert _resolved(data, "Child.Run", "Ping") == [("App.Base.Ping", "own_type")]
+
+
+def test_end_to_end_base_call_in_an_override_reaches_the_parents_method(tmp_path: Path) -> None:
+    """``base.Run()`` inside ``Child.Run``, the parent in another file: the
+    parent's Run, never the override itself. ``base.Stop()`` where Child
+    declares no Stop and neither does any ancestor of the repository (the
+    parent's own parent is a library's): unresolved."""
+    data = _map(tmp_path, {
+        "App/Base.cs": "namespace App { public class Base : Lib.Thing { public virtual void Run() {} } }\n",
+        "App/Child.cs": (
+            "namespace App { public class Child : Base {\n"
+            "    public override void Run() { base.Run(); base.Stop(); }\n"
+            "} }\n"
+        ),
+        "App/Stray.cs": "namespace App { public class Stray { public void Stop() {} } }\n",
+    })
+    assert _resolved(data, "Child.Run", "Run") == [("App.Base.Run", "own_type")]
+    assert _resolved(data, "Child.Run", "Stop") == []
 
 
 def test_end_to_end_an_untyped_local_stays_unresolved(tmp_path: Path) -> None:
