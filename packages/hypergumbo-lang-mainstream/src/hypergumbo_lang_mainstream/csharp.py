@@ -600,55 +600,43 @@ _CSHARP_ASYNC_WRAPPER_TYPES = ("Task", "ValueTask", "IAsyncEnumerable")
 
 
 def _extract_csharp_return_type_name(signature: str | None) -> str | None:
-    """Extract the return type name from a C# method signature.
+    """The type a call's result has, read from the callee's signature
+    ``(params) ReturnType`` (``void`` omitted), in the spelling of a local's
+    declared type (:func:`_declared_type`): type arguments kept
+    (``Policy<TResult>``), a qualifier kept (``Acme.Conn``), ``?`` removed.
 
-    C# signatures use the format ``(params) ReturnType`` where void is omitted.
-    Returns the type name only if it is a simple uppercase identifier (filters
-    out primitive types like ``int``, ``string`` and generics like ``List<T>``).
-    WI-jujup Tier 2 escape hatch: ``Task<T>`` / ``ValueTask<T>`` /
-    ``IAsyncEnumerable<T>`` unwrap to ``T`` because the C# ``await`` operator
-    dereferences the wrapper at the call site, so ``var x = await
-    Method()`` should bind ``x`` to ``T``, not to the wrapper type.
+    Kept from before the type arguments were: only a type whose name opens
+    with a capital (a predefined type such as ``string`` is not read from a
+    return), and the WI-jujup Tier 2 escape hatch: ``Task<T>`` /
+    ``ValueTask<T>`` / ``IAsyncEnumerable<T>`` unwrap to ``T`` (the ``await``
+    operator dereferences the wrapper at the call site), ``T`` passing the
+    same capital filter, and a bare wrapper (``Task``) gives nothing.
 
     Examples:
         ``"() ServiceClient"`` → ``"ServiceClient"``
         ``"(string name, int age) User"`` → ``"User"``
+        ``"() Policy<TResult>"`` → ``"Policy<TResult>"``
         ``"() Task<User>"`` → ``"User"`` (WI-jujup async unwrap)
+        ``"() Task<List<User>>"`` → ``"List<User>"``
         ``"() ValueTask<Order>"`` → ``"Order"``
         ``"() IAsyncEnumerable<Item>"`` → ``"Item"``
         ``"()"`` → ``None``
         ``"() string"`` → ``None`` (lowercase = primitive)
         ``"() Task<int>"`` → ``None`` (inner is primitive)
         ``"() Task"`` → ``None`` (no inner type)
-        ``"() List<string>"`` → ``None`` (generic non-async wrapper)
+        ``"() Item[]"`` → ``None`` (an array: :func:`_declared_type`)
     """
     if not signature:
         return None
-    paren_idx = signature.rfind(")")
-    if paren_idx < 0 or paren_idx == len(signature) - 1:
+    close = find_matching_paren(signature, 0)
+    returned = _declared_type(signature[close + 1:]) if close >= 0 else None
+    if not returned or not returned[0].isupper():
         return None
-    ret_part = signature[paren_idx + 1:].strip()
-    # WI-jujup Tier 2: unwrap async wrapper types — Task<T>, ValueTask<T>,
-    # IAsyncEnumerable<T>. The await operator strips the wrapper so the
-    # var_types entry should be the inner type.
-    if "<" in ret_part and ret_part.endswith(">"):
-        outer = ret_part[: ret_part.index("<")]
-        if outer in _CSHARP_ASYNC_WRAPPER_TYPES:
-            inner = ret_part[ret_part.index("<") + 1 : -1].strip()
-            # The inner type itself must pass the same uppercase-identifier
-            # filter; nested generics (Task<List<T>>) are not unwrapped
-            # further — that's a separate, much rarer pattern.
-            if inner.isidentifier() and inner and inner[0].isupper():
-                return inner
-            return None
-    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
-        # Bare wrapper types (``Task`` non-generic) name the wrapper itself,
-        # not any inner type — drop them so var_types doesn't accidentally
-        # bind a variable to "Task".
-        if ret_part in _CSHARP_ASYNC_WRAPPER_TYPES:
-            return None
-        return ret_part
-    return None
+    head, _, arguments = returned.partition("<")
+    if head.rsplit(".", 1)[-1] in _CSHARP_ASYNC_WRAPPER_TYPES:
+        inner = _declared_type(arguments[:-1]) if arguments else None
+        return inner if inner and inner[0].isupper() else None
+    return returned
 
 
 def _track_csharp_return_type(
@@ -943,7 +931,7 @@ def _declared_type(text: str) -> Optional[str]:
 
     Every declaration site reads its type through this one function: a local
     (:func:`_local_declarations`), a parameter, a field, a cast or ``as``, a
-    ``new``.
+    ``new``, a method's declared return (:func:`_extract_csharp_return_type_name`).
     """
     words = text.split()
     while len(words) > 1 and words[0] in ("ref", "readonly", "scoped"):

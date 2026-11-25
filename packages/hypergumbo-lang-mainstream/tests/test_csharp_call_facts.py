@@ -652,6 +652,43 @@ def test_a_shadowing_declaration_wins_inside_its_scope(tmp_path: Path) -> None:
                      "Second": None, "Field": "Bar"}
 
 
+def test_a_declared_return_type_keeps_its_type_arguments(tmp_path: Path) -> None:
+    """``Policy<TResult> Make()``: ``var p = Make()`` and ``Make().M()`` carry
+    ``Policy<TResult>``; a qualified and a nullable return as written, ``?``
+    removed; ``Task<T>`` / ``ValueTask<T>`` (qualified too) still mean ``T``,
+    now with ``T``'s own type arguments; an array, a predefined type, a bare
+    ``Task`` and a tuple give nothing."""
+    hints = _hints(_calls(tmp_path, {
+        "Main.cs": (
+            "class Main<TResult> {\n"
+            "    static Policy<TResult> Make() { return null; }\n"
+            "    static Acme.Conn? Find() { return null; }\n"
+            "    static Task<List<Item>> LoadAsync() { return null; }\n"
+            "    static System.Threading.Tasks.ValueTask<Order> NextAsync() { return null; }\n"
+            "    static Item[] Many() { return null; }\n"
+            "    static string Name() { return null; }\n"
+            "    static Task Wait() { return null; }\n"
+            "    static (Item, Order) Pair() { return default; }\n"
+            "    void Run() {\n"
+            "        var p = Make(); p.P();\n"
+            "        Make().Direct();\n"
+            "        var f = Find(); f.F();\n"
+            "        var l = LoadAsync(); l.L();\n"
+            "        var n = NextAsync(); n.N();\n"
+            "        var m = Many(); m.M();\n"
+            "        var s = Name(); s.S();\n"
+            "        var w = Wait(); w.W();\n"
+            "        var (a, b) = Pair(); a.A();\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run"))
+    assert hints == {
+        "P": "Policy<TResult>", "Direct": "Policy<TResult>", "F": "Acme.Conn", "L": "List<Item>",
+        "N": "Order", "M": None, "S": None, "W": None, "A": None,
+    }
+
+
 # ------------------------------------------------------------ bare calls
 
 def test_a_bare_call_binds_only_the_enclosing_types_own_method(tmp_path: Path) -> None:
@@ -857,6 +894,40 @@ def test_end_to_end_a_local_typed_by_a_cast(tmp_path: Path) -> None:
     ))
     assert _resolved(data, "Main.Run", "Open") == [("Data.Conn.Open", "receiver_type")]
     assert _resolved(data, "Main.RunAs", "Open") == [("Legacy.Conn.Open", "receiver_type")]
+
+
+def test_end_to_end_a_generic_return_type_reaches_the_generic_type(tmp_path: Path) -> None:
+    """``Policy`` and ``Policy<TResult>`` in one namespace and two files;
+    ``var p = Make()`` with ``Policy<TResult> Make()`` reaches the generic's
+    ``Execute``, ``Plain()``'s ``Policy`` the plain one's."""
+    data = _map(tmp_path, {
+        "Polly/Policy.cs": "namespace Polly { public class Policy { public void Execute() {} } }\n",
+        "Polly/Policy.TResult.cs": (
+            "namespace Polly { public class Policy<TResult> { public void Execute() {} } }\n"
+        ),
+        "App/Main.cs": (
+            "using Polly;\n"
+            "namespace App { public class Main<TResult> {\n"
+            "    static Policy<TResult> Make() { return null; }\n"
+            "    static Policy Plain() { return null; }\n"
+            "    public void Run() { var p = Make(); p.Execute(); }\n"
+            "    public void RunPlain() { var p = Plain(); p.Execute(); }\n"
+            "} }\n"
+        ),
+    })
+    nodes = {n["id"]: n for n in data["nodes"]}
+
+    def reached(caller: str) -> list[tuple[str, str]]:
+        return sorted(
+            (nodes[e["dst"]]["path"].rsplit("/", 1)[-1], e["meta"]["resolved_by"])
+            for e in data["edges"]
+            if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+            and not e["meta"].get("superseded_by")
+            and nodes.get(e["src"], {}).get("name") == caller
+            and nodes[e["dst"]]["name"] == "Policy.Execute"
+        )
+    assert reached("Main.Run") == [("Policy.TResult.cs", "receiver_type")]
+    assert reached("Main.RunPlain") == [("Policy.cs", "receiver_type")]
 
 
 def test_end_to_end_a_static_call_through_a_using(tmp_path: Path) -> None:

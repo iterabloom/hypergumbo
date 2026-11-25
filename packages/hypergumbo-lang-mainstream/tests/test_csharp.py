@@ -1072,10 +1072,11 @@ class TestCSharpReturnTypeExtraction:
         assert _extract_csharp_return_type_name("() string") is None
 
     def test_generic_return_type(self) -> None:
-        """Returns None for generic return types (not simple identifier)."""
+        """A generic return type keeps its type arguments (a ``List<T>`` and a
+        ``List`` are two types), as a local's declared type does."""
         from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
 
-        assert _extract_csharp_return_type_name("() List<string>") is None
+        assert _extract_csharp_return_type_name("() List<string>") == "List<string>"
 
     def test_async_task_unwraps(self) -> None:
         """``Task<T>`` unwraps to ``T`` (history: WI-jujup).
