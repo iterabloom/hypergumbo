@@ -334,6 +334,7 @@ import hypergumbo_core.linkers.django_orm_dispatch as _django_orm_dispatch_linke
 import hypergumbo_core.linkers._third_party_bases as _third_party_bases_linker  # noqa: F401
 import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
+import hypergumbo_core.linkers.single_holder_name as _single_holder_name_linker  # noqa: F401
 from .entrypoints import (
     PROGRAM_START_KINDS, apply_rank_floor_and_cap, builds_go_module_binary,
     detect_entrypoint_candidates, detect_entrypoints, go_build_ignored,

@@ -66,6 +66,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | router_routes | Framework | Symbols tagged `concept: router` (module / combinator / route-table groupings per framework YAML) → the `concept: route` registration symbols whose spans nest within the router's span in the same file, via `registers_routes` edges (Phoenix, http4s, Nuxt/Remix filesystem routes, Yesod `parseRoutes`). |
 | ruby_ffi | Bridge | Ruby `FFI.attach_function` / `rb_define_method` C extension registrations ↔ C / C++ function implementations. |
 | rust_trait_dispatch | Framework | Rust trait-impl method dispatch: consumes the analyzer's `implements` edges (one per `impl Trait for Struct`) and emits `dispatches_to` edges from the trait to every concrete method, resolving static (generic-bound) and dynamic (`&dyn Trait`) dispatch targets. |
+| single_holder_name | Infrastructure | The last resort of the shared call resolution (ADR-0064): an unresolved call no earlier pass bound → the one method or function of the caller's language that has its name, marked `resolved_by: name`; refused when several declarations hold the name or the call's own facts point elsewhere. Only for files whose analyzer hands over an import table. |
 | solidity_abi | Bridge | TypeScript / JavaScript contract calls via `ethers.js` / `viem` ↔ Solidity function implementations via ABI function-name matching. |
 | subprocess_cli | Protocol | `subprocess.run` / `subprocess.call` / `Popen` invocations (Python) → CLI command entry points (Click, Typer, argparse) in the same repository. |
 | swift_objc | Bridge | Swift ↔ Objective-C interop via `@objc` annotations, `NSObject` subclasses, `#selector()`, bridging headers. |
@@ -82,7 +83,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 63 linkers — Protocol 11, Bridge 11, Framework 32, Infrastructure 9. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
+**Count:** 64 linkers — Protocol 11, Bridge 11, Framework 32, Infrastructure 10. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
 
 Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 
