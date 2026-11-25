@@ -147,6 +147,7 @@ from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
@@ -1111,20 +1112,26 @@ class _Bound:
     """A call resolved to a declaration, and how the edge should say so.
 
     ``confidence=None`` leaves the value to ``Edge.create``, which derives it
-    from the evidence type.
+    from the evidence type. ``resolved_by`` is what scoped the choice
+    (:mod:`hypergumbo_core.resolved_by`), required of every constructor.
     """
 
     symbol: Symbol
     evidence_type: str
     confidence: Optional[float] = None
     meta: Optional[dict[str, Any]] = None
+    resolved_by: str = field(kw_only=True)
 
 
 def _scope_bound(symbol: Symbol, inherited: bool) -> _Bound:
-    """A call bound in the calling contract's scope: own member or inherited."""
+    """A call bound in the calling contract's scope: own member or inherited
+    (a bare name, ``this.f``, ``super.f``: the enclosing contract's scope)."""
     if inherited:
-        return _Bound(symbol, "ast_call_inherited", confidence=_INHERITED_CALL_CONFIDENCE)
-    return _Bound(symbol, "ast_call_direct")
+        return _Bound(
+            symbol, "ast_call_inherited", confidence=_INHERITED_CALL_CONFIDENCE,
+            resolved_by=resolved_by.OWN_TYPE,
+        )
+    return _Bound(symbol, "ast_call_direct", resolved_by=resolved_by.OWN_TYPE)
 
 
 class _MemberResolver:
@@ -1178,7 +1185,10 @@ class _MemberResolver:
         loose = self._index.file_level(name, _FILE_LEVEL_CALL_KINDS)
         if loose is not None:
             symbol, same_file = loose
-            return _Bound(symbol, "ast_call_direct" if same_file else "ast_call")
+            return _Bound(
+                symbol, "ast_call_direct" if same_file else "ast_call",
+                resolved_by=resolved_by.SAME_FILE if same_file else resolved_by.NAME,
+            )
         return None
 
     def _member_call(
@@ -1208,7 +1218,10 @@ class _MemberResolver:
                 scoped = self._index.member(named, member, _QUALIFIED_CALL_KINDS)
                 if scoped is None:
                     return None
-                return _Bound(scoped[0], "ast_call_direct", meta={"receiver": "qualified"})
+                return _Bound(
+                    scoped[0], "ast_call_direct", meta={"receiver": "qualified"},
+                    resolved_by=resolved_by.QUALIFIED,
+                )
             if word in _BUILTIN_NAMESPACES:
                 return None
             return self._untyped_call(own, member)
@@ -1238,7 +1251,10 @@ class _MemberResolver:
         if contract is not None:
             scoped = self._index.member(contract, member, _FUNCTION_DECLARATION_KINDS)
             if scoped is not None:
-                return _Bound(scoped[0], "ast_call_type_inferred")
+                return _Bound(
+                    scoped[0], "ast_call_type_inferred",
+                    resolved_by=resolved_by.RECEIVER_TYPE,
+                )
         return self._attached_call(own, member, receiver_type)
 
     def _attached_call(
@@ -1272,7 +1288,12 @@ class _MemberResolver:
             ]
             declared = fitting or declared
         if len({(function.path, function.name) for function in declared}) == 1:
-            return _Bound(declared[-1], "ast_call", confidence=_RECEIVER_BLIND_CONFIDENCE)
+            # The search ran over the libraries ``using`` directives attach;
+            # the receiver's type only narrows among them.
+            return _Bound(
+                declared[-1], "ast_call", confidence=_RECEIVER_BLIND_CONFIDENCE,
+                resolved_by=resolved_by.IMPORT,  # resolved_by: closest fit, see report
+            )
         return None
 
     def _untyped_call(self, own: Optional[_ContractKey], member: str) -> Optional[_Bound]:
@@ -1286,6 +1307,9 @@ class _MemberResolver:
         if attached is not None:
             return attached
         candidates: list[Symbol] = []
+        # The contracts of this file, else a file-level name (this file's or
+        # the run's).
+        _by = resolved_by.SAME_FILE
         for owner in self._index.here.containers:
             scoped = self._index.member(
                 (self._path, owner), member, _FUNCTION_DECLARATION_KINDS,
@@ -1296,8 +1320,12 @@ class _MemberResolver:
             loose = self._index.file_level(member, _FUNCTION_DECLARATION_KINDS)
             if loose is not None:
                 candidates.append(loose[0])
+                _by = resolved_by.SAME_FILE if loose[1] else resolved_by.NAME
         if len(candidates) == 1:
-            return _Bound(candidates[0], "ast_call", confidence=_RECEIVER_BLIND_CONFIDENCE)
+            return _Bound(
+                candidates[0], "ast_call", confidence=_RECEIVER_BLIND_CONFIDENCE,
+                resolved_by=_by,
+            )
         return None
 
     def event(self, site: "tree_sitter.Node", name: "tree_sitter.Node") -> Optional[Symbol]:
@@ -1459,6 +1487,7 @@ def _extract_edges_from_tree(
                         origin=PASS_ID,
                         origin_run_id=run_id,
                         meta=bound.meta,
+                        resolved_by=bound.resolved_by,
                     ))
                 else:
                     # The name the unresolved edge carries: the callee as
