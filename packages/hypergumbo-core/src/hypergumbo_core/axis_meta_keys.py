@@ -1473,6 +1473,20 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "Sole writer: analyze.base.make_unresolved_edge, from its "
                     "qualifier= argument."
                 )),
+    MetaKeySpec("super_receiver", AXIS_EDGE_META,
+                "On an unresolved call edge that carries ``enclosing_class``: "
+                "``True`` when the call is written on the parent "
+                "(``super.m()``, ``base.M()``). The inherited-calls linker "
+                "starts its walk at the enclosing type's parents, so the "
+                "enclosing type's own method of that name (the override the "
+                "call usually sits in) is never bound as the callee. Present "
+                "only when true (ADR-0064 call fact).",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: analyze.base.make_unresolved_edge, from its "
+                    "super_receiver= argument."
+                )),
     MetaKeySpec("referring_paths", AXIS_EDGE_META,
                 "The list of source file paths that referred to a deduplicated "
                 "edge — the only list-of-paths meta value, minted at the "

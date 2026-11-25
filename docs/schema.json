@@ -2045,6 +2045,9 @@
             "subscriber_framework": {
               "description": "event_sourcing event_publishes edge: the framework pattern that matched the subscribe site."
             },
+            "super_receiver": {
+              "description": "On an unresolved call edge that carries ``enclosing_class``: ``True`` when the call is written on the parent (``super.m()``, ``base.M()``). The inherited-calls linker starts its walk at the enclosing type's parents, so the enclosing type's own method of that name (the override the call usually sits in) is never bound as the callee. Present only when true (ADR-0064 call fact)."
+            },
             "superseded_by": {
               "description": "ADR-0057 \u00a714 (WI-lihis): the id of the RESOLVED edge that superseded this unresolved edge to an external stub \u2014 same src, a shared call line, the same edge type and the same declared callee name, from a producer this edge's origin lacks. Stamped by finalize sub-step 7a when it multiplies this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the low rank is a stated fact rather than an unexplained number. Present only on a superseded edge; confidence is untouched and the edge is never deleted."
             },

@@ -1073,6 +1073,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             run=run,
             scoped_by=scoped_by,
             settled_type_ids=settled_type_ids,
+            super_receiver=bool(meta.get("super_receiver")),
         )
         if emitted is not None:
             new_edges.append(emitted)
@@ -1235,6 +1236,7 @@ def _try_resolve(
     run: AnalysisRun,
     scoped_by: str = resolved_by.RECEIVER_TYPE,
     settled_type_ids: list[str] | None = None,
+    super_receiver: bool = False,
 ) -> Edge | None:
     """Dispatch an unresolved edge to the right Site resolver.
 
@@ -1306,6 +1308,7 @@ def _try_resolve(
             existing_call_pairs=existing_call_pairs,
             run=run,
             settled_type_ids=settled_type_ids,
+            super_receiver=super_receiver,
         )
     return None  # pragma: no cover  # unreachable: caller gated on any-hint
 
@@ -1324,8 +1327,15 @@ def _resolve_site1(
     existing_call_pairs: set[tuple[str, str]],
     run: AnalysisRun,
     settled_type_ids: list[str] | None = None,
+    super_receiver: bool = False,
 ) -> Edge | None:
-    """Site 1: bare / ``this`` call → walk enclosing class's MRO."""
+    """Site 1: bare / ``this`` call → walk enclosing class's MRO.
+
+    ``super_receiver``: the call is written on the parent (``super.m()``,
+    ``base.M()``). The walk still follows the enclosing type's MRO, but the
+    enclosing type's own methods are hidden from it, so the first hit is the
+    nearest ancestor's.
+    """
     walker = _MRO_WALKERS.get(src_lang)
     if walker is None:
         return None
@@ -1365,6 +1375,16 @@ def _resolve_site1(
         # recall when the producer could stamp an authoritative id.
         if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
             return None
+    if super_receiver:
+        own = set(start_class_ids)
+        method_index = _TypeHierarchyIndex(
+            symbol_by_id=method_index.symbol_by_id,
+            methods_by_short_name={callee_short: [
+                (class_id, method)
+                for class_id, method in method_index.methods_by_short_name.get(callee_short, [])
+                if class_id not in own
+            ]},
+        )
     resolved_target: Symbol | None = None
     resolved_start_id: str = ""
     for start_id in start_class_ids:

@@ -1210,6 +1210,7 @@ def make_unresolved_edge(
     inherited_field_receiver: Optional[str] = None,
     call_construct: Optional[str] = None,
     qualifier: Optional[str] = None,
+    super_receiver: bool = False,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -1265,6 +1266,12 @@ def make_unresolved_edge(
             decides which declaration that name means from the caller's file
             (its import table) and looks the callee up there (ADR-0064); it
             is read only for files that hand over a table.
+        super_receiver: The call is written on the parent (``super.m()``,
+            ``base.M()``, ``super().m()``): pass it with ``enclosing_class``.
+            Lands on ``Edge.meta`` under ``"super_receiver"`` (only when
+            true). The inherited-calls linker then starts its walk at the
+            enclosing type's PARENTS: the enclosing type's own method of
+            that name, which is the usual caller, is never the callee.
     """
     # Both slots through the factory (ADR-0036 Ruling 1): the name slot folds
     # ':' to '.', so a selector, a Rust/C++ path or a PowerShell argument such
@@ -1310,6 +1317,8 @@ def make_unresolved_edge(
         hint_meta["call_construct"] = _require_declared_construct(call_construct)
     if qualifier is not None:
         hint_meta["qualifier"] = qualifier
+    if super_receiver:
+        hint_meta["super_receiver"] = True
     return Edge.create(
         src=src_id,
         dst=dst_id,
