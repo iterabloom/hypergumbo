@@ -69,6 +69,7 @@ import re
 import time
 from typing import TYPE_CHECKING
 
+from ..type_visibility import dotted as _dotted
 from ..ir import PASS_VERSION, AnalysisRun, Edge, ExternalRef, Symbol, make_pass_id
 from ..symbol_kinds import abstract_type_kind_names, type_like_kind_names
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
@@ -399,12 +400,6 @@ def _external_base_edge(
         #   by absence
         derived_from=[sym.id],
     )
-
-
-def _dotted(name: str) -> str:
-    """One separator for ``::``, ``\\`` (PHP) and ``.``; a PHP leading ``\\``
-    (the global namespace) dropped."""
-    return name.replace("::", ".").replace("\\", ".").lstrip(".")
 
 
 def _namespace_fit(

@@ -21,14 +21,22 @@ use: an analyzer's language-specific import-detection code populates an
 code queries ``resolve(local_name)`` to obtain the canonical form, which
 then constructs an ``ExternalRef`` for the emitted ``Edge.dst_ref``.
 
-## Current status: not adopted
+## Current status: adopted as the table an analyzer hands to the linkers
 
-No analyzer imports or constructs ``ImportScope``, and none ever has;
-its only user is ``tests/test_import_scope.py``. The ``ExternalRef`` /
-``Edge.dst_ref`` IR it was built to feed did land, but each analyzer
-that sets ``dst_ref`` builds it inline from its own import bookkeeping
-(py.py still builds the two dicts described below). Whether to adopt
-this class or retire it is an open decision on WI-tihup.
+ADR-0064 (shared call resolution, piece b) settles WI-tihup's open
+decision: an analyzer fills one ``ImportScope`` per file and returns
+them in ``AnalysisResult.import_scopes``; the linkers read them from
+``LinkerContext.import_scopes``. It is the only per-file data that
+crosses from an analyzer to a linker. What a linker asks of it is
+"what does this name mean in this file", which needs two things the
+first version did not have: a wildcard whose exports the analyzer does
+not know (``using System.Text;``: ``add_open_wildcard``), and the two
+an explicit binding read on its own (``named``).
+
+No analyzer uses it to build ``Edge.dst_ref``, the purpose it was first
+written for: each one that sets ``dst_ref`` builds it inline from its
+own import bookkeeping (py.py still builds the two dicts described
+below).
 
 ## Why this isn't a YAML
 
@@ -109,6 +117,7 @@ class ImportScope:
 
     _named: dict[str, CanonicalName] = field(default_factory=dict)
     _modules: dict[str, str] = field(default_factory=dict)
+    _wildcards: list[str] = field(default_factory=list)
 
     def add_named(
         self, module: str, name: str, alias: Optional[str] = None
@@ -159,6 +168,28 @@ class ImportScope:
             # binding, the explicit binding wins (Python semantics).
             if export not in self._named:
                 self._named[export] = CanonicalName(module=module, name=export)
+
+    def add_open_wildcard(self, module: str) -> None:
+        """Bring every name of ``module`` into scope, without listing them.
+
+        Covers ``using System.Text;`` (C#) and ``use crate::m::*;`` (Rust),
+        where the analyzer of the importing file does not know what the
+        module declares. Only the module is recorded: which declaration a
+        name then means is decided where every declaration is known (the
+        linker), and a name two wildcards both supply is a tie there.
+        Order of first mention is kept; a repeat adds nothing.
+        """
+        if module not in self._wildcards:
+            self._wildcards.append(module)
+
+    @property
+    def wildcard_modules(self) -> tuple[str, ...]:
+        """The modules of ``add_open_wildcard``, in order of first mention."""
+        return tuple(self._wildcards)
+
+    def named(self, local_name: str) -> Optional[CanonicalName]:
+        """The explicit name binding of ``local_name``, if it has one."""
+        return self._named.get(local_name)
 
     def add_aliased_module(self, module: str, alias: str) -> None:
         """Alias for :py:meth:`add_namespace`.
