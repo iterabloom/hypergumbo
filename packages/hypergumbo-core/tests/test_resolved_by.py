@@ -71,7 +71,6 @@ def _finalize(tmp_path: Path, symbols: list[Symbol], edges: list[Edge]) -> None:
 
 
 def test_every_value_states_its_evidence() -> None:
-    assert resolved_by.all_resolved_by_values() == set(resolved_by.RESOLVED_BY_VALUES)
     for value, statement in resolved_by.RESOLVED_BY_VALUES.items():
         assert value == value.lower() and " " not in value
         assert len(statement) > 20, value
@@ -82,12 +81,12 @@ def test_the_constants_are_the_declared_values() -> None:
         getattr(resolved_by, name) for name in dir(resolved_by)
         if name.isupper() and name not in ("RESOLVED_BY_KEY", "RESOLVED_BY_VALUES")
     }
-    assert constants == resolved_by.all_resolved_by_values()
+    assert constants == set(resolved_by.RESOLVED_BY_VALUES)
 
 
 def test_the_vocabulary_holds_no_grade_and_no_candidate_count() -> None:
     """The axiom's exclusions: a value naming quality or ambiguity is another field's fact."""
-    for value in resolved_by.all_resolved_by_values():
+    for value in set(resolved_by.RESOLVED_BY_VALUES):
         for off_axis in ("ambiguous", "exact", "fallback", "pick", "guess", "unique", "typed_"):
             assert off_axis not in value, value
 

@@ -9,7 +9,7 @@ declaration and not another of the same name. A resolved call-family edge
 carries exactly one value; an unresolved one carries none, because nothing was
 chosen.
 
-WHY IT EXISTS. The question used to be answered in parts, in eight places
+WHY IT EXISTS. The question used to be answered in parts, in seven places
 (``docs/audits/0030-call-target-resolution.md``): a receiver-flavoured
 ``evidence_type`` in some analyzers, ``meta["resolution_quality"]`` or
 ``meta["receiver"]`` in others, a grade folded into ``confidence``, a shared
@@ -122,11 +122,6 @@ RESOLVED_BY_VALUES: Final[dict[str, str]] = {
         "a compiler-grade backend supplied the target"
     ),
 }
-
-
-def all_resolved_by_values() -> frozenset[str]:
-    """Every value a producer may pass as ``resolved_by``."""
-    return frozenset(RESOLVED_BY_VALUES)
 
 
 def require_declared(value: str) -> str:
