@@ -360,6 +360,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -542,6 +543,12 @@ class _ParsedFile:
        var_ctor_modules['ws'] = 'WebSocket'; s = new net.Socket() →
        'net.Socket'. Read only when the in-repo lookup for the receiver
        misses, so a project class never lands a module here.
+
+    SCOPE (INV-zabud). Each of these closes with the function that binds it
+    (``ScopedVarTypes``): a type one function gives its ``db`` does not type
+    another function's ``db``. A binding made outside every function is seen
+    by all of them. A CONSTRUCTOR's typed parameters are also kept for the
+    file as the types of ``this.<name>`` receivers (``property_types``).
 
     A receiver none of these type (``obj.write(x)``) still emits the
     ``external`` placeholder with ``call_construct: method`` (WI-nasuf) —
@@ -7393,14 +7400,27 @@ def _extract_edges(
             ))
 
     edges: list[Edge] = []
-    # Track variable types for type inference: var_name -> class_name
-    var_types: dict[str, str] = {}
+    # Variable types for type inference: var_name -> class_name. A local or a
+    # parameter closes with the function that binds it (``ScopedVarTypes``,
+    # INV-zabud); a binding outside every function is seen by all of them.
+    var_types = ScopedVarTypes()
     # INV-misup: the catalogue module of a ``new``-constructed local, keyed by
     # variable name, beside ``var_types`` (which keeps the bare class name for
-    # in-repo resolution). Only catalogued constructors land here.
-    var_ctor_modules: dict[str, str] = {}
+    # in-repo resolution). Only catalogued constructors land here. Scoped the
+    # same way.
+    var_ctor_modules = ScopedVarTypes()
+    # ``this.<name>`` receivers: what a CONSTRUCTOR parameter was typed, for the
+    # whole file. ``constructor(private cats: CatsService)`` declares a
+    # property, and a plain constructor parameter is by convention assigned to
+    # one of its name; any other function's parameter types no property.
+    property_types: dict[str, str] = {}
 
     for node in iter_tree(tree.root_node):
+        var_types.close_scopes_before(node)
+        var_ctor_modules.close_scopes_before(node)
+        if node.type in _JS_FUNCTION_SCOPES:
+            var_types.open_scope(node)
+            var_ctor_modules.open_scope(node)
         # Import statements
         if node.type == "import_statement":
             for child in node.children:
@@ -7430,9 +7450,16 @@ def _extract_edges(
             "generator_function_declaration", "generator_function",
         ):
             param_types = _extract_param_types(node, source)
-            # Add parameter types to var_types for method call resolution
+            _name_node = node.child_by_field_name("name")
+            _is_constructor = (
+                node.type == "method_definition" and _name_node is not None
+                and _node_text(_name_node, source) == "constructor"
+            )
+            # Parameter types, for method call resolution inside the function.
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
+                if _is_constructor:
+                    property_types[param_name] = param_type
 
         # Call expressions
         elif node.type == "call_expression":
@@ -7869,8 +7896,8 @@ def _extract_edges(
                                 elif mc.type == "property_identifier":
                                     property_name = _node_text(mc, source)
                             # If we have this.propertyName and propertyName has a known type
-                            if this_node and property_name and property_name in var_types:
-                                type_class_name = var_types[property_name]
+                            if this_node and property_name and property_name in property_types:
+                                type_class_name = property_types[property_name]
                                 full_name = f"{type_class_name}.{method_name}"
                                 # Try import-path disambiguation first (monorepo duplicate names)
                                 import_module = (named_imports or {}).get(type_class_name)
