@@ -363,6 +363,7 @@ def _extract_powershell_edges(
                                 resolution_score=lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
+                                resolved_by=lookup_result.resolved_by,
                             ))
                         else:
                             # External cmdlet or function. WI-nigah Tier 2:
