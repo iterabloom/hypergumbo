@@ -122,7 +122,7 @@ int g = helper(9);
     result = analyze_cuda_files(tmp_path)
     assert not {s.name for s in result.symbols} & {"PFX", "MAC", "cpu_test", "inner"}
     calls = _calls(result)
-    assert calls[2] == ("file", {SRC_STANDS_IN_FOR: "unnamed_definition"})
-    assert calls[4] == ("outer", {SRC_STANDS_IN_FOR: "unnamed_definition"})
+    assert calls[2] == ("file", {SRC_STANDS_IN_FOR: "unnamed_definition", "resolved_by": "name"})
+    assert calls[4] == ("outer", {SRC_STANDS_IN_FOR: "unnamed_definition", "resolved_by": "name"})
     assert calls[5][0] == "outer" and SRC_STANDS_IN_FOR not in calls[5][1]
     assert 7 not in calls

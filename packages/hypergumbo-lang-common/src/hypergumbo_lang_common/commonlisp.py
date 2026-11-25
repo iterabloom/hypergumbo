@@ -567,6 +567,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "function"},
+                                resolved_by=lookup_result.resolved_by,
                             )
                             edges.append(edge)
 

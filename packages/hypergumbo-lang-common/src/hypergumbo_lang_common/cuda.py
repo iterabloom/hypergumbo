@@ -419,6 +419,7 @@ def _extract_cuda_edges(
                         evidence_type="ast_call_direct",
                         meta=launch_meta,
                         origin_run_id=run_id,
+                        resolved_by=lookup_result.resolved_by,
                     )
                 else:
                     # A function no file here defines (the CUDA API, libc):

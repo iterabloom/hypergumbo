@@ -88,6 +88,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_bb_file, find_files
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, UsageContext, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -546,8 +547,8 @@ def _threaded_callees(head: str, inner: "list[tree_sitter.Node]") -> "list[tree_
 def _resolve_callee(
     sym_node: "tree_sitter.Node", source: bytes, local_symbols: dict[str, Symbol],
     resolver: "NameResolver", require_aliases: dict[str, str],
-) -> "tuple[Symbol, float] | None":
-    """The symbol a call's head names, with its resolution score.
+) -> "tuple[Symbol, float, str] | None":
+    """The symbol a call's head names, with its resolution score and ``resolved_by``.
 
     An unqualified name is first the var of this file's namespace of that
     name, as Clojure resolves it (the resolver alone could pick another
@@ -560,11 +561,13 @@ def _resolve_callee(
     if ns_node is None:
         local = local_symbols.get(name)
         if local is not None and local.kind not in ("module", "file"):
-            return local, 1.0
+            # The file's own table: one namespace per file is Clojure's
+            # convention, not a rule the table enforces.
+            return local, 1.0, resolved_by.SAME_FILE
     path_hint = require_aliases.get(node_text(ns_node, source)) if ns_node else None
     lookup_result = resolver.lookup(name, path_hint=path_hint)
     if lookup_result.found and lookup_result.symbol:
-        return lookup_result.symbol, lookup_result.confidence
+        return lookup_result.symbol, lookup_result.confidence, lookup_result.resolved_by
     return None
 
 
@@ -738,6 +741,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=callee[1],
                                     meta={"call_construct": "function"},
+                                    resolved_by=callee[2],
                                 ))
 
     return edges

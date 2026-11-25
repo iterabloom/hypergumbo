@@ -932,6 +932,9 @@ def _extract_fortran_edges(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_call_direct",
+                    resolved_by=(
+                        lookup_result.resolved_by if resolution_score is not None else None
+                    ),
                 )
                 edges.append(edge)
 
