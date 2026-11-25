@@ -219,14 +219,16 @@ def _jsts(R, D, B, S, dl, ts, split=False, third=False):
         files[f"{side}_spare_util.{e}"] = helper(2)
     if split:
         # One class per file, named by role; the decoys' files sort after
-        # (``z_``) or before (``a_``) every right file. main imports R and Child.
+        # (``z_``) or before (``a_``) every right file. main imports R, Child and
+        # D (the scope decoys name D); S and Spare stay unreferenced.
         files |= {f"store.{e}": "export " + cls(R, "execute", 1), f"{side}_store.{e}": "export " + cls(D, "execute", 2),
                   f"base.{e}": "export " + cls(B, "ping", 1),
                   f"child.{e}": f"import {{ {B} }} from './base{x}';\n\nexport class Child extends {B} {{}}\n",
                   f"{side}_stray.{e}": "export " + cls(S, "ping", 2)}
         if third:
             files[f"{side}_spare.{e}"] = "export " + spare
-        classes = f"import {{ {R} }} from './store{x}';\nimport {{ Child }} from './child{x}';\n"
+        classes = (f"import {{ {R} }} from './store{x}';\nimport {{ {D} }} from './{side}_store{x}';\n"
+                   f"import {{ Child }} from './child{x}';\n")
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
         pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
