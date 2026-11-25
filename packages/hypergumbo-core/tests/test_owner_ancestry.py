@@ -342,6 +342,12 @@ class TestOwnerChoice:
                      [_rel(api, _SESSION), _call(_POST, {"receiver_type_hint": "Api"})])
         assert got == [["requests.Session"]]
 
+    def test_a_hint_with_type_arguments_names_the_same_owner(self) -> None:
+        api = _sym("Api")
+        got = _stamp([api, _ext(_SESSION)],
+                     [_rel(api, _SESSION), _call(_POST, {"receiver_type_hint": "Api<Json>"})])
+        assert got == [["requests.Session"]]
+
     def test_a_typed_receiver_by_id_beats_an_ambiguous_name(self) -> None:
         a1, a2 = _sym("Api"), _sym("Api", line=20)
         got = _stamp([a1, a2], [

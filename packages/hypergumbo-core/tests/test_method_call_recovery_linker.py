@@ -536,6 +536,18 @@ class TestTheHintMustNotContradictTheDeclaredReceiver:
         result = link_method_call_recovery(_ctx(symbols, edges))
         assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
 
+    def test_the_declared_type_is_compared_without_its_type_arguments(self) -> None:
+        """A hint keeps the type arguments the source wrote (``Tts<Int>``,
+        ``a.b.Tts<c.Voice>``); the class symbol is named ``Tts``. Read whole,
+        the last dotted segment of the second is ``Voice>`` and every generic
+        receiver would contradict its own class."""
+        for declared in ("Tts<Int>", "a.b.Tts<c.Voice>"):
+            symbols, edges = self._fixture(declared)
+            result = link_method_call_recovery(_ctx(symbols, edges))
+            assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"], declared
+        symbols, edges = self._fixture("Audio<Tts>")
+        assert link_method_call_recovery(_ctx(symbols, edges)).edges == []
+
 
 class TestAProducerThatNamedTheModuleIsNotOverridden:
     """WI-rulik: a COMPLETE external identity key refuses the recovery.
