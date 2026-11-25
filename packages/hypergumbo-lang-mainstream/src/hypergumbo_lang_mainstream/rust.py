@@ -2962,6 +2962,19 @@ class _InTreeCrates:
                 [rel for rel, crate_dir in self._crate_dir_of.items() if crate_dir == package],
                 self._targets(package, _cargo_manifest(manifest)), package,
             )
+        # A tree analysed without its manifest (``reqwest/src``): files in no
+        # package. When the analysis root holds ``lib.rs`` or ``main.rs`` it
+        # is a crate's ``src/``: the library, the binary and ``bin/*.rs``
+        # are the roots Cargo would find there, and the files their module
+        # trees. Only the target layout reads this; the package layout, and
+        # so the ``imports`` edges, place none of these files. Without either
+        # file nothing is assumed.
+        loose = sorted(rel for rel, crate_dir in self._crate_dir_of.items() if crate_dir is None)
+        top = [Path(name) for name in ("lib.rs", "main.rs") if name in loose]
+        if top:
+            self._assign_targets(
+                loose, top + [Path(rel) for rel in loose if Path(rel).parent == Path("bin")], None,
+            )
 
     def _find_crate_dir(
         self, rel: Path, abs_path: Path, manifests: "dict[Path, Path]",

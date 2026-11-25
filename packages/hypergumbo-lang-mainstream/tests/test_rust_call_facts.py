@@ -228,6 +228,34 @@ def test_a_path_through_a_crate_with_no_root_file_is_not_followed(tmp_path: Path
     assert result.import_scopes["app/src/lib.rs"].namespace("m.sub") is None
 
 
+def _unpackaged(root: Path, files: dict[str, str]) -> dict[str, Any]:
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    return analyze_rust(root).import_scopes
+
+
+def test_a_tree_analysed_without_its_manifest_is_a_crates_src(tmp_path: Path) -> None:
+    """``reqwest/src`` analysed alone: no ``Cargo.toml`` at or above any file.
+    ``lib.rs`` at the analysis root is the library's root and ``bin/*.rs``
+    are binaries; ``crate::`` resolves in their trees."""
+    scopes = _unpackaged(tmp_path / "with", {
+        "lib.rs": "mod db;\nuse crate::db::connect;\n",
+        "db.rs": "pub mod pool;\npub fn connect() {}\n",
+        "db/pool.rs": "use crate::db;\nuse super::connect as c;\n",
+        "bin/tool.rs": "mod cli;\n",
+        "bin/cli.rs": "",
+    })
+    assert scopes["lib.rs"].namespace("db") == "db.rs"
+    assert scopes["lib.rs"].named("connect").module == "db.rs"
+    assert scopes["db/pool.rs"].namespace("db") == "db.rs"
+    assert scopes["db/pool.rs"].named("c").module == "db.rs"
+    assert scopes["bin/tool.rs"].namespace("cli") == "bin/cli.rs"
+    # No lib.rs or main.rs at the root: nothing is assumed.
+    bare = _unpackaged(tmp_path / "without", {"db.rs": "mod pool;\n", "db/pool.rs": ""})
+    assert bare["db.rs"].resolve("pool") is None
+
+
 # --------------------------------------------------------------- bare calls
 
 _DB = "pub struct Conn;\nimpl Conn {\n    pub fn new() -> Conn { Conn }\n    pub fn execute(&self) {}\n}\n"
