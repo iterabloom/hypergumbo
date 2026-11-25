@@ -185,6 +185,7 @@ from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..overload_arity import arity_bounds, narrow_by_arity
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import (
     call_language, declaring_files, dotted, visible_declarations, visible_types,
@@ -1088,6 +1089,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             types_by_last_name, class_symbols,
             functions=not constructs,
             types=constructs or language in _BARE_CALL_MAY_NAME_A_TYPE,
+            argument_count=(stub.meta or {}).get("argument_count"),
         )
         if answer is None:
             return None
@@ -1287,6 +1289,7 @@ def _declaration_named(
     *,
     functions: bool,
     types: bool,
+    argument_count: int | None = None,
 ) -> tuple[Symbol, str] | None:
     """The function or type a bare name means from the caller's file, in a
     language of declared names, and the rule that scoped it (the edge's
@@ -1310,6 +1313,11 @@ def _declaration_named(
     property holding something callable (``_INVOKED_MEMBER_KINDS``). A member
     an enclosing scope declares is not bound here: the type the caller is
     declared in and its ancestors are Site 1's.
+
+    ``argument_count``: of several declarations the name means (overloads),
+    only the ones that can take that many arguments are candidates
+    (``overload_arity.narrow_by_arity``). A type records no parameters and
+    is never left out by it.
     """
     language = call_language(caller.language or "")
 
@@ -1341,6 +1349,7 @@ def _declaration_named(
         seen = [s for s in seen or () if s.kind == "method"] or seen
     if not seen or scoped is None:
         return None
+    seen = narrow_by_arity(seen, argument_count)
     one_name = {dotted(s.qualified_name or "") for s in seen}
     one_kind = {s.kind == "function" for s in seen}
     if len(one_name) != 1 or len(one_kind) != 1:
@@ -1590,6 +1599,9 @@ def _try_resolve(
     ambiguity guard) to recover the recall the guard sacrifices.
     """
     method_short = _extract_method_short_name(callee_short)
+    argument_count = (edge.meta or {}).get("argument_count")
+    if isinstance(argument_count, int):
+        method_index = _admitting(method_index, {callee_short, method_short}, argument_count)
 
     # Site 3 (most specific): inherited-field-receiver + enclosing_class.
     if inherited_field_receiver and enclosing_class:
@@ -1647,6 +1659,34 @@ def _try_resolve(
             super_receiver=super_receiver,
         )
     return None  # pragma: no cover  # unreachable: caller gated on any-hint
+
+
+def _admitting(
+    index: _TypeHierarchyIndex, names: set[str], argument_count: int,
+) -> _TypeHierarchyIndex:
+    """The method index for ONE call: the methods of ``names`` that can take
+    ``argument_count`` arguments (``overload_arity``: the parameters a method
+    declares in ``meta["parameters"]``; one that declares none is of unknown
+    arity and is kept).
+
+    A type whose overloads of the name all refuse the count then holds no
+    candidate, and the hierarchy walk goes on to its ancestors: an inherited
+    overload is a candidate beside the type's own, in every language that
+    overloads. Among the overloads that do take the count, the walkers keep
+    the one the index lists last, as before: the types of the arguments are
+    not read (WI-tosut).
+    """
+    return _TypeHierarchyIndex(
+        symbol_by_id=index.symbol_by_id,
+        methods_by_short_name={
+            name: [
+                (class_id, method)
+                for class_id, method in index.methods_by_short_name.get(name, [])
+                if (bounds := arity_bounds(method)) is None or bounds.admits(argument_count)
+            ]
+            for name in names
+        },
+    )
 
 
 def _resolve_site1(

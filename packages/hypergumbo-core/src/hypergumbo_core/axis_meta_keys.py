@@ -1501,6 +1501,20 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "Sole writer: analyze.base.make_unresolved_edge, from its "
                     "stdlib_member_name= argument."
                 )),
+    MetaKeySpec("argument_count", AXIS_EDGE_META,
+                "On an unresolved call edge: the number of arguments the "
+                "call site writes (a trailing lambda is one). Absent when the "
+                "site does not say (a spread) or the analyzer does not count. "
+                "The shared call resolution leaves out the overloads of the "
+                "callee's name whose declared parameters "
+                "(``Symbol.meta[\"parameters\"]``) cannot take that many "
+                "(ADR-0064 call fact).",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: analyze.base.make_unresolved_edge, from its "
+                    "argument_count= argument."
+                )),
     MetaKeySpec("referring_paths", AXIS_EDGE_META,
                 "The list of source file paths that referred to a deduplicated "
                 "edge — the only list-of-paths meta value, minted at the "
