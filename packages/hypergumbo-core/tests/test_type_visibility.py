@@ -192,3 +192,19 @@ def test_a_name_no_import_binds_is_not_a_type_of_the_repository_here() -> None:
     reexport = _file_scope()
     reexport.add_named("src/index.ts", "Conn")
     assert visible_types("Conn", None, reexport, conns, caller_path="src/main.ts") == []
+
+
+def test_a_wildcard_import_of_a_file_supplies_its_declarations() -> None:
+    """Rust ``use crate::db::*;``: every item of that file is in scope. Two
+    wildcard files that both declare the name are a tie; an explicit binding
+    and the caller's own file still answer first."""
+    conns = [_file_type("Conn", "src/db.rs"), _file_type("Conn", "src/net.rs"), _file_type("Conn", "src/old.rs")]
+    one = _file_scope()
+    one.add_open_wildcard("src/db.rs")
+    assert _paths(visible_types("Conn", None, one, conns, caller_path="src/main.rs")) == ["src/db.rs"]
+    two = _file_scope()
+    two.add_open_wildcard("src/db.rs")
+    two.add_open_wildcard("src/net.rs")
+    assert _paths(visible_types("Conn", None, two, conns, caller_path="src/main.rs")) == ["src/db.rs", "src/net.rs"]
+    two.add_named("src/old.rs", "Conn")
+    assert _paths(visible_types("Conn", None, two, conns, caller_path="src/main.rs")) == ["src/old.rs"]
