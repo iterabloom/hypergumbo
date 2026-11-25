@@ -1,0 +1,49 @@
+Original commit body from 009dcc29bd25016a3eaf4efcf3d356a9f4b87503:
+
+Step 4 of the shared call resolution program (ADR-0064): the pilot, on one branch, for C#, JavaScript / TypeScript and Rust. Analyzers of these three languages stop choosing a call's target by looking a name up among everything; they report the call with facts, and shared linkers decide through the file's imports and the receiver's type. Where nobody can tell, the call is unresolved.
+
+## What is in it
+
+- Shared layer (hypergumbo-core): a per-file import table handed from analyzer to linkers; `type_visibility` (which declaration a written name means from the caller's place: by declared name for C#, by file for JS/TS and Rust; re-exports followed); the inherited-calls linker asks it instead of matching type names, binds a function called by its imported name, and reads new call facts (`qualifier`, `super_receiver`, type arity); one new linker, `single_holder_name`, the last resort.
+- Adapters: `csharp.py` (four rounds), `js_ts.py` (two), `rust.py` (two). Each removed its run-wide name lookup, same-file name table and nearness heuristics as reasons to bind.
+- Schema 0.22.2 (additions only), spec, changelog, ADR-0064 updated with what the pilot built and measured. 64 linkers.
+
+## Scoreboard (14 repositories; before = dev 0d3c12ff4, after = this branch at e948d2ae3; the three Rust repositories re-measured after the last Rust fixes, resolved edges identical)
+
+Resolved `calls` whose caller is in the language:
+
+| | before | after | resolved before, unresolved now | different target | newly resolved |
+|---|---|---|---|---|---|
+| C# (6 repositories) | 5,572 | 7,621 | 214 | 239 | 2,534 |
+| JavaScript / TypeScript (5) | 23,102 | 23,401 | 659 | 160 | 967 |
+| Rust (3) | 11,561 | 9,533 | 2,409 | 441 | 388 |
+
+Symbols are identical on all 14; calls from other languages on the mixed repositories are identical.
+
+By mark (`resolved_by`), before to after:
+- C#: `name` 1,810 to 0; `same_file` 100 to 0; `qualified` 957 to 3,429; `receiver_type` 973 to 1,748; `own_type` 1,608 to 2,397.
+- JS/TS: `name` 14,581 to 7,835; `import` 52 to 3,964; `receiver_type` 788 to 2,024; `own_type` 2,856 to 4,685.
+- Rust: `name` 5,616 to 2,512; `import` 229 to 1,850; `same_file` 961 to 314; `qualified` 1,706 to 1,842.
+
+Hand samples, each edge read in the source, one seed:
+- Lost edges (15 per language): right before were 6 in C# (plus 2 of the right type and the wrong overload), 5 in JS/TS, 4 in Rust. The rest were wrong before (xunit's `Assert.Null` bound to a property; `Some(..)` bound to a field named `Some`; mocha's `beforeEach` bound to a test file's function).
+- Newly resolved or retargeted edges: none wrong in the C# samples (the right type with the wrong overload: 9 of 30, then 2 of 15); 15 of 15 right in the second JS/TS round and in the second Rust round; 12 of 12 changed JS/TS `instantiates` edges right.
+- Fixture (17 languages, two layouts): every cell of the three languages is right or unresolved; no guess cell is left for them.
+
+## The name step, which is an open owner decision
+
+The ADR's first open decision is what a bind by name alone becomes. Its recommended option is built here so that it is measured, and it is one linker to remove or change: a call nothing else resolved is bound to the one method (a call on a receiver) or function (a bare call) of that name, marked `name`, at 0.7; several holders, unresolved. It runs only for a file whose analyzer screens the names of the language's own library: JS/TS and Rust do, C# does not, so C# has no name bind.
+
+Why it exists: the first JS/TS and Rust adapters deleted every name bind, and resolved calls fell to 11,092 and 4,768, with 13 and 10 of 15 sampled lost edges right. Measured now: JS/TS 7,757 binds restored to their earlier target, 14 right of 15 read; Rust 1,549 restored, 13 of 15; the 14 Rust binds with no earlier bind of that name, 5 right (standard-library names its list lacks: filed).
+
+## Known, not done (each filed in the tracker with its count)
+
+Overload selection; a C# base class written with type arguments; partial-type ancestors (2 wrong `base.M()` edges on Dapper); a qualifier that is a member named like its type; a C# screen of library names; Rust standard-library names, constructors called by name, wildcards of inline modules; `class_hint` as a reason to bind; a deduplicated call left as an open stub; an interface-typed TypeScript call now names the interface member and not its one implementation. With the rust-analyzer backend on, a call both arms agree on is corroborated at the producer merge, which runs before the call linkers: calls the linkers bind are no longer corroborated (on the recorded crate 94 corroborated edges became 55).
+
+## Tests
+
+The full pre-PR run: 45,244 passed. It took seven rounds; each stop was a real finding (a strict expected-failure that now passes, a gate on reading signatures, the rust-analyzer package's recorded fixture, a vocabulary gate), fixed in its own commit.
+
+## Not checked
+
+Repositories outside the 14; run time against dev; a second reader for the samples the workers read (three verdicts of each were re-read and hold); the SCIP paths of Rust.
