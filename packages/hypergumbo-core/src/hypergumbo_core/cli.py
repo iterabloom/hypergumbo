@@ -342,6 +342,7 @@ from .entrypoints import (
 from .routes import is_route, method_token, protocol_method_token, route_of
 # INV-nosoz: one registry-backed answer to "is this an inheritance edge?"
 from .edge_types import is_inheritance_edge_record
+from .import_scope import ImportScope
 from .ir import (
     AnalysisRun, PASS_VERSION,
     Symbol, Edge, ExternalRef, apply_external_id_remap, compute_config_fingerprint,
@@ -13369,6 +13370,9 @@ def run_survey(
 
     # Run all language analyzers using consolidated registry
     run_status.phase("Running analyzers")
+    # What each file's imports bind, filled by the analyzers and read by the
+    # linkers (ADR-0064 piece b): the one per-file table that crosses over.
+    import_scopes: dict[str, ImportScope] = {}
     # Pass profile through so the dispatcher can short-circuit analyzers
     # whose languages have 0 files in this repo (file-presence pre-filter;
     # WI-jadig, INV-manov).
@@ -13382,6 +13386,7 @@ def run_survey(
         dependency_manifest,
     ) = run_all_analyzers(
         repo_root, max_files=max_files, profile=behavior_map["profile"],
+        import_scopes=import_scopes,
     )
     _log_memory("after analyzers")
 
@@ -13532,6 +13537,7 @@ def run_survey(
         symbols=all_symbols,
         edges=all_edges,
         captured_symbols=captured_symbols,
+        import_scopes=import_scopes,
         detected_frameworks=set(profile.frameworks),
         detected_languages=set(profile.languages.keys()),
     )
@@ -13623,7 +13629,7 @@ def run_survey(
         profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
     )
 
-    del linker_ctx, captured_symbols  # Free linker data structures
+    del linker_ctx, captured_symbols, import_scopes  # Free linker data structures
 
     # Now that Symbol.is_test_file is set, strip naming-convention framework
     # concepts (service_by_name / controller_by_name / handler_by_name) from

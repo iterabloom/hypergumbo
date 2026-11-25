@@ -156,6 +156,7 @@ from ..pass_silence import silence_reason_for_candidates
 from ..run_status import worker_pass
 
 if TYPE_CHECKING:
+    from ..import_scope import ImportScope
     from ..ir import AnalysisRun, Edge, Symbol
     from ..limits import Limits
 
@@ -193,6 +194,12 @@ class LinkerContext:
     symbols: list[Symbol] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
     captured_symbols: dict[str, list[Symbol]] = field(default_factory=dict)
+
+    # What each file's imports bind, by the file's repo-relative path: the
+    # tables the analyzers handed over (``AnalysisResult.import_scopes``,
+    # ADR-0064 piece b). The one thing a linker knows about a file that is
+    # neither a symbol nor an edge. Every linker of a run reads the same dict.
+    import_scopes: dict[str, "ImportScope"] = field(default_factory=dict)
 
     # Framework and language detection results (for linker filtering)
     detected_frameworks: set[str] = field(default_factory=set)
@@ -1063,6 +1070,7 @@ def run_all_linkers(
             symbols=accum_symbols,
             edges=accum_edges,
             captured_symbols=ctx.captured_symbols,
+            import_scopes=ctx.import_scopes,
             detected_frameworks=ctx.detected_frameworks,
             detected_languages=ctx.detected_languages,
             parsed_trees=ctx.parsed_trees,
@@ -1104,6 +1112,7 @@ def run_all_linkers(
                         symbols=accum_symbols,
                         edges=accum_edges,
                         captured_symbols=ctx.captured_symbols,
+                        import_scopes=ctx.import_scopes,
                         detected_frameworks=ctx.detected_frameworks,
                         detected_languages=ctx.detected_languages,
                         parsed_trees=ctx.parsed_trees,
