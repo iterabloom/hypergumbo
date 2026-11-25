@@ -583,6 +583,9 @@ class TestLinkHttp:
         assert result.edges[0].dst == route_symbol.id
         assert result.edges[0].meta["http_method"] == "GET"
         assert result.edges[0].meta["url_path"] == "/api/users"
+        # The join is on the route both sides declare. The mark is passed at
+        # creation; it was once lost to a meta dict assigned after.
+        assert result.edges[0].meta["resolved_by"] == "key_match"
 
     def test_links_requests_to_flask_route(self, tmp_path):
         # Create a Python file with requests call

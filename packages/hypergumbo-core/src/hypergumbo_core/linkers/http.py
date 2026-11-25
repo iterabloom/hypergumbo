@@ -1580,7 +1580,12 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 derived_from=[matched_route.id],
                 resolved_by=resolved_by.KEY_MATCH,
             )
+            # Added to the meta ``Edge.create`` stored (the mark), never in
+            # its place. Not passed as ``meta=``: ``http_method`` is
+            # registered on symbol_meta, a key has one axis (WI-kuhoh), and
+            # the registration gate refuses it there.
             edge.meta = {
+                **(edge.meta or {}),
                 "protocol": "http",
                 "http_method": call.method,
                 "url_path": call_path,

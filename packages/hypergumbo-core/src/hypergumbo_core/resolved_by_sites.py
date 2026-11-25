@@ -22,6 +22,10 @@ passing a parameter that is never a call-family type, and the run-time side
 of the promise (a resolved call edge with no mark) is what the census over
 real repositories counts. A site missing the mark is an
 :class:`UnmarkedSite`; there is no baseline for these, the count is zero.
+Passing the mark is not keeping it: a meta dict assigned to the edge after
+its creation drops the key (two linkers did exactly that when they were
+stamped). That half is ``check-meta-write-discipline`` rule 3, which lists
+``resolved_by`` among the kwargs such an assignment destroys.
 
 **2. The older spellings only shrink.** The same fact used to be written as a
 receiver-flavoured ``evidence_type``, as ``resolution_quality`` and as the

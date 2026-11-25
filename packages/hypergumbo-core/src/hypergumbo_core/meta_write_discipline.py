@@ -50,7 +50,10 @@ The three rules
    kwarg that lands in ``meta`` — safety by coincidence, which one added
    ``access_mode=`` breaks with no test failing. Scoping the rule to
    meta-bearing constructions turns the coincidence into a guarantee and
-   needs no migration of the harmless sites.
+   needs no migration of the harmless sites. ``resolved_by=`` is such a
+   kwarg. An assignment whose literal begins by spreading the record's own
+   meta (``edge.meta = {**(edge.meta or {}), ...}``) adds and destroys
+   nothing, so it passes.
 """
 
 from __future__ import annotations
@@ -69,7 +72,7 @@ from .axis_meta_keys import (
 #: wholesale ``.meta = {...}`` after a construction passing any of these
 #: destroys them.
 META_BEARING_KWARGS: frozenset[str] = frozenset({
-    "meta", "access_mode", "data_direction", "channel",
+    "meta", "access_mode", "data_direction", "channel", "resolved_by",
 })
 
 #: Modules exempt from rule 1 — the chokepoint itself has to assign.
@@ -289,6 +292,30 @@ def _meta_bearing_constructions(scope: ast.AST) -> set[str]:
     return names
 
 
+def _keeps_own_meta(literal: ast.Dict, name: str) -> bool:
+    """Whether ``<name>.meta = {**<name>.meta, ...}`` adds without destroying.
+
+    True when the literal's FIRST entry spreads the same record's own meta
+    (``**name.meta`` or ``**(name.meta or {})``) and no later key re-writes
+    one a construction kwarg stored. A spread of another record's meta, or
+    one that is not first, keeps nothing this rule can vouch for.
+    """
+    if literal.keys[0] is not None:
+        return False
+    spread = literal.values[0]
+    if isinstance(spread, ast.BoolOp) and isinstance(spread.op, ast.Or):
+        spread = spread.values[0]
+    own = (
+        isinstance(spread, ast.Attribute) and spread.attr == "meta"
+        and isinstance(spread.value, ast.Name) and spread.value.id == name
+    )
+    rewritten = {
+        key.value for key in literal.keys[1:]
+        if isinstance(key, ast.Constant)
+    } & (META_BEARING_KWARGS - {"meta"})
+    return own and not rewritten
+
+
 def find_discipline_drift(root: Path) -> list[str]:
     """Every violation of the three rules, as human-readable offender lines."""
     offenders: list[str] = []
@@ -355,12 +382,13 @@ def find_discipline_drift(root: Path) -> list[str]:
                         and isinstance(target.value, ast.Name)
                         and target.value.id in bearing
                         and node.lineno not in seen_lines
+                        and not _keeps_own_meta(node.value, target.value.id)
                     ):
                         seen_lines.add(node.lineno)
                         offenders.append(
                             f"{rel}:{node.lineno}: '{target.value.id}.meta = "
                             f"{{...}}' destroys the meta-bearing kwargs "
-                            f"(access_mode / channel / meta) passed at "
+                            f"({' / '.join(sorted(META_BEARING_KWARGS))}) passed at "
                             f"construction — pass them via meta= instead "
                             f"(INV-hazov rule 3, INV-forim)"
                         )
