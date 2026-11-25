@@ -365,3 +365,57 @@ class TestQualifiedAndAmbiguous:
         }
         assert set(conf) == {3, 5}  # reach: both calls resolved
         assert conf[3] < conf[5]
+
+
+def _marks(root: Path, caller_file: str) -> dict[int, object]:
+    """``{line: meta}`` for every resolved call edge made from ``caller_file``."""
+    result = analyze_nim(root)
+    by_id = {s.id: s for s in result.symbols}
+    return {
+        e.line: e.meta for e in result.edges
+        if e.edge_type == "calls" and e.src in by_id and e.dst in by_id
+        and by_id[e.src].path == caller_file
+    }
+
+
+class TestResolvedBy:
+    """``meta["resolved_by"]`` names the scope that held the target (audit 0030)."""
+
+    def test_own_file_include_and_import_tiers(self, tmp_path: Path) -> None:
+        _write(tmp_path, {
+            "sel.nim": (
+                "import util\nproc base() = discard\ninclude impl\n"
+                "proc top() =\n  base()\n"
+            ),
+            "impl.nim": "proc run() =\n  base()\n  helper()\n",
+            "util.nim": "proc helper*() = discard\n",
+        })
+        # The caller's own file: its module.
+        assert _marks(tmp_path, "sel.nim")[5]["resolved_by"] == "same_module"
+        # A file ``include`` joins to the caller is the same module.
+        impl = _marks(tmp_path, "impl.nim")
+        assert impl[2]["resolved_by"] == "same_module"
+        # A module the caller's module imports.
+        assert impl[3]["resolved_by"] == "import"
+
+    def test_module_qualified_call_is_import(self, tmp_path: Path) -> None:
+        _write(tmp_path, {
+            "c.nim": "import a as q, b as r\nproc f() =\n  q.helper()\n  r.helper()\n",
+            "a.nim": "proc helper*() = discard\n",
+            "b.nim": "proc helper*() = discard\n",
+        })
+        marks = _marks(tmp_path, "c.nim")
+        assert marks[3]["resolved_by"] == "import"
+        assert marks[4]["resolved_by"] == "import"
+
+    def test_graded_pick_keeps_its_tier_and_its_old_spelling(self, tmp_path: Path) -> None:
+        """Two imported overloads: a pick among them, still found through the
+        imports. The count of candidates is not part of the mark."""
+        _write(tmp_path, {
+            "c.nim": "import a, b\nproc f() =\n  helper(1)\n",
+            "a.nim": "proc helper*(x: int) = discard\n",
+            "b.nim": "proc helper*(s: string) = discard\n",
+        })
+        assert _marks(tmp_path, "c.nim")[3] == {
+            "resolution_quality": "ambiguous", "resolved_by": "import",
+        }
