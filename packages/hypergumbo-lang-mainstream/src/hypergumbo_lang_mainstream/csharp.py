@@ -824,12 +824,6 @@ def _get_csharp_enclosing_namespace(
     return ".".join(chain) if chain else None
 
 
-#: The symbol kinds this analyzer emits for a type declaration.
-_CSHARP_TYPE_SYMBOL_KINDS: frozenset[str] = frozenset({
-    "class", "record", "interface", "struct", "enum",
-})
-
-
 #: Type declarations a C# member or nested type can sit in.
 _CSHARP_TYPE_DECLS: frozenset[str] = frozenset({
     "class_declaration", "interface_declaration", "struct_declaration",
@@ -1954,7 +1948,6 @@ def _extract_edges_from_file(
     field_type_registry: dict[str, dict[str, str]] | None = None,
     global_ctors: dict[str, list[Symbol]] | None = None,
     file_symbols: list[Symbol] | None = None,
-    type_name_counts: dict[str, int] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -1984,14 +1977,11 @@ def _extract_edges_from_file(
     Neither the file's short-name table nor a run-wide lookup of the callee's
     name is a reason to bind a call any more: a name looked up among every
     declaration was wrong about half the time when the name had a second
-    holder (ADR-0064, the sample). ``new T()`` (R10 to R12) is unchanged but
-    for one rule: a type found by name alone is not bound when the run holds
-    more than one type of that name (``type_name_counts``).
+    holder (ADR-0064, the sample). ``new T()`` (R10 to R12) is unchanged.
 
     Args:
         using_aliases: Local name -> dotted path, the ``new T()`` lookup's path hint.
         field_type_registry: Aggregated class→{field→type} map for chained field resolution.
-        type_name_counts: Type name -> how many types of the run declare it.
     """
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per name.
@@ -2004,8 +1994,6 @@ def _extract_edges_from_file(
         using_aliases = {}
     if global_ctors is None:  # pragma: no cover - defensive default
         global_ctors = {}
-    if type_name_counts is None:  # pragma: no cover - defensive default
-        type_name_counts = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -2353,16 +2341,7 @@ def _extract_edges_from_file(
                     # Use import path for disambiguation
                     import_hint = using_aliases.get(type_name)
                     lookup_result = resolver.lookup(type_name, path_hint=import_hint, caller_path=_caller_path)
-                    if (
-                        lookup_result.found and lookup_result.symbol is not None
-                        # Found by its name alone, and another type of the run
-                        # has that name: which one the file means is not known
-                        # here (no declaration index), and a pick is a guess.
-                        and not (
-                            lookup_result.resolved_by == resolved_by.NAME
-                            and type_name_counts.get(type_name, 0) > 1
-                        )
-                    ):
+                    if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=lookup_result.symbol.id,
@@ -2674,9 +2653,6 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
 
         # Build global symbol registry
         global_symbols: dict[str, Symbol] = {}
-        # How many types of the run share each name: a ``new T()`` found by
-        # name alone is not bound when T has a namesake (R12).
-        type_name_counts: dict[str, int] = {}
         # WI-mivav: multi-value ctor registry (global_symbols collapses
         # overloads); keyed by the `Type.Type` name so the object-creation site
         # can pick the arity-matching overload.
@@ -2684,9 +2660,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
-                if symbol.kind in _CSHARP_TYPE_SYMBOL_KINDS:
-                    type_name_counts[symbol.name] = type_name_counts.get(symbol.name, 0) + 1
-                elif symbol.kind == "constructor":
+                if symbol.kind == "constructor":
                     global_ctors.setdefault(symbol.name, []).append(symbol)
 
         # Aggregate field type registry for chained this.field.field.Method()
@@ -2712,7 +2686,6 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                 field_type_registry=field_type_registry,
                 global_ctors=global_ctors,
                 file_symbols=analysis.symbols,
-                type_name_counts=type_name_counts,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
