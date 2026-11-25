@@ -754,17 +754,36 @@ pub fn via_qual() {{
 
 
 # ---------------------------------------------------------------- swift
-def swift(R, D, B, S, dl):
+def swift(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, ext=""):
         return f"class {n}{ext} {{\n    func {m}() -> Int {{ return {v} }}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child: {B} {{}}\n", cls(S, "ping", 2))
-    main = f"""import ExtLib
+    child = f"class Child: {B} {{}}\n"
+    spare = "class Spare {\n    func execute() -> Int { return 2 }\n\n    func ping() -> Int { return 2 }\n}\n"
+    side = "Z" if dl else "A"
+    files = {"Sources/Util/util.swift": "public func helper() -> Int { return 1 }\n",
+             f"Sources/{side}Decoy/decoy.swift": "public func helper() -> Int { return 2 }\n"}
+    if third:
+        files[f"Sources/{side}Spare/spare.swift"] = "public func helper() -> Int { return 2 }\n"
+    if split:
+        # One class per file of the App module: every file of a module sees the
+        # others with no import. The decoys' files sort after (``z_``) or before
+        # (``a_``) every other file of App; with ``z_`` they still sort before
+        # Sources/Util, since a module is its directory.
+        p = side.lower()
+        files |= {"Sources/App/store.swift": cls(R, "execute", 1), f"Sources/App/{p}_store.swift": cls(D, "execute", 2),
+                  "Sources/App/base.swift": cls(B, "ping", 1), "Sources/App/child.swift": child,
+                  f"Sources/App/{p}_stray.swift": cls(S, "ping", 2)}
+        if third:
+            files[f"Sources/App/{p}_spare.swift"] = spare
+        classes = ""
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes = f"{ex}\n{pg}\n"
+    files["Sources/App/main.swift"] = f"""import ExtLib
 import Util
 
-{ex}
-{pg}
-func get_db() -> {R} {{
+{classes}func get_db() -> {R} {{
     return {R}()
 }}
 
@@ -796,11 +815,12 @@ func via_amb_ext() {{
 func via_import() {{
     helper()
 }}
+
+func via_qual() {{
+    Util.helper()
+}}
 """
-    dec = ("ZDecoy" if dl else "ADecoy")
-    return {"Sources/App/main.swift": main,
-            "Sources/Util/util.swift": "public func helper() -> Int { return 1 }\n",
-            f"Sources/{dec}/decoy.swift": "public func helper() -> Int { return 2 }\n"}
+    return files
 
 
 # ---------------------------------------------------------------- c++
