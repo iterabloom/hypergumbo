@@ -4,7 +4,7 @@
 - Status: Proposed
 - Date: 2026-11-25
 - Supersedes (once accepted and built): ADR-0007 §"Decision" (per-analyzer path hints). Narrows ADR-0037 ruling 3. Extends ADR-0029. Completes what ADR-0006 withdrew on 2026-11-24.
-- Rulings 1 to 8 below are the owner's, given in session on 2026-11-24 and quoted where words exist. The document as a whole, and the three decisions of §"Open for the owner", await acceptance. Nothing in §"The four pieces" is built.
+- Rulings 1 to 8 below are the owner's, given in session on 2026-11-24 and quoted where words exist. The document as a whole, and the three decisions of §"Open for the owner", await acceptance. §"The four pieces" is built for C#, JavaScript / TypeScript and Rust (the pilot) and for Java, Kotlin and PHP (batch 5a); the two sections "What ... built and measured" say how each came out.
 
 ## Context
 
@@ -104,7 +104,7 @@ What the measurements require of these pieces, beyond the sketch: a type is iden
 
 - **Step 4, the pilot: one language per family on one branch.** Rust (paths, traits), C# (declared names), JavaScript and TypeScript (paths, a module linker). The shared layer is what those three need in common: nothing enters it that fewer than two of them use, and nothing is written in two adapters that could be written once.
 - **Step 5, batches**, one PR each, one commit per language: 5a java, kotlin, php; 5b python, ruby, go, lua, perl; 5c the stable-id bump (ruling 7); 5d groovy, scala, cpp, swift, objc; 5e lang-common; 5f lang-extended1 (5e and 5f move only the analyzers the probe lists show guessing: WI-bujih, WI-giroz).
-- **Gates for every rollout PR.** Its languages' rows of the fixture in both layouts, cells and marks; the pared before/after on real repositories; a scoreboard in the PR description (the matrix, edges by mark, net lines per analyzer). A language's commit deletes what the pass replaced: a language that only adds is a duplication. A language that is not green is pulled from the batch. A rollout PR that needs a change in the shared core stops: that is a decision of its own.
+- **Gates for every rollout PR.** Its languages' rows of the fixture in both layouts, cells and marks; the pared before/after on real repositories; a scoreboard in the PR description (the matrix, edges by mark, net lines per analyzer). A language's commit deletes what the pass replaced: a language that only adds is a duplication. A language that is not green is pulled from the batch. A rollout PR that needs a change in the shared core stops: that is a decision of its own (batch 5a needed eight; its section says what the rule became).
 - **Folding the older spellings** of "how was the target chosen" (audit 0030: receiver-flavoured `evidence_type` values, `resolution_quality`, the outcome half of `receiver`) happens per language in its batch (WI-gilip), under O3 below. Until then they are pinned shrink-only.
 
 ## What the pilot built and measured (step 4; rust, csharp, javascript/typescript)
@@ -130,6 +130,53 @@ Maps of 14 repositories before (dev 0d3c12ff4) and after (the pilot branch at e9
 - One adapter needed several rounds (C# four, the others two), each sent back by its own sample. Budget a batch accordingly.
 - "Nothing enters the shared layer that fewer than two of the three use" kept out, each filed with its count: overload selection; a base class written with type arguments; partial-type ancestors (two wrong edges remain on Dapper); a qualifier that is a member named like its type.
 
+## What batch 5a built and measured (step 5a; java, kotlin, php)
+
+Maps of 7 repositories (jedis, spring-petclinic, commons-compress; okhttp, detekt-core; koel, grpc's PHP) before (dev 619ebe7ac) and after (the batch branch at e566c8ded). Samples are drawn with one seed from what MOVED and were read in the source by a judge who was given call and target only, shuffled, and not told which side of the comparison a pair came from; each adapter's own reading of its own samples is in the batch's pull request.
+
+**The adapters.** Each analyzer now binds a call itself only on the enclosing type's own member found by position, and reports every other call with facts; each hands over one table per file. Java and PHP report `new T()` as an unresolved `instantiates` stub; Kotlin, where a construction is a bare call, reports a bare stub. Run-wide name tables, same-file tables and the name lookups that read them are deleted in all three.
+
+**The name step** is on for Kotlin (a screen of 353 standard-library member names, from the library's reference) and off for Java (a typed language; the name bound no call there before) and for PHP. PHP was measured with it on: of 15 calls it bound that nothing bound before, 2 were right, and of 15 it bound to the target the old lookup had chosen, 9. The wrong ones are calls on a value a framework call returned (`$table->foreign(..)->references(..)->on('users')` on the repository's one `on`). No list of a language's own names holds a framework's, and no stub fact says that a receiver is a call result.
+
+**What the shared layer lacked, found by the adapters and built in the batch** (each with a test that fails without it):
+- Packages that do not nest. The scope walk read every prefix of the caller's qualified name as an enclosing scope, which is C#'s rule. In Java, Kotlin and PHP a parent package is no scope: a bare `Builder` written in `jedis.search` was bound to `jedis.Builder`, which the file does not import. The table now names the file's package (`ImportScope.own_namespace`) and the walk ends there; a call at the top of a file, whose caller has no qualified name, is in that package; a name written with an owner may be a full name; PHP keeps its one exception, a bare function call falling back to the global namespace (`global_functions_visible`). A PHP name with a leading backslash is rooted.
+- The caller itself is the innermost scope, and a caller that is a type starts the hierarchy walk at itself: a call in a class body (a Kotlin property initialiser) sees the class's nested types and inherited members.
+- Nested types. Java and Kotlin name a nested type `Outer.Inner`; the lookups asked the index for the last name and found none. Types are now offered by the last segment of their name.
+- A bare call may name a member the file imports (Java `import static`, a Kotlin object's or companion's member), not only a function or a type. The Kotlin analyzer's own bind of such a call was removed for it.
+- Several files declaring one qualified function name: the caller's own file's declaration is the one bound.
+- `method_call_recovery` leaves a stub an earlier linker answered (it added a second edge, to a class the caller constructs, beside the right one).
+- The name step never binds a bare call in a language of declared names, and counts a function declared on a receiver (a Kotlin extension) as a holder for a call on a receiver.
+- An unresolved `instantiates` stub is at 0.50, as an unresolved call is (it was at 0.95).
+
+**Result on the 7 repositories, resolved `calls` before and after:** Java 45,072 and 46,191; Kotlin 11,660 and 19,031; PHP 2,017 and 3,158. Resolved constructions: Java 5,019 and 6,487, PHP 420 and 448 (and 3,453 and 350 construction sites now stay as unresolved stubs, where before a name bound them or nothing was emitted). By mark: in Java, constructions `name` 4,958 to 0, calls `import` 0 to 450; in Kotlin `name` 1,194 to 1,301 (now the name step's), `same_file` 496 to 0, `same_module` 0 to 1,677, `receiver_type` 5,721 to 7,365, `class_hint` 530 to 2,318; in PHP `name` 1,405 to 0, `same_file` 39 to 0, `receiver_type` 0 to 1,018, `qualified` 20 to 797, `import` 0 to 437.
+
+**What moved, as judged** (15 call sites per row unless a count is given):
+
+| | Java | Kotlin | PHP |
+|---|---|---|---|
+| resolved before, unresolved now (all) | 142 | 81 | 379 |
+| ... of 15: right before | 4 | 9 | 8 |
+| different target (all) | 394 | 887 | 104 |
+| ... of 15: wrong before, right now | 15 | 9 | 15 |
+| ... of 15: right before, wrong now | 0 | 3 | 0 |
+| unresolved before, resolved now (all) | 1,261 | 7,452 | 1,519 |
+| ... of 15: right | 15 | 13 | 15 |
+
+Further samples: Java binds through a static import, 8 right of 10 (2 the wrong overload); Java constructions retargeted, 10 of 10 wrong before and right now, and 10 of 10 new ones right; Kotlin name-step binds on calls nothing resolved before, 14 right of 15; Kotlin `class_hint` binds on such calls, 14 of 15; PHP new constructions, 9 right of 10, and 5 of 5 lost ones wrong before. In Kotlin's "different target" row 2 more were wrong both times and 1 cannot be decided from the source (an `expect` object with two `actual`s).
+
+**The languages already moved did not move:** six C# repositories, two Rust and one TypeScript are edge-for-edge identical to dev; on knex two recovery edges keep their caller and target and change line.
+
+**What is lost and why** (each filed with its count):
+- Overloads. The three Kotlin edges that went from right to wrong, 2 of the wrong new ones and both wrong static-import binds are one cause: the method index keeps the last overload of a name. 255 Kotlin edges changed overload in the batch. The argument count decides five of the six cases read. The Java analyzer now selects among a class's own overloads by argument count (352 edges retargeted; 15 of 15 sampled wrong before and right now), which the shared layer does not do: that selection belongs in the shared layer, as a stub fact, before the next batch.
+- Stubs of one name from one caller collapse to one before any linker runs, and the second call's facts are dropped (432 Kotlin stubs; 5 of the 9 right Kotlin losses).
+- A receiver typed by a callee's return type (2 of the 4 right Java losses, 3 of the 8 right PHP ones), a member type inherited from a base class (the other 2 Java ones), a Kotlin function beside a class of its name (2 Kotlin ones), PHP traits (18 typed calls; 93 of the 379 lost PHP targets are trait methods), and in PHP the untyped receivers the name step is off for (294).
+- One qualified name declared in two files in a language without partial types is bound to the first by path: 168 binds on grpc's generated PHP copies, 1 of 6 judged on the wrong copy.
+
+**What the rollout rules become.**
+- "A rollout PR that needs a change in the shared core stops" was written to keep one language's needs out of the shared layer. This batch needed the eight changes above, and every one is a rule of the languages moved (three of them share the package rule). What stands: an adapter does not edit the shared core, it reports; each shared change is a commit of its own with a test that fails without it; and the languages already moved are measured again, edge for edge, in the same batch.
+- The sample of what moved is read by a judge who does not know which side a pair came from. Each adapter also samples itself, before the shared changes its report asks for: Java's own reading of its lost edges was 13 right of 15, and after the shared changes the judge's was 4 of 15.
+- Budget one round per adapter plus one round of shared changes. No adapter of this batch was sent back; the second round was the shared layer's.
+
 ## Open for the owner
 
 **O1. What a name-only bind becomes** (ruling 4's "then decide"). The sample: with several holders of the name, 57 wrong of 120; with one holder, 10 wrong of 96, nine of the ten being calls that leave the repository.
@@ -137,6 +184,7 @@ Maps of 14 repositories before (dev 0d3c12ff4) and after (the pilot branch at e9
 - (b) As (a), and a single-holder bind is also refused when the call's own text points outside the repository (a receiver or qualifier bound by an import of an external module). This is where the nine-in-ten wrongs of the single-holder row live; it needs piece (b) and so arrives with each language's batch, not before.
 - (c) Keep binding and lower the confidence of a `name` bind. Not recommended: the wrong edge stays in the graph, and a reader has to know to filter on a number to avoid following it. Which consumers (slice, dead-code, taint) filter on confidence today was not checked for this ADR.
 - *Measured by the pilot (see the section above):* (a), with the part of (b) the call facts support, is what the pilot branch does for JavaScript / TypeScript and Rust; C# has no name bind at all. It is one linker (`single_holder_name`) to remove or to widen once this is decided.
+- *Measured by batch 5a:* the name step is on for Kotlin (binds on calls nothing resolved before: 14 right of 15) and off for PHP, where it was measured on and bound calls on values a framework call returned (2 right of 15 new binds).
 - Whether (a) is applied in one PR across all analyzers (a refusal in the shared lookup; it moves about 20,000 edges at once, before any language has the pass to win them back) or per language in its batch is part of this decision. Recommended: per batch, so that each language's edges move once.
 
 **O2. `resolved_by`: a field of `Edge`, or the `meta` key it is today.** ADR-0024's fold-residue rule 3 promotes a key written by two or more producer modules to a field; this one is written by about 90. `call_construct`, written by 25, was left in `meta`. Every creation site passes it as a keyword to `Edge.create`, so no producer changes either way; the schema does (a field is an addition: patch under the 0.x rule). Recommended: a field, in the step 4 PR, when the first reader (the magnet detector, WI-topit) starts to depend on it.
