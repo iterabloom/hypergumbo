@@ -28,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Behavior map `SCHEMA_VERSION` 0.22.0 → 0.22.3** (additions): `resolved_by` on resolved calls; call facts `qualifier`, `super_receiver`, `stdlib_member_name`, `argument_count` on unresolved calls; `type_arity` on type nodes.
 - **Resolved call edges change in C#, Java, JavaScript/TypeScript, Kotlin, PHP and Rust**: fewer binds by name alone, more through types and imports (ADR-0064).
 - **Java and PHP report every `new`**; one the tool cannot place is an unresolved `instantiates` edge.
+- **Java, Kotlin and C# calls land on an overload that takes the arguments written**; their callables carry `parameters`.
 - **Two workspace packages declaring one name resolve to neither** (the first in path order was kept).
 - **`stable_id_scheme` v15 → v20** (`hgstableid20:`): many digests change, most in C++, Swift, Rust, Scala, Kotlin, C and JS/TS (spec: "`stable_id_scheme` version history").
 - **`verify-claims --json` 3.1 → 3.2** adds `withheld_flows`.
