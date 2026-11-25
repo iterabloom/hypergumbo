@@ -851,3 +851,25 @@ pub fn main() void {
         assert marks["S.go"] == "own_type"
         # The registry's exact key: found by its name.
         assert marks["helper"] == "name"
+
+
+class TestZigExplicitReceiverIsNotOwnType:
+    """``a.b()`` names a receiver, so only a bare call can be the container's own (audit 0030)."""
+
+    def test_field_call_keeps_the_lookups_value(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_extended1.zig import analyze_zig
+
+        (tmp_path / "store.zig").write_text(
+            "const Store = struct {\n"
+            "    pub fn persist(self: *Store) void { _ = self; }\n"
+            "    pub fn viaBare(self: *Store) void { _ = self; persist(self); }\n"
+            "    pub fn viaOther(self: *Store, other: *Store) void { _ = self; other.persist(); }\n"
+            "};\n"
+        )
+        calls = {
+            e.src.split(":")[-2]: (e.meta or {}).get("resolved_by")
+            for e in analyze_zig(tmp_path).edges
+            if e.edge_type == "calls" and e.dst.split(":")[-2].endswith("persist")
+        }
+        assert calls, "the fixture must produce the two call edges"
+        assert calls == {"Store.viaBare": "own_type", "Store.viaOther": "name"}

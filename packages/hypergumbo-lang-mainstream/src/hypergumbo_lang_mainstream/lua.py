@@ -969,9 +969,16 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=UNTYPED_METHOD_GRADE,
                                     meta={"call_construct": "function"},
-                                    resolved_by=resolved_by_for_bare_call(
-                                        callee.kind, callee.name,
-                                        lookup_result.resolved_by, _enclosing_type,
+                                    # ``self:m()`` found on the enclosing
+                                    # table is the implicit receiver; any
+                                    # other untyped receiver was found by name.
+                                    resolved_by=(
+                                        resolved_by_for_bare_call(
+                                            callee.kind, callee.name,
+                                            lookup_result.resolved_by, _enclosing_type,
+                                        )
+                                        if receiver_name == "self"
+                                        else lookup_result.resolved_by
                                     ),
                                 )
                                 edges.append(edge)

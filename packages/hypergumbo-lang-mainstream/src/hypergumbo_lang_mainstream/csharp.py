@@ -2219,6 +2219,14 @@ def _extract_edges_from_file(
                                     enclosing_class=_enclosing_type,
                                 ))
                             else:
+                                _scoped_by = resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.resolved_by, _scope_type,
+                                )
+                                if receiver_name and _scoped_by == resolved_by.OWN_TYPE:
+                                    # ``Helper.Process()``: the owner is named
+                                    # at the call site, not implied.
+                                    _scoped_by = resolved_by.QUALIFIED
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=_sym.id,
@@ -2229,10 +2237,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method"},
-                                    resolved_by=resolved_by_for_bare_call(
-                                        _sym.kind, _sym.name,
-                                        lookup_result.resolved_by, _scope_type,
-                                    ),
+                                    resolved_by=_scoped_by,
                                 ))
                                 _track_csharp_return_type(
                                     _sym, node, source,
