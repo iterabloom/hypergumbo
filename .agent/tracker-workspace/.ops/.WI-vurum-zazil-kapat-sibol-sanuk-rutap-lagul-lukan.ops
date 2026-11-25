@@ -19,3 +19,10 @@
     pr_ref:  # 50f5
     description: "STATEMENT: a stub on any receiver is not bound to a method of a class merely because the caller instantiates that class somewhere. OBSERVED: the linker (priority 35) reads the stubs the adapters now leave; ADR-0064's sample put class_hint at 6 wrong of 15. JS/TS five trees 67 -> 80 (137 before the second round typed more receivers); C# 123 -> 47. Decide with the owner's O1 ruling whether class_hint stays a reason to bind.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # 50f5
     fields: {}  # 50f5
+- op: discuss  # 59b4
+  at: '2026-11-25T19:13:32Z'  # 59b4
+  by: agent  # 59b4
+  actor: jgstern_agent  # 59b4
+  clock: 2  # 59b4
+  nonce: 59b4  # 59b4
+  message: "Batch 5a: on okhttp and detekt-core the class_hint mark went from 530 to 2,318 resolved Kotlin calls once the Kotlin analyzer reports constructions and calls instead of binding by name (2,033 of them on calls nothing resolved before). A blind judge read 15 of the new ones: 14 right, 1 the right type with the wrong overload. The Kotlin worker read 10: 9 right, 1 wrong (chunkSizes.add(..), a library name: this linker does not read stdlib_member_name; not changed in the batch because one measured edge did not justify moving the pilot languages). The linker now skips a stub an earlier linker resolved (30 wrong second edges on jedis and commons-compress before that). Evidence: ~/hypergumbo_lab_notebook/batch5a_11262026/judge/."  # 59b4
