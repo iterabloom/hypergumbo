@@ -27,3 +27,10 @@
   clock: 2  # 3936
   nonce: '3936'  # 3936
   message: "Measured while writing WI-zavot's PIN: taint's match rides on the in-tree FILE being named fs.js -- javascript:lib/migrations/util/fs.js:10-10:writeFile:variable is matched to fs.writeFile; the same alias in util/fs_util.js matches nothing (both consumers then agree, by both missing the write). test_io_taint_agreement.py::test_a_promisified_alias_is_answered_alike holds the fs.js shape as a strict xfail."  # 3936
+- op: discuss  # 73cb
+  at: '2026-11-25T14:48:52Z'  # 73cb
+  by: agent  # 73cb
+  actor: jgstern_agent  # 73cb
+  clock: 3  # 73cb
+  nonce: 73cb  # 73cb
+  message: "The disagreement this item pins is gone on the ADR-0064 pilot branch (jgstern-agent/feat/shared-call-resolution-pilot), for a reason other than a fix of io. Repro re-run 2026-11-26 (the test's two files, util/fs.js with `const writeFile = promisify(fs.writeFile)` and cli.js calling the destructured `writeFile`): `disagreements(map)` == {}; the call is now `save -> javascript:util/fs:0-0:writeFile:external_symbol`, unresolved, where before it was bound by name to the in-tree VARIABLE writeFile and taint matched that id to fs.writeFile by the file's name. `test_a_promisified_alias_is_answered_alike` was a strict xfail and is a plain test on the branch. STILL TRUE: neither io nor taint follows an in-tree alias to the catalogued function, so the write is now reported by neither. Status left as it is: the gap the title names remains; only its symptom (the disagreement) changed. Also seen: the unresolved call's stand-in is named after the in-repo module util/fs (an external_symbol for a file of the repository), a leftover of the JS adapter's module hint."  # 73cb
