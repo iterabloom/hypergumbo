@@ -8,10 +8,11 @@ unresolved with the facts the ``inherited_calls`` linker reads, and the
 linker decides from the caller's file's ``using`` table
 (``AnalysisResult.import_scopes``) and the caller's namespaces:
 
-* ``receiver_type_hint``: the receiver's type as written (a parameter, a
-  ``new``, a field, the declared return type of a call this file resolves);
+* ``receiver_type_hint``: the receiver's type as written, type arguments
+  kept (a parameter, a ``new``, a field, the declared return type of a call
+  this file resolves);
 * ``qualifier``: a receiver that can name a type or namespace path and is no
-  variable or member this file knows;
+  variable or member this file knows, type arguments kept;
 * ``enclosing_class``: a bare or ``this.`` call, unless a local function or
   a local variable of that name is in scope; a ``base.`` call, always, with
   ``super_receiver`` (the walk starts at the parent).
@@ -286,7 +287,56 @@ def test_a_receiver_of_known_type_in_another_file_carries_the_type(tmp_path: Pat
     }, "Main.Run")
     stub = _one(edges, "Open")
     assert not stub.is_resolved
-    assert _facts(stub) == {"receiver_type_hint": "Acme.Data.Conn", "call_construct": "method"}
+    # As written, type arguments kept: ``Conn`` and ``Conn<T>`` are two types.
+    assert _facts(stub) == {"receiver_type_hint": "Acme.Data.Conn<int>", "call_construct": "method"}
+
+
+def test_a_hint_keeps_the_type_arguments_the_source_wrote(tmp_path: Path) -> None:
+    """A parameter, a field, a field chain, a ``new``: the type as written,
+    type arguments kept on the named type, those of an enclosing type and a
+    leading ``global::`` dropped, an array's or a nullable's element type."""
+    edges = _calls(tmp_path, {
+        "Inner.cs": "public class Inner<T> { public Db<T> _db; }\n",
+        "Main.cs": (
+            "class Main {\n"
+            "    private Box<int> _box;\n"
+            "    private Inner<string> _inner;\n"
+            "    void Run(Policy<TResult> generic, Policy plain, Outer<int>.Nested nested,\n"
+            "             global::Acme.Map<string, List<int>> map, Cell<int>[] cells, Cell<long>? maybe) {\n"
+            "        generic.Execute(); plain.Execute(); nested.A(); map.B(); cells.C(); maybe.D();\n"
+            "        _box.E(); this._box.F(); this._inner._db.Save(); new Cache<int>().G();\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run")
+    assert sorted(((e.meta or {})["callee_name"], _facts(e)["receiver_type_hint"]) for e in edges) == [
+        ("A", "Outer.Nested"), ("B", "Acme.Map<string,List<int>>"), ("C", "Cell<int>"),
+        ("D", "Cell<long>"), ("E", "Box<int>"), ("Execute", "Policy"), ("Execute", "Policy<TResult>"),
+        ("F", "Box<int>"), ("G", "Cache<int>"), ("Save", "Db<T>"),
+    ]
+    assert not any(e.is_resolved for e in edges)
+
+
+def test_a_type_of_this_file_binds_only_with_the_arity_written(tmp_path: Path) -> None:
+    """The file's table is keyed by the bare name (``Box.Get``); the call is
+    bound there only when the file's type of that name takes as many type
+    parameters as the receiver's type is written with."""
+    edges = _calls(tmp_path, {
+        "Main.cs": (
+            "class Box<T> { public void Get() {} }\n"
+            "class Policy { public void Execute() {} }\n"
+            "class Main {\n"
+            "    void Run(Box<int> box, Policy<int> generic, Policy plain) {\n"
+            "        box.Get(); new Box<string>().Get(); generic.Execute(); plain.Execute();\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run")
+    bound = sorted((e.dst.split(":")[-2], (e.meta or {})["resolved_by"]) for e in edges if e.is_resolved)
+    assert bound == [("Box.Get", "receiver_type"), ("Box.Get", "receiver_type"),
+                     ("Policy.Execute", "receiver_type")]
+    (stub,) = [e for e in edges if not e.is_resolved]
+    assert _facts(stub) == {"receiver_type_hint": "Policy<int>", "call_construct": "method"}
 
 
 def test_a_receiver_of_known_type_in_this_file_is_bound_here(tmp_path: Path) -> None:
@@ -356,10 +406,10 @@ def test_a_receiver_that_can_name_a_type_is_handed_over_as_written(tmp_path: Pat
     assert all(not e.is_resolved for e in edges)
     # ``Other`` is a type of this file: still the shared pass's to bind, by
     # the namespace walk, not by the file's table of short names. ``string``
-    # is a keyword: no type of the repository.
+    # is a keyword: no type of the repository. Type arguments as written.
     assert sorted(((e.meta or {})["callee_name"], _facts(e).get("qualifier", "-")) for e in edges) == [
-        ("Assist", "Ns.Util"), ("Create", "List"), ("Helper", "Other"), ("Helper", "Util"), ("Join", "-"),
-        ("Make", "-"),
+        ("Assist", "Ns.Util"), ("Create", "List<int>"), ("Helper", "Other"), ("Helper", "Util"), ("Join", "-"),
+        ("Make", "Outer.Gen<int>"),
     ]
     assert {_facts(e)["call_construct"] for e in edges} == {"method"}
 
@@ -512,6 +562,64 @@ def test_end_to_end_a_typed_receiver_reaches_its_type_not_a_namesake(tmp_path: P
         ),
     })
     assert _resolved(data, "Main.Run", "Open") == [("Data.Conn.Open", "receiver_type")]
+
+
+def test_end_to_end_a_generic_type_and_its_plain_namesake_each_get_their_calls(tmp_path: Path) -> None:
+    """Polly's shape: ``Policy`` and ``Policy<TResult>`` in one namespace, in
+    two files, each with an ``Execute``; a receiver of each, a qualifier of
+    each, a ``new`` of each. Each call reaches its own type's method."""
+    data = _map(tmp_path, {
+        "Polly/Policy.cs": (
+            "namespace Polly { public class Policy {\n"
+            "    public void Execute() {}\n"
+            "    public static Policy Handle() { return null; }\n"
+            "} }\n"
+        ),
+        "Polly/Policy.TResult.cs": (
+            "namespace Polly { public class Policy<TResult> {\n"
+            "    public void Execute() {}\n"
+            "    public static Policy<TResult> Handle() { return null; }\n"
+            "} }\n"
+        ),
+        "App/Main.cs": (
+            "using Polly;\n"
+            "namespace App { public class Main {\n"
+            "    public void Plain(Policy policy) { policy.Execute(); Policy.Handle(); new Policy().Execute(); }\n"
+            "    public void Generic(Policy<int> policy) {\n"
+            "        policy.Execute(); Policy<int>.Handle(); new Policy<int>().Execute();\n"
+            "    }\n"
+            "} }\n"
+        ),
+    })
+    nodes = {n["id"]: n for n in data["nodes"]}
+
+    def reached(caller: str) -> list[tuple[str, int, str]]:
+        return sorted(
+            (nodes[e["dst"]]["name"], nodes[e["dst"]]["span"]["start_line"], e["meta"]["resolved_by"])
+            for e in data["edges"]
+            if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+            and not e["meta"].get("superseded_by")
+            and nodes.get(e["src"], {}).get("name") == caller
+            and nodes[e["dst"]]["path"].startswith("Polly/")
+            and nodes[e["dst"]]["kind"] == "method"
+        )
+    paths = {n["path"] for n in nodes.values() if n.get("name") == "Policy.Execute"}
+    assert len(paths) == 2
+    plain = [(name, line) for name, line, _ in reached("Main.Plain")]
+    generic = [(name, line) for name, line, _ in reached("Main.Generic")]
+    # One Execute per receiver and the static Handle, all of the right type:
+    # in Policy.cs, Execute is line 2 and Handle line 3; likewise in the other file.
+    assert plain == [("Policy.Execute", 2), ("Policy.Handle", 3)]
+    assert generic == [("Policy.Execute", 2), ("Policy.Handle", 3)]
+    file_of = {
+        caller: {nodes[e["dst"]]["path"] for e in data["edges"]
+                 if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+                 and nodes.get(e["src"], {}).get("name") == caller
+                 and nodes[e["dst"]]["kind"] == "method"}
+        for caller in ("Main.Plain", "Main.Generic")
+    }
+    assert {p.rsplit("/", 1)[-1] for p in file_of["Main.Plain"]} == {"Policy.cs"}
+    assert {p.rsplit("/", 1)[-1] for p in file_of["Main.Generic"]} == {"Policy.TResult.cs"}
 
 
 def test_end_to_end_a_static_call_through_a_using(tmp_path: Path) -> None:
