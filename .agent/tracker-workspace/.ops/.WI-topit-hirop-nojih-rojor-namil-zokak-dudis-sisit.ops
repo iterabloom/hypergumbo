@@ -1,0 +1,22 @@
+- op: create  # 5af8
+  at: '2026-11-25T02:15:30Z'  # 5af8
+  by: agent  # 5af8
+  actor: jgstern_agent  # 5af8
+  clock: 1  # 5af8
+  nonce: 5af8  # 5af8
+  data:  # 5af8
+    kind: work_item  # 5af8
+    title: "The magnet detector cannot see name-only method binds stamped ast_method_inferred, and reads 'recovery' as a known receiver type"  # 5af8
+    status: todo_hard  # 5af8
+    priority: 2  # 5af8
+    parent:  # 5af8
+    tags:  # 5af8
+    - call_graph  # 5af8
+    - analysis_quality  # 5af8
+    - call_matrix  # 5af8
+    isbefore: []  # 5af8
+    duplicate_of: []  # 5af8
+    not_duplicate_of: []  # 5af8
+    pr_ref:  # 5af8
+    description: "WHAT. Two readers reconstruct \"was this call's target identified\" from three fields, and both are wrong in a way\nthe fields cannot fix. Re-point them at the resolution mark (the item that stamps it is filed beside this one)\nwhen the shared call-resolution pass lands; it changes which edges are demoted, so it is a behaviour change.\n\n1. receiver_blind_magnets._BARE_EVIDENCE is {\"ast_call\", \"ast_call_direct\"}, and its comment says every other\n   evidence type \"encodes that the receiver WAS characterised\". ast_method_inferred is not in the set. It is\n   stamped at js_ts.py:8231 (\"Case 4: Fallback - method name match with low confidence\") and php.py:1657 on a\n   method found by NAME on an untyped receiver. Measured 2026-11-25 on 28 repositories: 7,668 resolved call edges\n   (javascript 4,821, typescript 2,268, php 568, vue 11) are outside the magnet detector by construction; 238 of\n   them had another in-repository callable of the same name.\n2. receiver_blind_magnets._receiver_was_identified treats any resolution_quality other than \"ambiguous\" as\n   \"identified\" (recorded on WI-mujug 2026-10-28). \"recovery\" passes: a class the caller constructs somewhere in\n   its body is taken as the receiver's known type.\n\nREPRO for 1 (not run; write it as the first step): a JavaScript file with `class Store { persist() {} }` and\n`function f(x) { x.persist(); }`; the edge f -> Store.persist carries evidence_type ast_method_inferred, and\nfind_receiver_blind_magnets does not list it at any min_confidence.\n\nNOT MEASURED. How many of the 7,668 the detector would call a harmful magnet (test-code target, stdlib interface\nmethod name) if it could see them.\n\nRELATED. WI-mujug (declare resolution_quality's values), INV-fahub (the magnet invariant), audit docs/audits/0030."  # 5af8
+    fields: {}  # 5af8

@@ -31,3 +31,18 @@
   clock: 2  # 2213
   nonce: '2213'  # 2213
   message: "OWNER RULING, in session 2026-11-24: 'yes we should definitely change it.' Variable types are to be scoped to the function that binds them; ADR-0006's file-scope convention (its Scope Handling section, the Scope column of its table, limitation 1, future-work 9, line 104) is to be amended. PROBE of all 17 class-bearing mainstream languages the same day (~/hypergumbo_lab_notebook/var_scope_11242026/probe.py, probe_run1.md; three functions each binding a local db: an Other, an external value, a Conn; written in both orders): LEAKS in 8. First writer wins, so even a function that constructs its own value is mistyped: rust, ruby, lua. A stale type, so a later function's untyped db keeps the previous function's type: javascript, typescript, scala, csharp, groovy. NO leak: python, java, kotlin, go, swift, cpp, perl. objc binds everything by selector (WI-mokul), so the probe cannot see its scope; php is the same in both orders. NOT probed: parameters, fields, closures and nested functions, module-level variables, dart / d / solidity (lang-common and extended1 have var_types too), and the module slot of external calls (rust's var_type_paths is per file too)."  # 2213
+- op: update  # 10e8
+  at: '2026-11-25T01:53:10Z'  # 10e8
+  by: agent  # 10e8
+  actor: jgstern_agent  # 10e8
+  clock: 3  # 10e8
+  nonce: '10e8'  # 10e8
+  set:  # 10e8
+    status: satisfied  # 10e8
+- op: discuss  # fd2e
+  at: '2026-11-25T01:53:10Z'  # fd2e
+  by: agent  # fd2e
+  actor: jgstern_agent  # fd2e
+  clock: 4  # fd2e
+  nonce: fd2e  # fd2e
+  message: "Fixed in PR #2385 (dev 30313aeab). OWNER: ruled 'change it' on 2026-11-24, and 'merge as built' on 2026-11-25 with the counts below in hand. WHAT: one class, hypergumbo_core/analyze/var_scope.py ScopedVarTypes, is the var_types dict; a binding closes with the function that makes it. Ten analyzers use it: rust, ruby, lua (two walks), javascript, typescript, scala, csharp, groovy, and java and kotlin, whose PARAMETERS leaked (found by a second probe). EVIDENCE, re-run on merged dev: this item's own repro (hupis_11242026/probe/var_scope, analyze_rust) now gives a -> Other::execute, b -> unresolved, c -> Conn::execute; it gave Other::execute for all three (var_scope_11242026/closure/rerun_dev.txt). Both probes over 17 languages, locals and typed parameters, both function orders: no row depends on the order (closure/probe_dev.md, probe_param_dev.md). Tests: test_call_resolution_matrix.py columns scope_own and scope_ext; test_var_types_per_function.py; core test_var_scope.py. COST, measured on 28 repositories: 570 resolved call edges removed (kotlin 330 of 11,982, rust 107 with 50 new and 23 re-pointed, typescript 75, scala 23, java 10, lua 4, ruby 1); of 80 read in source about 70 had pointed at the right method, 5 at a wrong one (var_scope_11242026/STATUS.md). What they covered for is WI-hugir, with WI-vodun, WI-zokob and WI-sovij. NOT ASSERTED: dart, d and solidity are not probed, objc and php cannot be read from the fixture (WI-donoz); an untyped local does not hide an outer binding, fields are per file, scopes are transparent (WI-puvol)."  # fd2e
