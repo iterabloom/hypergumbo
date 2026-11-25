@@ -1,0 +1,41 @@
+Original commit body from 0d86adaeccfa591ff074c8719256dc3525d1ebc0:
+
+Every resolved `calls` and `instantiates` edge now says what scoped the choice of its target, in one key with a declared vocabulary: `meta.resolved_by`. Nothing reads it to decide anything; no edge changes apart from the new key. Step 2 of the shared call-resolution program (owner ruling 2026-11-24: "first MARK how every edge was resolved, count, sample, then decide"). Addresses WI-hirol.
+
+WHY
+Audit-findings 0030 (in this PR, and recorded against the concept-audit cadence) found the question "by what evidence was this call's target chosen" written in seven places and answered for every edge by none: receiver-flavoured `evidence_type` values, `resolution_quality`, the outcome half of `receiver`, `binding`, a grade folded into `confidence`, the shared resolvers' `match_type` (which never left the resolver), and one analyzer's route constants. A method bound through a typed receiver had six spellings across ten analyzers. On 28 repositories 39,223 of 95,105 resolved call edges said nothing at all.
+
+WHAT
+- `hypergumbo_core/resolved_by.py`: eleven values, each with the evidence it names (receiver_type, own_type, qualified, import, lexical_scope, same_file, same_module, name, class_hint, key_match, semantic_backend), and the rule for choosing one: name what scoped the search, not a check made on its result. `Edge.create(resolved_by=...)` is the one writer and refuses an undeclared value, another edge type and an unresolved edge. finalize's edge-resolution verdict removes the mark from an edge that leaves the repository, so a call-family edge carries it if and only if it is resolved.
+- The mark does not hold a grade (`confidence`) or the number of same-named candidates: that is counted from the nodes, so "picked by declaration order" is `same_file` crossed with a count, not a value.
+- Every call-family creation site passes it: 69 analyzers in three packages, 19 core linkers and the SCIP shim (the check listed 199 unmarked sites after the C# pilot's six). One commit per language (mainstream) or per group of small analyzers. Each language has tests that pin the values of its routes; the routes no fixture reaches are named in the agents' reports.
+- `scripts/check-resolved-by-sites` (and its test): every call-family creation site passes the mark; the older spellings of the same fact are pinned per file (`.ci/resolved-by-old-spellings.json`, 66 writes in 19 files) and may only shrink. They are still written; they fold into the mark language by language (WI-gilip).
+- `symbol_resolution`: `LookupResult.match_type`'s seven values are constants; `LookupResult.resolved_by` maps them to the mark in one place.
+- Schema 0.22.1 (an addition). Spec, changelog.
+
+NO BEHAVIOUR CHANGE, MEASURED
+28 repositories (the pared set; maps made before this branch against maps made at its head 1974add49, edges and nodes compared as multisets with the new key removed): 28 of 28 identical. 263,857 call-family edges. Resolved with no mark: 0. Unresolved with a mark: 0.
+Commits after 1974add49, and what was measured for each (the 28 maps were not all made again): a helper only tests called is removed; the COBOL analyzer passes its edge meta at creation (COBOL fixture map identical, 5 edges and 11 nodes; the 28 trees hold no COBOL); the C analyzer passes `unfollowed_construct` at creation instead of adding it after (libzmq made again: 21,980 edges and 9,498 nodes, identical, 34 edges through that site); the GraphQL and HTTP linker fix below, which changes those linkers' edges by adding the mark they were missing (no such edge in the 28 trees); the regenerated architecture document and the test manifest.
+
+SCOREBOARD: resolved call-family edges by mark, 28 repositories
+- `calls`, 95,105: receiver_type 36,924; name 25,183; own_type 14,982; qualified 5,527; same_file 4,849; lexical_scope 2,798; import 2,280; class_hint 1,649; same_module 849; key_match 3; 61 collapsed edges whose call sites disagreed (listed under `resolved_by_values`).
+- `instantiates`, 6,002: name 5,601; import 239; same_file 98; qualified 51; lexical_scope 13.
+- Crossed with the number of declaring scopes that hold a same-named symbol (the pick-prone populations): name with more than one in the repository 4,306; receiver_type / qualified / own_type whose owner's name matches more than one type 3,059; same_file with more than one in the file 208. 7,573 in all, 7.5% of the resolved edges. A count sizes a population; it does not say an edge is wrong. By language: kotlin 1,852, swift 1,772, rust 1,222, lua 1,071, typescript 419, cpp 346, java 345, go 246.
+- Per language, the share marked `name`: javascript 89%, lua 90%, c 100%, cpp 72%, php 69%, typescript 54%, swift 50%; java 0%, python 0%.
+
+WHAT REVIEW FOUND IN THE STAMPING
+Four agents stamped the analyzers in separate worktrees; the values were then checked against the rule. One systematic error, fixed here: JavaScript, PHP, Lua and Zig marked `obj.m()` on an untyped receiver `own_type` when the method belonged to the caller's own class. Those were found by name and are now `name`; left alone they would have been hidden from the name-only count. The C# pilot read `Helper.Process()` across files as `own_type`; it is `qualified`. `test_resolved_by_explicit_receiver.py` pins both sides.
+A second error, mine, found by the pre-PR run and then by widening a gate: the GraphQL linker (both joins) and the HTTP linker passed `resolved_by` to `Edge.create` and then assigned `edge.meta` a new dict, so the mark was lost. The site check reads whether the keyword is passed, not whether the key survives, and the 28 trees hold no such edge, so neither instrument saw it. Fixed, with a test on each of the three edges (red against the unfixed linkers). `check-meta-write-discipline` rule 3 now lists `resolved_by` among the kwargs a later whole-dict assignment destroys; an AST sweep of every scope that creates a marked edge found no other assignment that drops it.
+
+NOT DONE, AND KNOWN LIMITS
+- No reader of the mark. The magnet detector still reconstructs "was the receiver identified" from three fields and cannot see the 7,668 name-only method binds stamped `ast_method_inferred` (WI-topit).
+- No fold of the older spellings (WI-gilip; the `evidence_type` folds move confidence bands and need a ruling).
+- Unresolved edges carry no mark. Other name-resolved edge types (`references`, `extends`, `implements`, `dispatches_to`) are not marked.
+- An `import` mark can overstate: the shared name resolver returns the first of several path matches as a path-hint match, and analyzers that pass something other than an import as the hint were corrected one by one, not by construction.
+- Scala and Dart: a chained call whose receiver the grammar drops is indistinguishable from a bare call at the site, so it reads `own_type` when the method is on the enclosing type.
+- Two closest fits, marked in the code: Solidity `using L for T` (import), F# constructions (same_module).
+- Linker marks: three edges are pinned by tests (GraphQL by operation name and by root field, HTTP). The other 26 linker sites have no test that pins the value; they rest on the site check, on rule 3, and, for inherited-calls, receiver-type-dispatch and method-call-recovery, on the 28 trees. The protocol and bridge linkers produced 3 `key_match` edges on those trees.
+- Rule 3 sees a dict literal assigned to `.meta`. A meta replaced by a helper the edge is passed to, or by a non-literal value, is not seen.
+- The static check judges creation sites whose edge type is a literal. Seventeen sites pass a computed edge type; the two that can be call-family (SCIP, F#) are stamped by hand, and the census is what would catch another.
+- The mark was checked on the 28 trees of the pared set (mainstream languages). For lang-common and lang-extended1 the agents ran one real tree per language where one exists locally and fixtures otherwise (fourteen languages fixtures only).
+- The guess-prone routes the agents read past and did not fix (a C `static` function bound across files, Java `super.m()` binding the class's own override, Hack's global-before-namespace lookup, about forty more) are filed after the merge, not fixed here.
