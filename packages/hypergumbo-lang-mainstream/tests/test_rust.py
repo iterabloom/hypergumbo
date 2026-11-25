@@ -2893,8 +2893,8 @@ class TestRustScopedIdentifierResolution:
         assert self._one_stub(edges)["qualifier"] == "Foo"
 
     def test_module_qualified_call_keeps_its_module_in_the_qualifier(self, tmp_path: Path) -> None:
-        """``codex_agent::CodexAgent::new()``: the module prefix is not stripped to find a
-        ``CodexAgent::new`` by name; the whole owner path is reported."""
+        """``codex_agent::CodexAgent::connect()``: the module prefix is not stripped to find a
+        ``CodexAgent::connect`` by name; the whole owner path is reported."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -2905,53 +2905,56 @@ class TestRustScopedIdentifierResolution:
             origin="test", origin_run_id="run",
         )
         target = Symbol(
-            id="rust:codex_agent.rs:1-10:CodexAgent::new:method",
-            name="CodexAgent::new", kind="method", language="rust",
+            id="rust:codex_agent.rs:1-10:CodexAgent::connect:method",
+            name="CodexAgent::connect", kind="method", language="rust",
             path="codex_agent.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
-        # Multiple ::new symbols to trigger ambiguity guard on bare "new"
+        # Multiple ::connect symbols to trigger ambiguity guard on bare "new"
         other1 = Symbol(
-            id="rust:thread.rs:1-10:Thread::new:method",
-            name="Thread::new", kind="method", language="rust",
+            id="rust:thread.rs:1-10:Thread::connect:method",
+            name="Thread::connect", kind="method", language="rust",
             path="thread.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
         other2 = Symbol(
-            id="rust:spawner.rs:1-10:Spawner::new:method",
-            name="Spawner::new", kind="method", language="rust",
+            id="rust:spawner.rs:1-10:Spawner::connect:method",
+            name="Spawner::connect", kind="method", language="rust",
             path="spawner.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
         other3 = Symbol(
-            id="rust:client.rs:1-10:Client::new:method",
-            name="Client::new", kind="method", language="rust",
+            id="rust:client.rs:1-10:Client::connect:method",
+            name="Client::connect", kind="method", language="rust",
             path="client.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
 
-        source = b"fn run_main() {\n    codex_agent::CodexAgent::new(config);\n}\n"
+        source = b"fn run_main() {\n    codex_agent::CodexAgent::connect(config);\n}\n"
         global_symbols = {
-            "CodexAgent::new": target,
-            "Thread::new": other1,
-            "Spawner::new": other2,
-            "Client::new": other3,
+            "CodexAgent::connect": target,
+            "Thread::connect": other1,
+            "Spawner::connect": other2,
+            "Client::connect": other3,
         }
 
         edges = self._parse_and_extract(
             source, {"run_main": caller}, global_symbols,
         )
 
+        # ``connect`` and not ``new``: a name the analyzer declines to model
+        # (``SUPPRESSED_METHOD_NAMES``) on an owner no ``mod`` or ``use`` of the
+        # file binds is withheld, the owner being a library's by Rust's rules.
         # The path's module is not this file's and the file binds no ``codex_agent``:
-        # a ``CodexAgent::new`` found by name elsewhere is not it.
+        # a ``CodexAgent::connect`` found by name elsewhere is not it.
         assert self._one_stub(edges)["qualifier"] == "codex_agent::CodexAgent"
 
     def test_deeply_module_qualified_call(self, tmp_path: Path) -> None:
-        """``codex_core::config::Config::load()``: the whole owner path is reported."""
+        """``codex_core::config::Config::read_from()``: the whole owner path is reported."""
         from hypergumbo_core.ir import Symbol, Span
 
         caller = Symbol(
@@ -2962,41 +2965,41 @@ class TestRustScopedIdentifierResolution:
             origin="test", origin_run_id="run",
         )
         target = Symbol(
-            id="rust:config.rs:1-10:Config::load:method",
-            name="Config::load", kind="method", language="rust",
+            id="rust:config.rs:1-10:Config::read_from:method",
+            name="Config::read_from", kind="method", language="rust",
             path="config.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
-        # Multiple ::load symbols to trigger ambiguity guard
+        # Multiple ::read_from symbols to trigger ambiguity guard
         other1 = Symbol(
-            id="rust:other.rs:1-10:Other::load:method",
-            name="Other::load", kind="method", language="rust",
+            id="rust:other.rs:1-10:Other::read_from:method",
+            name="Other::read_from", kind="method", language="rust",
             path="other.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
         other2 = Symbol(
-            id="rust:db.rs:1-10:Db::load:method",
-            name="Db::load", kind="method", language="rust",
+            id="rust:db.rs:1-10:Db::read_from:method",
+            name="Db::read_from", kind="method", language="rust",
             path="db.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
         other3 = Symbol(
-            id="rust:cache.rs:1-10:Cache::load:method",
-            name="Cache::load", kind="method", language="rust",
+            id="rust:cache.rs:1-10:Cache::read_from:method",
+            name="Cache::read_from", kind="method", language="rust",
             path="cache.rs",
             span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
 
-        source = b"fn main() {\n    codex_core::config::Config::load();\n}\n"
+        source = b"fn main() {\n    codex_core::config::Config::read_from();\n}\n"
         global_symbols = {
-            "Config::load": target,
-            "Other::load": other1,
-            "Db::load": other2,
-            "Cache::load": other3,
+            "Config::read_from": target,
+            "Other::read_from": other1,
+            "Db::read_from": other2,
+            "Cache::read_from": other3,
         }
 
         edges = self._parse_and_extract(
@@ -4311,7 +4314,8 @@ class TestRustTurbofishCalls:
         assert call_edges[0].meta["call_construct"] == "method"
 
     def test_plain_scoped_call_reports_its_owner(self, tmp_path: Path) -> None:
-        """``Vec::new()`` (no turbofish) reports ``qualifier="Vec"``."""
+        """``Vec::with_capacity(4)`` (no turbofish) reports ``qualifier="Vec"``
+        (``Vec::with_capacity()`` would be withheld: a denylisted name on the prelude's type)."""
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
@@ -4328,7 +4332,7 @@ class TestRustTurbofishCalls:
         lang = tree_sitter.Language(tree_sitter_rust.language())
         parser = tree_sitter.Parser(lang)
 
-        source_text = b"fn caller() {\n    Vec::new();\n}\n"
+        source_text = b"fn caller() {\n    Vec::with_capacity(4);\n}\n"
         tree = parser.parse(source_text)
 
         caller = Symbol(
@@ -4340,16 +4344,16 @@ class TestRustTurbofishCalls:
         )
 
         target = Symbol(
-            id="rust:lib.rs:1-5:Vec::new:function",
-            name="Vec::new", kind="function", language="rust",
+            id="rust:lib.rs:1-5:Vec::with_capacity:function",
+            name="Vec::with_capacity", kind="function", language="rust",
             path="lib.rs",
             span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
             origin="test", origin_run_id="run",
         )
 
-        registry: dict[str, Symbol] = {"Vec::new": target}
+        registry: dict[str, Symbol] = {"Vec::with_capacity": target}
         resolver = NameResolver(registry)
-        method_resolver = {"new": [target]}
+        method_resolver = {"with_capacity": [target]}
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
