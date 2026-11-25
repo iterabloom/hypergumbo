@@ -972,6 +972,13 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     method_index = build_method_index(
         ctx.symbols, class_ids_by_name, class_symbols,
     )
+    # Members that are not methods and can still be what a call invokes: a
+    # field or property holding a delegate (``Clock.Sleep(t)`` where ``Sleep``
+    # is a ``Func<...>`` field). Looked at only after the methods, and only
+    # where the type's identity is settled.
+    member_index = build_method_index(
+        ctx.symbols, class_ids_by_name, class_symbols, kinds=_INVOKED_MEMBER_KINDS,
+    )
 
     # Pre-compute existing (src, dst) resolved-calls edges so we don't
     # emit a duplicate when the analyzer already covered the same target
@@ -1074,6 +1081,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             scoped_by=scoped_by,
             settled_type_ids=settled_type_ids,
             super_receiver=bool(meta.get("super_receiver")),
+            member_index=member_index,
         )
         if emitted is not None:
             new_edges.append(emitted)
@@ -1087,6 +1095,10 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # Per-Site resolvers.
 # ---------------------------------------------------------------------------
 
+
+#: Member kinds, other than a method, that a call can invoke through the
+#: value they hold.
+_INVOKED_MEMBER_KINDS = ("field", "property")
 
 #: ``_type_meant``'s answer when the name means no single type from the
 #: caller's place: the call stays unresolved.
@@ -1237,6 +1249,7 @@ def _try_resolve(
     scoped_by: str = resolved_by.RECEIVER_TYPE,
     settled_type_ids: list[str] | None = None,
     super_receiver: bool = False,
+    member_index: _TypeHierarchyIndex | None = None,
 ) -> Edge | None:
     """Dispatch an unresolved edge to the right Site resolver.
 
@@ -1292,6 +1305,7 @@ def _try_resolve(
             run=run,
             scoped_by=scoped_by,
             settled_type_ids=settled_type_ids,
+            member_index=member_index,
         )
 
     # Site 1: bare/this call.
@@ -1436,6 +1450,7 @@ def _resolve_site2(
     run: AnalysisRun,
     scoped_by: str = resolved_by.RECEIVER_TYPE,
     settled_type_ids: list[str] | None = None,
+    member_index: _TypeHierarchyIndex | None = None,
 ) -> Edge | None:
     """Site 2: ``var.method()`` typed receiver, or ``Type.method()`` where the
     call site names the type (``scoped_by`` is then ``qualified``).
@@ -1541,6 +1556,25 @@ def _resolve_site2(
                     confidence=_SITE_2_INHERITED_CONFIDENCE,
                     origin=PASS_ID, origin_run_id=run.execution_id,
                     evidence_type="ast_call_inherited_method",
+                    is_resolved=True,
+                    derived_from=[edge.id, type_class_id],
+                    resolved_by=scoped_by,
+                )
+
+    # Step 2b: no method of that name on the type or its ancestors. Where the
+    # type's identity is settled (ADR-0064), a field or property of that name
+    # declared on the type is what the call invokes: the delegate it holds.
+    # A type found by name alone is not evidence enough for that.
+    if settled_type_ids is not None and member_index is not None:
+        members = dict(member_index.methods_by_short_name.get(method_short, []))
+        for type_class_id in type_class_ids:
+            member = members.get(type_class_id)
+            if member is not None and (edge.src, member.id) not in existing_call_pairs:
+                return Edge.create(
+                    src=edge.src, dst=member.id, edge_type="calls",
+                    line=edge.line, confidence=_SITE_2_DIRECT_CONFIDENCE,
+                    origin=PASS_ID, origin_run_id=run.execution_id,
+                    evidence_type="ast_call_type_inferred",
                     is_resolved=True,
                     derived_from=[edge.id, type_class_id],
                     resolved_by=scoped_by,
