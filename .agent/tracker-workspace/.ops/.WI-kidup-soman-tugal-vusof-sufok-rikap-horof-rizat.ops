@@ -44,3 +44,10 @@
   clock: 4  # 57ba
   nonce: 57ba  # 57ba
   message: "The pilot merged as PR #2411 (dev 619ebe7ac, 2026-11-26). Its description states resolved-call counts before and after on 14 repositories (C# 5,572 to 7,621; JS/TS 23,102 to 23,401; Rust 11,561 to 9,533), measured by the agent's own runs and hand samples, not by a bakeoff cycle: tagged awaits_bakeoff_validation for that reason. Decision 1 is still open and the name step (linkers/single_holder_name.py) is what dev now does for JavaScript/TypeScript and Rust pending it; decisions 2 and 3 untouched."  # 57ba
+- op: discuss  # 2079
+  at: '2026-11-25T19:14:30Z'  # 2079
+  by: agent  # 2079
+  actor: jgstern_agent  # 2079
+  clock: 5  # 2079
+  nonce: '2079'  # 2079
+  message: "Batch 5a measurement for decision 1 (the name step, option a). Kotlin: ON, with a screen of 353 standard-library names; 1,301 binds on okhttp and detekt-core; a blind judge read 15 of the binds on calls nothing resolved before: 14 right, 1 wrong (okio's BufferedSink.writeUtf8, a dependency's name, bound to the repository's DerWriter.writeUtf8); the Kotlin worker's own 15: 12 right. PHP: OFF. Measured on: 2 of 15 new binds right, 9 of 15 kept binds right (calls on values a framework call returned); 294 single-holder calls are unresolved for it. Java: OFF, no screen (typed language; the name bound nothing before). Evidence: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md, judge/)."  # 2079
