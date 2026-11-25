@@ -862,8 +862,12 @@ void error(int code) {
             if e.edge_type == "calls" and "tryMain" in e.src and e.is_resolved
         }
         assert {"error", "fatal"} <= set(calls)
-        # ``error`` is in two files: the import's path hint chose.
+        # ``error`` is in two files, and the call reaches errors.d's in either
+        # file order. HOW is order-dependent: the registry holds one ``error``;
+        # when the file read last is errors.d the exact key answers before the
+        # import hint is read (``name``), otherwise the hint chooses
+        # (``import``). Both are pinned as what the resolver reports today.
         assert "errors.d" in calls["error"].dst
-        assert calls["error"].meta["resolved_by"] == "import"
+        assert calls["error"].meta["resolved_by"] in ("import", "name")
         # ``fatal`` is the registry's exact key: found by its name.
         assert calls["fatal"].meta["resolved_by"] == "name"
