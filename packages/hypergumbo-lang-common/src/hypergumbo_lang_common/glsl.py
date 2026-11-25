@@ -371,6 +371,7 @@ def _extract_glsl_edges(
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
                         origin_run_id=run_id,
+                        resolved_by=result.resolved_by,
                     )
                 else:
                     edge = make_unresolved_edge(

@@ -1015,6 +1015,9 @@ def _hs_emit_call_edge(
         resolution_score=resolution_score,
         is_resolved=resolution_score is not None,
         meta=meta,
+        resolved_by=(
+            lookup_result.resolved_by if resolution_score is not None else None
+        ),
     )
 
 
