@@ -983,16 +983,31 @@ def objc(R, D, B, S, dl, split=False, third=False):
 
 
 # ---------------------------------------------------------------- ruby
-def ruby(R, D, B, S, dl):
+def ruby(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, sup=""):
         return f"class {n}{sup}\n  def {m}\n    {v}\n  end\nend\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"\nclass Child < {B}\nend\n", cls(S, "ping", 2))
-    main = f"""require 'extlib'
+    spare = "class Spare\n  def execute\n    2\n  end\n\n  def ping\n    2\n  end\nend\n"
+    side = "z" if dl else "a"
+    files = {"util.rb": "def helper\n  1\nend\n", f"{side}_decoy.rb": "def helper\n  2\nend\n"}
+    if third:
+        files[f"{side}_spare_util.rb"] = "def helper\n  2\nend\n"
+    if split:
+        # One class per file, loaded with ``require_relative``; main loads the
+        # right classes only. Decoy files carry the ``z_`` / ``a_`` prefix.
+        files |= {"store.rb": cls(R, "execute", 1), f"{side}_store.rb": cls(D, "execute", 2),
+                  "base.rb": cls(B, "ping", 1),
+                  "child.rb": f"require_relative 'base'\n\nclass Child < {B}\nend\n",
+                  f"{side}_stray.rb": cls(S, "ping", 2)}
+        if third:
+            files[f"{side}_spare.rb"] = spare
+        classes = "require_relative 'store'\nrequire_relative 'child'\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"\nclass Child < {B}\nend\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["main.rb"] = f"""require 'extlib'
 require_relative 'util'
-
-{ex}
-{pg}
+{classes}
 def get_db
   {R}.new
 end
@@ -1030,12 +1045,13 @@ def via_import
   helper()
 end
 """
-    dec = ("z" if dl else "a") + "_decoy.rb"
-    return {"main.rb": main, "util.rb": "def helper\n  1\nend\n", dec: "def helper\n  2\nend\n"}
+    # No ``via_qual``: util.rb's ``helper`` is a top-level ``def`` (a private
+    # method of Object), which Ruby offers no qualifier to reach.
+    return files
 
 
 # ---------------------------------------------------------------- php
-def php(R, D, B, S, dl):
+def php(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, ext=""):
         return f"class {n}{ext}\n{{\n    public function {m}()\n    {{\n        return {v};\n    }}\n}}\n"
     ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
@@ -1180,7 +1196,7 @@ class Main {{
 
 
 # ---------------------------------------------------------------- lua
-def lua(R, D, B, S, dl):
+def lua(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v):
         return (f"local {n} = {{}}\n{n}.__index = {n}\n\nfunction {n}.new()\n  return setmetatable({{}}, {n})\nend\n\n"
                 f"function {n}:{m}()\n  return {v}\nend\n")
@@ -1239,7 +1255,7 @@ return {{ via_var = via_var, via_chain = via_chain, via_ctor = via_ctor, via_inh
 
 
 # ---------------------------------------------------------------- perl
-def perl(R, D, B, S, dl):
+def perl(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, parent=""):
         return (f"package {n};\n{parent}\nsub new {{\n    my $class = shift;\n    return bless {{}}, $class;\n}}\n\n"
                 f"sub {m} {{\n    return {v};\n}}\n")
