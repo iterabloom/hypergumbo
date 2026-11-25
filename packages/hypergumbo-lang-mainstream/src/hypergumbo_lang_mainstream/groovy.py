@@ -91,6 +91,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
@@ -99,6 +100,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
@@ -1044,6 +1046,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
+                                    resolved_by=resolved_by.RECEIVER_TYPE,
                                 ))
                                 edge_added = True
 
@@ -1066,12 +1069,22 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                 local_symbols.get(f"{_local_scope}.{callee_name}")
                                 if _local_scope else None
                             )
+                            # ``Helper.process()`` names its owner; a bare
+                            # call found under the enclosing class is the
+                            # implicit receiver.
+                            _by = resolved_by.QUALIFIED if receiver else resolved_by.OWN_TYPE
                             if local_callee is None and callee_name in local_symbols:
                                 _short = local_symbols[callee_name]
                                 if receiver or not defer_bare_method_call(
                                     _short.kind, _short.name, "suffix", _local_scope,
                                 ):
                                     local_callee = _short
+                                    # The file's bare-name table, last
+                                    # declaration winning.
+                                    _by = resolved_by_for_bare_call(
+                                        _short.kind, _short.name,
+                                        resolved_by.SAME_FILE, _local_scope,
+                                    )
                             if local_callee is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -1082,6 +1095,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
+                                    resolved_by=_by,
                                 ))
                             # Check global symbols via resolver
                             else:
@@ -1127,6 +1141,10 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "function"},
+                                        resolved_by=resolved_by_for_bare_call(
+                                            _sym.kind, _sym.name,
+                                            lookup_result.resolved_by, _enclosing_type,
+                                        ),
                                     ))
                                 else:
                                     edges.append(make_unresolved_edge(
