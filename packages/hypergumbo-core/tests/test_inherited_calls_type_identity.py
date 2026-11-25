@@ -430,3 +430,82 @@ def test_a_typed_receiver_follows_a_named_import_to_its_file() -> None:
     (edge,) = link_inherited_calls(ctx).edges
     assert edge.dst == wanted[1].id
     assert edge.meta["resolved_by"] == "receiver_type"
+
+
+# --- a function called by its imported name ----------------------------------------
+
+
+def _ts(kind: str, name: str, path: str, lines: tuple[int, int] = (1, 5)) -> Symbol:
+    return Symbol(
+        id=f"typescript:{path}:{lines[0]}-{lines[1]}:{name}:{kind}", name=name, kind=kind,
+        language="typescript", path=path,
+        span=Span(start_line=lines[0], end_line=lines[1], start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+
+
+def _ts_stub(caller: Symbol, callee: str, **facts: str) -> Edge:
+    return make_unresolved_edge("typescript", caller.id, callee, 12, "test-pass", "test-run", **facts)
+
+
+def _file_scope() -> ImportScope:
+    from hypergumbo_core.import_scope import MODULES_ARE_FILES
+
+    return ImportScope(module_kind=MODULES_ARE_FILES)
+
+
+def _ts_link(symbols: list[Symbol], stub: Edge, scope: ImportScope | None) -> list[Edge]:
+    ctx = LinkerContext(
+        repo_root=Path("/"), symbols=symbols, edges=[stub],
+        import_scopes={} if scope is None else {"src/main.ts": scope},
+    )
+    return link_inherited_calls(ctx).edges
+
+
+def test_a_bare_call_to_an_imported_function_reaches_the_file_the_import_names() -> None:
+    """``import {helper} from './util'``; ``helper()``. Two functions named
+    helper exist; the import says which."""
+    wanted, decoy = _ts("function", "helper", "src/util.ts"), _ts("function", "helper", "legacy/util.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_named("src/util.ts", "helper")
+    stub = _ts_stub(caller, "helper")
+    (edge,) = _ts_link([wanted, decoy, caller], stub, scope)
+    assert (edge.dst, edge.edge_type, edge.is_resolved) == (wanted.id, "calls", True)
+    assert edge.meta["resolved_by"] == "import"
+    assert edge.derived_from[0] == stub.id
+    # No binding for the name, or no table at all: nothing is bound.
+    assert _ts_link([wanted, decoy, caller], stub, _file_scope()) == []
+    assert _ts_link([wanted, decoy, caller], stub, None) == []
+
+
+def test_an_imported_function_under_another_local_name() -> None:
+    """``import {helper as h} from './util'``; ``h()``."""
+    wanted, decoy = _ts("function", "helper", "src/util.ts"), _ts("function", "h", "legacy/h.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_named("src/util.ts", "helper", alias="h")
+    (edge,) = _ts_link([wanted, decoy, caller], _ts_stub(caller, "h"), scope)
+    assert edge.dst == wanted.id
+
+
+def test_a_call_through_a_namespace_binding_reaches_that_files_function() -> None:
+    """``import * as util from './util'``; ``util.helper()``."""
+    wanted, decoy = _ts("function", "helper", "src/util.ts"), _ts("function", "helper", "legacy/util.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_namespace("src/util.ts", "util")
+    (edge,) = _ts_link([wanted, decoy, caller], _ts_stub(caller, "helper", qualifier="util"), scope)
+    assert (edge.dst, edge.meta["resolved_by"]) == (wanted.id, "import")
+    # A qualifier that is no binding of the file is not a module of it.
+    assert _ts_link([wanted, decoy, caller], _ts_stub(caller, "helper", qualifier="other"), scope) == []
+
+
+def test_the_bound_file_must_declare_the_function() -> None:
+    """A re-export: the binding names a file that does not declare the name.
+    Nothing is bound (the lookup does not follow re-exports)."""
+    elsewhere = _ts("function", "helper", "src/impl.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_named("src/index.ts", "helper")
+    assert _ts_link([elsewhere, caller], _ts_stub(caller, "helper"), scope) == []
