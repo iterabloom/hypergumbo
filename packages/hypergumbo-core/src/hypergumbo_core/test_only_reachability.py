@@ -297,7 +297,15 @@ def production_source_files(root: Path) -> list[Path]:
 
 
 def _is_production(path: str) -> bool:
-    return path.startswith("packages/") and "/src/" in path
+    """A file under a package's own source root, ``packages/<package>/src/``.
+
+    The root is a POSITION in the path, not a ``src`` segment found anywhere
+    below ``packages/``: the recorded crate of the rust-analyzer package
+    (``packages/<package>/recorded/<crate>/crate/src/...``) has a ``src`` of
+    its own, and its methods are nobody's to wire to production or retire.
+    """
+    parts = path.split("/", 3)
+    return len(parts) == 4 and parts[0] == "packages" and parts[2] == "src"
 
 
 def find_test_only_symbols(

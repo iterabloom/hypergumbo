@@ -127,6 +127,23 @@ class TestTheCohortQuestion:
                  _node("t", "test_it", TEST)]
         assert find_test_only_symbols(nodes, [_call("t", "f")]) == []
 
+    def test_a_src_directory_that_is_not_a_package_root_is_out_of_scope(self) -> None:
+        """A package's source root is a POSITION: ``packages/<package>/src``.
+
+        A recorded third-party crate has a ``src`` directory of its own
+        further down. The scheduled run went red on two methods of the
+        recorded Rust crate when a path with ``/src/`` anywhere under
+        ``packages/`` counted: nobody can wire those to production or retire
+        them. (Neither path below is a test path, so the test predicate is
+        not what keeps them out.)
+        """
+        for elsewhere in (
+            "packages/p/recorded/some_crate/crate/src/backend/mod.rs",
+            "packages/src/p/mod.py",
+        ):
+            nodes = [_node("f", "lookup", elsewhere), _node("t", "test_it", TEST)]
+            assert find_test_only_symbols(nodes, [_call("t", "f")]) == [], elsewhere
+
     def test_a_non_call_edge_does_not_make_a_caller(self) -> None:
         nodes = [_node("f", "target", PROD), _node("t", "test_it", TEST)]
         edges = [{"src": "t", "dst": "f", "type": "imports"}]
