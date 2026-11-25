@@ -1,0 +1,21 @@
+- op: create  # 6025
+  at: '2026-11-25T16:38:55Z'  # 6025
+  by: agent  # 6025
+  actor: jgstern_agent  # 6025
+  clock: 1  # 6025
+  nonce: '6025'  # 6025
+  data:  # 6025
+    kind: work_item  # 6025
+    title: "Corroboration is granted at the producer merge, before the ADR-0064 call linkers: half of the Rust call twins are no longer compared"  # 6025
+    status: todo_hard  # 6025
+    priority: 2  # 6025
+    parent:  # 6025
+    tags:  # 6025
+    - analysis_quality  # 6025
+    - shared_call_resolution  # 6025
+    isbefore: []  # 6025
+    duplicate_of: []  # 6025
+    not_duplicate_of: []  # 6025
+    pr_ref:  # 6025
+    description: "STATEMENT: when two producers of a language run (the Rust analyzer and the rust-analyzer SCIP arm), an in-repository call both reach by distinct pathways is corroborated (ADR-0057 section 13), whichever stage of the incumbent's pipeline reached it.\n\nOBSERVED (the recorded aardvark-dns fixture, rust-analyzer 1.94.0, pilot branch of ADR-0064): corroboration is granted in the producer merge, which runs before the linkers. Since the ADR-0064 Rust adapter the tree-sitter arm reports calls into other files as stubs with facts, and the shared linkers (inherited_calls, single_holder_name) bind them AFTER the merge. On the recorded crate, before the linkers: call twins 122 -> 61, corroborated edges 94 -> 55, calls only the SCIP arm resolves 6 -> 45, superseded stubs 3 -> 26. Through the whole pipeline the analyzer plus the linkers reach SCIP's target on 118 of the 129 paired SCIP calls, so the two arms' final answers agree about as before; what is lost is what the merge pass and `hypergumbo backend-agreement` can SEE: an edge the linkers reach later is not corroborated (it keeps one producer's confidence), and where the linker and SCIP pick the same target the linker's edge is skipped as an existing pair.\n\nWHERE: packages/hypergumbo-lang-rust-analyzer/recorded/recorded_rust_analyzer_1_94_0.py (the re-pinned tallies, with this reason in the comments); docs/audits/0019-backend-agreement-rust-aardvark-dns.md (the dated reading of 2026-11-26); packages/hypergumbo-lang-rust-analyzer/tests/test_recorded_fixtures.py (_two_arm_artifact: the stages the instrument reads).\n\nQUESTION (ADR-0057 and ADR-0064 together; not decided): should the call linkers run on the incumbent arm before the producer merge (the incumbent's \"answer\" being analyzer plus shared resolution), or should corroboration be re-evaluated after the linkers? It will recur for every language whose analyzer moves to the shared pass and has a second producer (C#, JS/TS and Python have SCIP arms or will).\n\nNOT CHECKED: a live two-arm survey (rust-analyzer installed) on the pilot branch; the JS/TS and C# SCIP arms."  # 6025
+    fields: {}  # 6025
