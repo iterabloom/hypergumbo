@@ -31,7 +31,14 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   type as its source text whatever the type's node kind; a type left out
   there is one the id cannot see, so two overloads differing only in it
   would tie. ``normalize_java_signature`` hashes ``T...`` as ``T[]``.
-- Method call relationships (edges)
+- ``meta["parameters"]`` on every method and constructor symbol: one
+  ``overload_arity.parameter_entry`` per declared parameter (``T... xs`` is
+  ``variadic``; a receiver parameter ``Outer this`` is not listed), the empty
+  list for none, read off the declaration node by the same reader as the
+  signature (``_java_declared_parameters``)
+- Method call relationships (edges); every call and ``new T(..)`` stub says
+  how many arguments it writes (``argument_count``, ``_java_argument_count``),
+  which the shared pass narrows a name's overloads by
 - Inheritance relationships: this analyzer emits ``extends`` / ``implements``
   edges for classes only. A record's ``implements`` and an interface's
   ``extends`` reach the graph through ``meta["base_classes"]``, which the
@@ -129,8 +136,10 @@ How It Works
    (ADR-0064: the analyzer binds only on Java's own evidence and REPORTS the
    rest for the shared pass). A ``this.m()`` / bare ``m()`` call binds the
    enclosing class's own member, which Java declares in the same file, found
-   by the call's position (of several overloads, the ones with as many
-   parameters as the call has arguments); one that the class does not
+   by the call's position (of several overloads, the ones that can take the
+   arguments written, ``overload_arity`` over their ``meta["parameters"]``,
+   and of those the ones with exactly as many parameters; none of them
+   takes it: none is bound); one that the class does not
    declare is emitted unresolved with an ``enclosing_class`` hint, and
    ``super.m()`` always is, with ``super_receiver``. A typed-receiver or
    inherited-field call is emitted unresolved with a ``receiver_type_hint`` /
@@ -204,7 +213,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Iterator, NamedTuple, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.library_signatures import load_library_signatures
@@ -243,7 +252,9 @@ from hypergumbo_core.analyze.base import (
     file_type_names,
     resolving_type_names,
 )
-from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
+from hypergumbo_core.overload_arity import (
+    narrow_by_arity, parameter_entry, scoped_stable_id, scoped_table_stable_id,
+)
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
@@ -384,12 +395,22 @@ _JAVA_CONSTRUCTOR_NODES: frozenset[str] = frozenset({
 #: Every declaration that owns a callable body.
 _JAVA_CALLABLE_NODES: frozenset[str] = _JAVA_CONSTRUCTOR_NODES | {"method_declaration"}
 
-#: A declared parameter (``receiver_parameter``, ``Foo this``, is not one: no
-#: argument is written for it).
-_JAVA_PARAMETER_NODES: frozenset[str] = frozenset({"formal_parameter", "spread_parameter"})
-
 #: Comments, which the grammar places among an argument list's named nodes.
 _JAVA_COMMENT_NODES: frozenset[str] = frozenset({"line_comment", "block_comment"})
+
+
+def _java_argument_count(call: "tree_sitter.Node") -> Optional[int]:
+    """How many arguments a ``method_invocation`` or an
+    ``object_creation_expression`` writes: the named nodes of its argument
+    list that are not comments. A receiver is not an argument (``a.m(x)``
+    writes one). Java has no spread, no named and no default argument: an
+    array passed to a varargs parameter is one argument as written, which the
+    variadic parameter admits. A method reference (``T::new``, ``this::m``)
+    writes no argument list and is not asked: its stub says nothing."""
+    arguments = call.child_by_field_name("arguments")
+    if arguments is None:  # pragma: no cover - the grammar gives both node kinds an argument list
+        return None
+    return len([c for c in arguments.named_children if c.type not in _JAVA_COMMENT_NODES])
 
 
 def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -416,6 +437,109 @@ def java_callable_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
 def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type text from a type node, handling generics and arrays."""
     return _node_text(node, source)
+
+
+class _JavaParameter(NamedTuple):
+    """One declared parameter: its type as written (a varargs parameter's
+    element type), its name, whether it takes any number of arguments, and
+    the text the signature writes for it."""
+
+    type: str
+    name: str
+    variadic: bool
+    written: str
+
+
+def _java_declared_parameters(
+    params_node: "tree_sitter.Node", source: bytes,
+) -> list[_JavaParameter]:
+    """The parameters a ``formal_parameters`` node declares, in order.
+
+    The one reader of a parameter list: the signature text
+    (:func:`_extract_java_signature`, which the stable_id hashes) and
+    ``meta["parameters"]`` (:func:`_java_parameters`, which overload selection
+    reads) are both built from it, so the two cannot disagree about which
+    parameters a callable declares.
+
+    Every type is written as its source text, whatever its node kind (the
+    grammar's ``_unannotated_type``). Dimensions written after a parameter's
+    name (``int x[]``) are appended to its type. A parameter is named by
+    whatever names it (an ``identifier`` or ``_``). A varargs parameter with
+    an annotation before ``...`` (``String @A ... xs``), which the grammar
+    leaves as an ERROR node, is written as its source text, whitespace
+    collapsed; its type is the text before ``...`` and its name the text
+    after. A receiver parameter (``Outer this``) is not read: it is not a
+    formal parameter (JLS 8.4) and no call writes an argument for it.
+    """
+    params: list[_JavaParameter] = []
+    for child in params_node.named_children:
+        if child.type == "formal_parameter":
+            type_node = child.child_by_field_name("type")
+            name_node = child.child_by_field_name("name")
+            if type_node is None or name_node is None:
+                continue  # pragma: no cover - the grammar requires both
+            param_type = _extract_type_text(type_node, source)
+            dims = child.child_by_field_name("dimensions")
+            if dims is not None:
+                # Array notation after the name: String args[]
+                param_type += _node_text(dims, source)
+            name = _node_text(name_node, source)
+            params.append(_JavaParameter(param_type, name, False, f"{param_type} {name}"))
+        elif child.type == "spread_parameter":
+            # Varargs: String... args. The type is the one named child that
+            # is neither a modifier nor the declarator.
+            spread_type = next(
+                (c for c in child.named_children
+                 if c.type not in ("modifiers", "variable_declarator")),
+                None,
+            )
+            declarator = next(
+                (c for c in child.named_children if c.type == "variable_declarator"),
+                None,
+            )
+            spread_name = (
+                declarator.child_by_field_name("name") if declarator is not None else None
+            )
+            if spread_type is None or spread_name is None:
+                continue  # pragma: no cover - the grammar requires both
+            element = _extract_type_text(spread_type, source)
+            name = _node_text(spread_name, source)
+            params.append(_JavaParameter(element, name, True, f"{element}... {name}"))
+        elif child.type == "ERROR" and "..." in _node_text(child, source):
+            # tree-sitter-java cannot parse an annotation before a varargs
+            # marker (`String @Nullable ... keys`) and leaves an ERROR node.
+            text = " ".join(_node_text(child, source).split())
+            element, _, name = text.partition("...")
+            params.append(_JavaParameter(element.strip(), name.strip(), True, text))
+    return params
+
+
+def _java_parameters(node: "tree_sitter.Node", source: bytes) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a method or constructor declaration: one
+    ``overload_arity.parameter_entry`` per declared parameter, in order (the
+    empty list for none), read off the declaration node, never off
+    ``Symbol.signature`` (ADR-0058). A compact constructor's parameters are
+    its record's components (:func:`_java_signature_node`). Java has no
+    default arguments; the varargs parameter is ``variadic``."""
+    params_node = _java_signature_node(node).child_by_field_name("parameters")
+    if params_node is None:  # pragma: no cover - a callable always has a parameter list
+        return []
+    return [
+        parameter_entry(p.name, p.type, variadic=p.variadic)
+        for p in _java_declared_parameters(params_node, source)
+    ]
+
+
+def _java_signature_node(node: "tree_sitter.Node") -> "tree_sitter.Node":
+    """The node whose parameter list is a callable's: the declaration itself,
+    or for a record's compact constructor (``public R { ... }``), which writes
+    none, the record declaration whose components it takes."""
+    if (
+        node.type == "compact_constructor_declaration"
+        and node.parent is not None and node.parent.parent is not None
+    ):
+        return node.parent.parent
+    return node
 
 
 def _extract_java_signature(
@@ -456,47 +580,7 @@ def _extract_java_signature(
     if params_node is None:
         return None  # pragma: no cover
 
-    # Extract parameters
-    params: list[str] = []
-    for child in params_node.named_children:
-        if child.type == "formal_parameter":
-            type_node = child.child_by_field_name("type")
-            name_node = child.child_by_field_name("name")
-            if type_node is None or name_node is None:
-                continue  # pragma: no cover - the grammar requires both
-            param_type = _extract_type_text(type_node, source)
-            dims = child.child_by_field_name("dimensions")
-            if dims is not None:
-                # Array notation after the name: String args[]
-                param_type += _node_text(dims, source)
-            params.append(f"{param_type} {_node_text(name_node, source)}")
-        elif child.type == "spread_parameter":
-            # Varargs: String... args. The type is the one named child that
-            # is neither a modifier nor the declarator.
-            spread_type = next(
-                (c for c in child.named_children
-                 if c.type not in ("modifiers", "variable_declarator")),
-                None,
-            )
-            declarator = next(
-                (c for c in child.named_children if c.type == "variable_declarator"),
-                None,
-            )
-            spread_name = (
-                declarator.child_by_field_name("name") if declarator is not None else None
-            )
-            if spread_type is None or spread_name is None:
-                continue  # pragma: no cover - the grammar requires both
-            params.append(
-                f"{_extract_type_text(spread_type, source)}... "
-                f"{_node_text(spread_name, source)}"
-            )
-        elif child.type == "ERROR" and "..." in _node_text(child, source):
-            # tree-sitter-java cannot parse an annotation before a varargs
-            # marker (`String @Nullable ... keys`) and leaves an ERROR node;
-            # its source text is the parameter, written whitespace-collapsed.
-            params.append(" ".join(_node_text(child, source).split()))
-
+    params = [p.written for p in _java_declared_parameters(params_node, source)]
     params_str = ", ".join(params)
     signature = f"({params_str})"
 
@@ -1661,14 +1745,9 @@ def _java_callable_hashed(node: "tree_sitter.Node", source: bytes) -> Optional[s
     parameters by position. The one reader for the symbol's id and for its
     label in the scope chain (:func:`_java_callable_label`), so the two
     cannot disagree."""
-    sig_node = node
-    if (
-        node.type == "compact_constructor_declaration"
-        and node.parent is not None and node.parent.parent is not None
-    ):
-        sig_node = node.parent.parent
     signature = _extract_java_signature(
-        sig_node, source, is_constructor=node.type in _JAVA_CONSTRUCTOR_NODES,
+        _java_signature_node(node), source,
+        is_constructor=node.type in _JAVA_CONSTRUCTOR_NODES,
     )
     return normalize_with_type_parameters(
         normalize_java_signature, signature, node, source)
@@ -2274,26 +2353,24 @@ def _extract_file_symbols(
                 modifiers = _extract_modifiers(node, source)
 
                 # Build meta dict (annotated once, above; annotating it again
-                # here would be a mypy no-redef)
-                meta = None
+                # here would be a mypy no-redef). Every method declares its
+                # parameters, the empty list included: an absent key would
+                # read as an unknown arity (``overload_arity``).
+                meta = {"parameters": _java_parameters(node, source)}
 
                 # Extract all annotations for rich metadata
                 # Route detection is handled by YAML patterns (ADR-3aaa v1.0.x)
                 decorators = _extract_annotations(node, source)
                 if decorators:
-                    meta = {"decorators": decorators}
+                    meta["decorators"] = decorators
 
                 if is_native:
-                    if meta is None:
-                        meta = {}
                     meta["is_native"] = True
 
                 # Extract parent class base_classes for lifecycle hook detection (ADR-3aaa v1.1.x)
                 # This enables YAML patterns to match methods like onCreate() in Activity subclasses
                 parent_base_classes = _get_parent_class_base_classes(node, source)
                 if parent_base_classes:
-                    if meta is None:
-                        meta = {}
                     meta["parent_base_classes"] = parent_base_classes
 
                 # Extract signature
@@ -2302,8 +2379,6 @@ def _extract_file_symbols(
                 # Add return type for subresource locator detection (JAX-RS)
                 ret_type_name = _extract_java_return_type_name(signature)
                 if ret_type_name:
-                    if meta is None:
-                        meta = {}
                     meta["return_type"] = ret_type_name
 
                     # When return type is Object, infer concrete type from
@@ -2365,11 +2440,7 @@ def _extract_file_symbols(
                 # compact constructor's parameters are the record's components,
                 # so its signature is read off the record declaration.
                 signature = _extract_java_signature(
-                    node.parent.parent
-                    if node.type == "compact_constructor_declaration"
-                    and node.parent is not None and node.parent.parent is not None
-                    else node,
-                    source, is_constructor=True,
+                    _java_signature_node(node), source, is_constructor=True,
                 )
 
                 # Extract modifiers for constructors too
@@ -2395,6 +2466,7 @@ def _extract_file_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta={"parameters": _java_parameters(node, source)},
                     stable_id=stable_id,
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "java"),
@@ -2795,21 +2867,6 @@ def _extract_edges(
         if s.kind == "method" and s.span is not None:
             members_by_name.setdefault(s.name, []).append(s)
 
-    def _arity(member: Symbol) -> tuple[int, bool] | None:
-        """``member``'s number of parameters and whether the last is ``T...``,
-        read from its declaration node, which starts where its span does."""
-        start = (member.span.start_line - 1, member.span.start_col) if member.span else (0, 0)
-        decl = tree.root_node.descendant_for_point_range(start, start)
-        while decl is not None and not (
-            decl.type in _JAVA_CALLABLE_NODES and decl.start_point == start
-        ):
-            decl = decl.parent
-        params = decl.child_by_field_name("parameters") if decl is not None else None
-        if params is None:  # pragma: no cover - a method declaration always has a parameter list
-            return None
-        kinds = [c.type for c in params.named_children if c.type in _JAVA_PARAMETER_NODES]
-        return len(kinds), "spread_parameter" in kinds
-
     def _own_member(call: "tree_sitter.Node", method_name: str) -> Symbol | None:
         """The member ``method_name`` of the type whose body holds ``call``:
         that type found by POSITION, its member among the declarations inside
@@ -2818,14 +2875,21 @@ def _extract_edges(
         so this is the language's own evidence; a member the type inherits is
         the linker's walk.
 
-        Several overloads: the ones whose number of parameters is the number
-        of arguments written (JLS 15.12.2.1), else the variable-arity ones
-        that accept that many. Of those still several (one arity, told apart
-        by their types) the LAST declared, as the hierarchy linker's method
-        index keeps the last of a type's overloads for every typed and
-        inherited call: choosing by the types of the arguments is not made
-        (WI-tosut), and where the analyzer cannot tell it answers as the
-        shared pass does.
+        The members that can take the number of arguments written
+        (``overload_arity.narrow_by_arity`` over the ``meta["parameters"]``
+        each declares), one member or several; of those, the ones whose number
+        of parameters IS that number (JLS 15.12.2.2-3 before the
+        variable-arity phase 15.12.2.4), else every one admitted. Of those
+        still several (one arity, told apart by their types) the LAST
+        declared, as the hierarchy linker's method index keeps the last of a
+        type's overloads for every typed and inherited call: choosing by the
+        types of the arguments is not made (WI-tosut), and where the analyzer
+        cannot tell it answers as the shared pass does. NONE admitted (also
+        when the type declares one member of the name, which cannot take the
+        call: ``m(x, y)`` in a type declaring ``m(a)`` and inheriting
+        ``m(a, b)``): no member is bound (``None``), and the call is reported
+        with the enclosing type for the linker, which walks the type's
+        ancestors for an inherited overload that takes it.
         """
         owner = _get_enclosing_type_symbol(call, file_path, symbol_by_position)
         if owner is None or owner.span is None:  # pragma: no cover - current_class implies one
@@ -2838,16 +2902,12 @@ def _extract_edges(
             ),
             key=lambda s: (s.span.start_line, s.span.start_col) if s.span else (0, 0),
         )
-        if len(inside) > 1:
-            arguments = call.child_by_field_name("arguments")
-            written = len([
-                c for c in (arguments.named_children if arguments is not None else [])
-                if c.type not in _JAVA_COMMENT_NODES
-            ])
-            arities = [(s, _arity(s)) for s in inside]
-            fixed = [s for s, a in arities if a is not None and a[0] == written]
-            spread = [s for s, a in arities if a is not None and a[1] and written >= a[0] - 1]
-            inside = fixed or spread or inside
+        written = _java_argument_count(call)
+        admitted = narrow_by_arity(inside, written)
+        inside = [
+            s for s in admitted
+            if len((s.meta or {}).get("parameters") or ()) == written
+        ] or admitted
         return inside[-1] if inside else None
 
     edges: list[Edge] = []
@@ -3824,6 +3884,7 @@ def _extract_edges(
                             call_construct=pr4_call_construct,
                             qualifier=pr4_qualifier,
                             super_receiver=pr4_super_receiver,
+                            argument_count=_java_argument_count(node),
                         )
                         # The enclosing class's id, found by position, beside
                         # its package-less name, so the inherited_calls linker
@@ -3896,7 +3957,7 @@ def _extract_edges(
                 edges.append(make_unresolved_edge(
                     "java", current_method.id, created,
                     node.start_point[0] + 1, PASS_ID, run.execution_id,
-                    instantiates=True,
+                    instantiates=True, argument_count=_java_argument_count(node),
                 ))
 
             # Track variable type for type inference

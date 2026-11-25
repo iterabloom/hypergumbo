@@ -5297,9 +5297,10 @@ public class Sub extends Base {
         )
         # WI-gikuk: the class itself (by position) rides beside its name.
         sub_id = next(s.id for s in result.symbols if s.kind == "class" and s.name == "Sub")
+        # WI-tosut: and the number of arguments the call writes.
         assert helper_unresolved[0].meta == {
             "callee_name": "helper", "enclosing_class": "Sub",
-            "enclosing_class_id": sub_id,
+            "enclosing_class_id": sub_id, "argument_count": 0,
         }
 
     def test_this_else_emits_single_unresolved_edge(
