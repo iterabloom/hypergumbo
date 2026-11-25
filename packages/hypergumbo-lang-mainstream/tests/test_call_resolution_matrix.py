@@ -87,8 +87,8 @@ MATRIX: dict[str, tuple[str, ...]] = {
             "order:decoy/right", "right+unresolved", "unresolved"),
     "python": ("right", "right", "right", "right", "unresolved", "unresolved", "right", "right",
                "unresolved"),
-    "ruby": ("unresolved", "unresolved", "right", "no_edge", "no_edge", "no_edge", "order:decoy/right",
-             "order:right/decoy", "picked"),
+    "ruby": ("unresolved", "unresolved", "right", "no_edge", "no_edge", "unresolved", "order:decoy/right",
+             "right", "no_edge"),
     "rust": ("right", "right", "right", "unresolved", "unresolved", "n/a", "right", "right", "unresolved"),
     "scala": ("right", "right", "right", "right", "unresolved", "n/a", "unresolved", "right", "unresolved"),
     "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right", "right",
@@ -113,7 +113,6 @@ GUESSES: dict[tuple[str, str], str] = {
        "scope_own", "scope_ext")},
     ("php", "import"): "WI-jafiz",
     ("ruby", "import"): "WI-madab",
-    **{("ruby", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
     ("swift", "import"): "WI-nuvov",
 }
 
