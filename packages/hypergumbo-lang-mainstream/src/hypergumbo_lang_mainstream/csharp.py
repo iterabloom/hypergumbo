@@ -140,6 +140,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional, Type
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.import_scope import ImportScope
+from hypergumbo_core.type_visibility import written_arity
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
@@ -347,7 +348,8 @@ def _extract_param_types(
         }
 
     Returns:
-        Dict mapping parameter names to their type names (simple name only).
+        Dict mapping parameter names to their types as written, type
+        arguments included (``Policy<TResult>``).
     """
     param_types: dict[str, str] = {}
 
@@ -365,15 +367,10 @@ def _extract_param_types(
             for subchild in child.children:
                 # Type nodes
                 if subchild.type in _CSHARP_SIGNATURE_TYPE_NODES:
-                    param_type = _extract_type_text(subchild, source)
-                    # Strip generic parameters: List<T> -> List
-                    if "<" in param_type:
-                        param_type = param_type.split("<")[0]
-                    # Strip array brackets: int[] -> int
-                    if "[" in param_type:
-                        param_type = param_type.split("[")[0]
-                    # Strip nullable: int? -> int
-                    param_type = param_type.rstrip("?")
+                    # As written, type arguments kept (``List<T>``); an
+                    # array's or a nullable's element type (``int[]`` and
+                    # ``int?`` -> ``int``).
+                    param_type = _element_type(_extract_type_text(subchild, source))
                 # Custom types use identifier
                 elif subchild.type == "identifier":
                     if param_type is None:
@@ -954,6 +951,40 @@ def _strip_type_arguments(text: str) -> str:
             out.append(ch)
     stripped = "".join(out).replace(" ", "")
     return stripped[len("global::"):] if stripped.startswith("global::") else stripped
+
+
+def _written_type(text: str) -> str:
+    """A type or qualifier as the source writes it, in the spelling a hint
+    carries (ADR-0064): the type arguments of its LAST segment kept
+    (``Policy<TResult>``, ``Cache<int>``), those of an enclosing segment
+    dropped (``Outer<int>.Inner`` -> ``Outer.Inner``: the shared pass reads
+    every argument after the first ``<`` as the last segment's, and an
+    enclosing type's arguments are not the named type's own), whitespace and
+    a leading ``global::`` removed (:func:`_strip_type_arguments`)."""
+    text = "".join(text.split())
+    if text.startswith("global::"):
+        text = text[len("global::"):]
+    depth, cut = 0, -1
+    for index, ch in enumerate(text):
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif ch == "." and depth == 0:
+            cut = index
+    if cut < 0:
+        return text
+    return f"{_strip_type_arguments(text[:cut])}.{text[cut + 1:]}"
+
+
+def _element_type(text: str) -> str:
+    """``T[]``, ``T?``, ``T[,][]?`` -> ``T``: the trailing array ranks and
+    nullable marks of a parameter's type cut off, the type arguments left
+    (``List<int[]>[]`` -> ``List<int[]>``)."""
+    text = text.strip()
+    while text.endswith(("?", "]")):
+        text = (text[:-1] if text.endswith("?") else text[:text.rfind("[")]).rstrip()
+    return text
 
 
 def _add_using(scope: ImportScope, target: str, alias: Optional[str]) -> None:
@@ -1861,7 +1892,8 @@ def _extract_parsed_symbols(
                     field_type = (
                         node_text(type_node, source) if type_node is not None else None
                     )
-                    # Bare user type NAME (for class_field_types chained resolution).
+                    # A user type as written, type arguments kept (for
+                    # class_field_types chained resolution).
                     type_name = None
                     type_id = find_child_by_type(var_decl, "identifier")
                     if type_id:
@@ -1869,9 +1901,7 @@ def _extract_parsed_symbols(
                     else:
                         gen_name = find_child_by_type(var_decl, "generic_name")
                         if gen_name:
-                            gen_id = find_child_by_type(gen_name, "identifier")
-                            if gen_id:
-                                type_name = node_text(gen_id, source)
+                            type_name = node_text(gen_name, source)
                     modifiers = _extract_modifiers(node)
                     annotations = _extract_annotations(node, source)
                     ns_name = _get_csharp_enclosing_namespace(node, source)
@@ -2037,20 +2067,18 @@ def _local_function_in_scope(
 
 def _dotted_receiver(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The receiver as a dotted name when it can name a type or a namespace
-    path (``Util``, ``Ns.Util``, ``List<int>`` as ``List``), else None (a
-    call, ``this``, an indexer, a literal ...)."""
-    if node.type == "identifier":
-        return node_text(node, source)
-    if node.type == "generic_name":
-        head = find_child_by_type(node, "identifier")
-        return node_text(head, source) if head is not None else None
+    path (``Util``, ``Ns.Util``, ``Cache<int>``, ``Ns.Gen<int>``), in the
+    spelling of :func:`_written_type`, else None (a call, ``this``, an
+    indexer, a literal ...)."""
+    if node.type in ("identifier", "generic_name"):
+        return _written_type(node_text(node, source))
     if node.type == "member_access_expression":
         expression = node.child_by_field_name("expression")
         name = node.child_by_field_name("name")
-        if expression is None or name is None or name.type != "identifier":
-            return None
+        if expression is None or name is None or name.type not in ("identifier", "generic_name"):
+            return None  # pragma: no cover - the grammar names a member by one of the two
         owner = _dotted_receiver(expression, source)
-        return f"{owner}.{node_text(name, source)}" if owner else None
+        return _written_type(f"{owner}.{node_text(name, source)}") if owner else None
     return None
 
 
@@ -2101,10 +2129,12 @@ def _resolve_member_chain(
     # Segments were collected leaf-to-root; reverse to walk root-to-leaf.
     segments.reverse()
 
-    # Walk the chain starting from enclosing class.
+    # Walk the chain starting from enclosing class. The registry is keyed by
+    # the bare type name; a field's type is kept as written (``Box<int>``),
+    # so the next step looks it up without its arguments.
     current_type = enclosing_class
     for field_name in segments:
-        fields = field_type_registry.get(current_type)
+        fields = field_type_registry.get(_strip_type_arguments(current_type))
         if fields is None:
             return None
         next_type = fields.get(field_name)
@@ -2171,15 +2201,20 @@ def _extract_edges_from_file(
 
     A CALL IS BOUND HERE ONLY ON EVIDENCE C# ITSELF USES (ADR-0064): the
     enclosing type's own method in this file (``own_type``), and a method of
-    the receiver's known type in this file (``receiver_type``). Anything else
+    the receiver's known type in this file (``receiver_type``). The file's
+    table is keyed by the bare type name (``Box.Get``): the one place a type
+    is looked up without its arguments, and only where the file's type of
+    that name takes as many type parameters as the receiver's type is
+    written with (``type_method``). Anything else
     is emitted unresolved WITH the facts the shared pass reads, and the
     ``inherited_calls`` linker decides from the file's ``using`` table
     (``AnalysisResult.import_scopes``) and the caller's namespaces:
 
-    - a receiver of known type: ``receiver_type_hint``, the type as written;
+    - a receiver of known type: ``receiver_type_hint``, the type as written,
+      its type arguments kept (``Policy<TResult>``; :func:`_written_type`);
     - a receiver that names a type or a namespace path (``Util.Helper()``,
-      ``Ns.Util.Helper()``) and is no variable or member known here:
-      ``qualifier``, the receiver as written;
+      ``Ns.Util.Helper()``, ``Cache<int>.Create()``) and is no variable or
+      member known here: ``qualifier``, the receiver as written;
     - a bare call, ``this.M()``: ``enclosing_class``, unless a local
       function or a local variable of that name is in scope (then it calls
       nothing the graph holds);
@@ -2258,6 +2293,24 @@ def _extract_edges_from_file(
         ))
         _track_csharp_return_type(callee, call, source, var_types)
 
+    # How many type parameters each type of this file takes, by its name: a
+    # call on a ``Policy<int>`` receiver is bound here only when ``Policy``
+    # is a type of this file of one type parameter, and of no other arity.
+    local_arities: dict[str, set[int]] = {}
+    for declared in decl_index.values():
+        arity = (declared.meta or {}).get("type_arity")
+        if isinstance(arity, int):
+            local_arities.setdefault(declared.name, set()).add(arity)
+
+    def type_method(written: str, callee: str) -> Optional[Symbol]:
+        """The method ``callee`` of this file's type that ``written`` names
+        (its table is keyed by the bare name, ``Type.M``), when the number of
+        type arguments written is the type's arity here."""
+        bare = _strip_type_arguments(written)
+        if local_arities.get(bare, {written_arity(written)}) != {written_arity(written)}:
+            return None
+        return local_symbols.get(f"{bare}.{callee}")
+
     def file_target(call: "tree_sitter.Node") -> Optional[Symbol]:
         """The declaration of this file a call reaches on C#'s own evidence:
         a bare / ``this.`` call to the enclosing type's method, or a call on a
@@ -2276,7 +2329,7 @@ def _extract_edges_from_file(
             enclosing = _get_enclosing_class(call, source)
             return local_symbols.get(f"{enclosing}.{callee}") if enclosing else None
         owner = receiver_type(receiver)
-        return local_symbols.get(f"{owner}.{callee}") if owner else None
+        return type_method(owner, callee) if owner else None
 
     def receiver_type(receiver: "tree_sitter.Node") -> Optional[str]:
         """The receiver's type as the source writes it, when this file knows
@@ -2339,7 +2392,8 @@ def _extract_edges_from_file(
         elif node.type == "field_declaration":
             var_decl = find_child_by_type(node, "variable_declaration")
             if var_decl:
-                # Type can be identifier (simple) or generic_name (generic)
+                # Type can be identifier (simple) or generic_name (generic,
+                # kept as written: ``Policy<TResult>``)
                 type_name = None
                 type_id = find_child_by_type(var_decl, "identifier")
                 if type_id:
@@ -2347,9 +2401,7 @@ def _extract_edges_from_file(
                 else:
                     gen_name = find_child_by_type(var_decl, "generic_name")
                     if gen_name:
-                        gen_id = find_child_by_type(gen_name, "identifier")
-                        if gen_id:
-                            type_name = node_text(gen_id, source)
+                        type_name = node_text(gen_name, source)
                 var_declarator = find_child_by_type(
                     var_decl, "variable_declarator"
                 )
@@ -2446,7 +2498,7 @@ def _extract_edges_from_file(
                 known_type = receiver_type(receiver)
                 meta["resolution_quality"] = "type_inferred"
             if known_type is not None:
-                target = local_symbols.get(f"{known_type}.{callee_name}")
+                target = type_method(known_type, callee_name)
                 if target is not None:
                     bind(current_function, node, target, resolved_by.RECEIVER_TYPE, meta)
                 else:
@@ -2454,7 +2506,7 @@ def _extract_edges_from_file(
                         "csharp", current_function.id, callee_name, line,
                         PASS_ID, run.execution_id,
                         module_hint=unresolved_module,
-                        receiver_type_hint=_strip_type_arguments(known_type),
+                        receiver_type_hint=_written_type(known_type),
                         call_construct="method",
                     ))
                 continue

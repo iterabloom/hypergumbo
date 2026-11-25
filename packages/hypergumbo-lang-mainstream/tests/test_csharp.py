@@ -653,11 +653,13 @@ public class Controller {
         """this.field.method() calls resolve via field type inference.
 
         The pattern this._repo.Save() has a nested member_access_expression
-        structure that requires special handling. Also tests generic type
-        stripping (Repository<string> -> Repository).
+        structure that requires special handling. A generic field type is kept
+        as written (``Repo<string>``) and binds this file's ``Repo`` only when
+        that ``Repo`` takes one type parameter (ADR-0064): the non-generic
+        ``Repo`` is another type, and the call is handed over with the type.
         """
         (tmp_path / "App.cs").write_text("""
-public class Repo {
+public class Repo<T> {
     public void Save() { }
 }
 
@@ -666,6 +668,20 @@ public class Controller {
 
     public void DoWork() {
         this._repo.Save();
+    }
+}
+""")
+        (tmp_path / "other").mkdir()
+        (tmp_path / "other" / "Plain.cs").write_text("""
+public class Repo {
+    public void Load() { }
+}
+
+public class Plain {
+    private Repo<string> _repo;
+
+    public void DoWork() {
+        this._repo.Load();
     }
 }
 """)
@@ -696,6 +712,10 @@ public class Controller {
             f"Expected call edge for this._repo.Save() via field type inference. "
             f"Edges from DoWork: {[e for e in result.edges if e.src == do_work.id]}"
         )
+        plain = next(s for s in result.symbols if s.name == "Plain.DoWork")
+        (load,) = [e for e in result.edges if e.src == plain.id and e.edge_type == "calls"]
+        assert not load.is_resolved
+        assert load.meta["receiver_type_hint"] == "Repo<string>"
 
 
 class TestCSharpCrossFileFieldTypeResolution:
