@@ -21,3 +21,18 @@
     pr_ref:  # e697
     description: "WHAT\nThe call-resolution fixture (packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py) writes every class and every caller of an arm into ONE file; only `helper` lives in another. Real Java, C#, Groovy and Objective-C trees have one class per file, and at least one analyzer answers differently for the two layouts: Rust's guess went through a per-file last-writer table that a cross-file call does not consult (INV-hupis), while its cross-file path meets ListNameResolver, which refuses a two-way tie unless exactly one candidate is in the caller's file.\nSo the table measured on 2026-11-24 (9 of 17 languages bind by declaration order) is the same-file table. Whether the nine guess across files, and whether any of the other eight do, is NOT measured.\nDO: a second layout per language (R, D, B, Child, S each in a file of their own, imported the way the language imports), the same seven callers, the same four arms plus the file-order arm; a second MATRIX in test_call_resolution_matrix.py. Also not in the fixture: three or more same-named candidates (the ambiguity_threshold=3 guard), and one variable name typed differently in two functions of a file (the Rust variable-scope item).\nThe owner's decision on a shared resolution layer (notebookjournal_11242026_0538.md) reads this table; the entry says so."  # e697
     fields: {}  # e697
+- op: update  # 64a3
+  at: '2026-11-25T09:25:50Z'  # 64a3
+  by: agent  # 64a3
+  actor: jgstern_agent  # 64a3
+  clock: 2  # 64a3
+  nonce: 64a3  # 64a3
+  set:  # 64a3
+    status: done  # 64a3
+- op: discuss  # 1c38
+  at: '2026-11-25T09:25:50Z'  # 1c38
+  by: agent  # 1c38
+  actor: jgstern_agent  # 1c38
+  clock: 3  # 1c38
+  nonce: 1c38  # 1c38
+  message: "Done in PR #2394. The fixture writes a second layout (one class per file, R, D, B, Child, S each in a file of its own, made visible the way each language does it) for all 17 languages, with the same callers, the four arms (the decoy's FILE order is the arm) and a second table MATRIX_SPLIT in test_call_resolution_matrix.py. Also added, as the item asked: three same-named candidates (THIRD: 19 cells move, all to unresolved or no_edge), and, from step 1, the same-variable callers. Beyond the item: a qualified-call column and the resolved_by mark behind every cell (MARKS, MARKS_SPLIT). RESULT: 14 of 17 languages answer the same in both layouts; csharp, groovy and objc do not (every same_file bind is unresolved across files). Guess cells: 28 in the one-file table, 12 in the split table, all 12 in the import and qual columns. Measured twice, identical; identical with file enumeration forced ascending and descending. NOT DONE: 12 of the 17 programs are not compiled (no toolchain on the machine): typescript, java, kotlin, scala, groovy, csharp, go, swift, objc, ruby, php, lua. Reproduce: python packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py"  # 1c38
