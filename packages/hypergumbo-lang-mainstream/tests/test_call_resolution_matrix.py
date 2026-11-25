@@ -91,7 +91,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
              "order:right/decoy", "picked"),
     "rust": ("right", "right", "right", "unresolved", "unresolved", "n/a", "right", "order:right/decoy",
              "picked"),
-    "scala": ("right", "right", "right", "right", "unresolved", "n/a", "unresolved", "right", "picked"),
+    "scala": ("right", "right", "right", "right", "unresolved", "n/a", "unresolved", "right", "unresolved"),
     "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right", "right",
               "unresolved"),
     "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
@@ -116,7 +116,6 @@ GUESSES: dict[tuple[str, str], str] = {
     ("ruby", "import"): "WI-madab",
     **{("ruby", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
     **{("rust", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
-    ("scala", "scope_ext"): "INV-zabud",
     ("swift", "import"): "WI-nuvov",
 }
 
