@@ -188,13 +188,6 @@ def _resolve_target(
     return result.symbol, result.confidence, result.resolved_by
 
 
-def _kept_mark(edge: Edge) -> dict[str, str]:
-    """The ``resolved_by`` entry ``Edge.create`` stored in ``edge.meta``, for
-    the dict that replaces it (empty on an unresolved edge)."""
-    mark = (edge.meta or {}).get(resolved_by.RESOLVED_BY_KEY)
-    return {resolved_by.RESOLVED_BY_KEY: mark} if mark else {}
-
-
 class CobolAnalyzer(TreeSitterAnalyzer):
     """COBOL language analyzer using tree-sitter-language-pack."""
 
@@ -412,6 +405,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                     evidence_type="ast_perform",
                                     resolution_score=confidence,
                                     resolved_by=_by,
+                                    meta={"file": rel_path, "call_type": "perform"},
                                 )
                             else:  # pragma: no cover - unresolvable external paragraph
                                 edge = make_unresolved_edge(  # pragma: no cover
@@ -419,11 +413,9 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                     perform.start_point[0] + 1,
                                     PASS_ID, run.execution_id,
                                 )
-                            edge.meta = {
-                                "file": rel_path,
-                                "call_type": "perform",
-                                **_kept_mark(edge),
-                            }
+                                edge.meta = {  # pragma: no cover
+                                    "file": rel_path, "call_type": "perform",
+                                }
                             edges.append(edge)
 
                 # Find CALL statements
@@ -445,6 +437,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                 evidence_type="ast_call",
                                 resolution_score=confidence,
                                 resolved_by=_by,
+                                meta={"file": rel_path, "call_type": "call"},
                             )
                         else:
                             edge = make_unresolved_edge(
@@ -452,11 +445,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                 call.start_point[0] + 1,
                                 PASS_ID, run.execution_id,
                             )
-                        edge.meta = {
-                            "file": rel_path,
-                            "call_type": "call",
-                            **_kept_mark(edge),
-                        }
+                            edge.meta = {"file": rel_path, "call_type": "call"}
                         edges.append(edge)
 
         return edges
