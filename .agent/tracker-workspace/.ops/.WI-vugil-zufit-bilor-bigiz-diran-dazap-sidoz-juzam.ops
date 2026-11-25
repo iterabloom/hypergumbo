@@ -1,0 +1,21 @@
+- op: create  # 70bc
+  at: '2026-11-25T19:09:52Z'  # 70bc
+  by: agent  # 70bc
+  actor: jgstern_agent  # 70bc
+  clock: 1  # 70bc
+  nonce: 70bc  # 70bc
+  data:  # 70bc
+    kind: work_item  # 70bc
+    title: "One qualified name declared in several files is bound to the first by path where the language has no types in parts (168 binds on grpc's PHP)"  # 70bc
+    status: todo_hard  # 70bc
+    priority: 3  # 70bc
+    parent:  # 70bc
+    tags:  # 70bc
+    - analysis_quality  # 70bc
+    - shared_call_resolution  # 70bc
+    isbefore: []  # 70bc
+    duplicate_of: []  # 70bc
+    not_duplicate_of: []  # 70bc
+    pr_ref:  # 70bc
+    description: "STATEMENT: where several files declare a type, method or function under one qualified name and the language has no types declared in parts, a call from a file that declares none of them is bound to the declaration its build loads, or is unresolved. OBSERVED: inherited_calls takes declarations of one qualified name for one declaration and binds the first by path (the caller's own file's first, since batch 5a). On grpc's PHP, tests/interop and tests/qps/generated_code each declare Grpc\\Testing\\Payload and its siblings (generated copies); 168 resolved calls and constructions go to such a name from a file that declares none (59 receiver_type, 51 qualified method, 49 class, 9 class_hint). A blind judge, deciding by each script's composer psr-4 map, found 5 of 6 such sampled binds on the right copy and 1 on the other. Other trees of the batch: okhttp 7 (Kotlin expect / actual), the rest 0. C# partial classes and Kotlin expect / actual are legitimately several declarations of one type; PHP and Java are not.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 70bc
+    fields: {}  # 70bc
