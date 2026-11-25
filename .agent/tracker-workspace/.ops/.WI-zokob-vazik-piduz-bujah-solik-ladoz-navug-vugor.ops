@@ -1,0 +1,23 @@
+- op: create  # fc90
+  at: '2026-11-25T01:52:02Z'  # fc90
+  by: agent  # fc90
+  actor: jgstern_agent  # fc90
+  clock: 1  # fc90
+  nonce: fc90  # fc90
+  data:  # fc90
+    kind: work_item  # fc90
+    title: "scala: a parameter whose type is written infix is not typed (fa: A Ior B)"  # fc90
+    status: todo_hard  # fc90
+    priority: 3  # fc90
+    parent:  # fc90
+    tags:  # fc90
+    - call_graph  # fc90
+    - analysis_quality  # fc90
+    - call_matrix  # fc90
+    - scala  # fc90
+    isbefore: []  # fc90
+    duplicate_of: []  # fc90
+    not_duplicate_of: []  # fc90
+    pr_ref:  # fc90
+    description: "WHAT\nScala: a parameter whose type is written infix is not typed. def map[B, C](fa: A Ior B)(f: B => C): A Ior C = fa.map(f): fa.map is unresolved. _extract_param_types_scala does not read the infix_type A Ior B as Ior.\n\nREPRO\ncats core/src/main/scala/cats/data/Ior.scala lines 906, 912, 958, 971, 973, 986 (~/whole_bunch_of_repos/cats/core). All six calls were resolved before INV-zabud only because another function of the file declared fa: Ior[A, B].\n\nFIX\nRead an infix_type's operator as the type name where the declared type of a parameter or val is read (scala.py::_declared_type_name).\n\nNOT KNOWN\nHow many calls this types outside cats."  # fc90
+    fields: {}  # fc90

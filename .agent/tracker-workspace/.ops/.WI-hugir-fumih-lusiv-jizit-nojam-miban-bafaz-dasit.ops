@@ -1,0 +1,22 @@
+- op: create  # c08f
+  at: '2026-11-25T01:51:49Z'  # c08f
+  by: agent  # c08f
+  actor: jgstern_agent  # c08f
+  clock: 1  # c08f
+  nonce: c08f  # c08f
+  data:  # c08f
+    kind: work_item  # c08f
+    title: "Receivers the analyzers do not type inside their own function (measured: 570 resolved call edges on 28 repositories, most of them right)"  # c08f
+    status: todo_hard  # c08f
+    priority: 2  # c08f
+    parent:  # c08f
+    tags:  # c08f
+    - call_graph  # c08f
+    - analysis_quality  # c08f
+    - call_matrix  # c08f
+    isbefore: []  # c08f
+    duplicate_of: []  # c08f
+    not_duplicate_of: []  # c08f
+    pr_ref:  # c08f
+    description: "WHAT\nScoping variable types to their function (INV-zabud) removed 570 resolved call edges on 28 repositories (kotlin 330 of 11,982; rust 107; typescript 75; scala 23; java 10; lua 4; ruby 1). Of 80 read in the caller's source, about 70 pointed at the RIGHT method. They had been typed by a same-named variable of another function. This item is the list of what the analyzers do not derive inside the function, by shape, with one real instance each. It is the measured target for the shared pass's receiver origins \"result of calling F\" and \"annotated T\".\n\nSHAPES (files: ~/hypergumbo_lab_notebook/var_scope_11242026/sample_*.txt, STATUS.md)\n1. A local bound to a call result.\n   - kotlin: val call = client.newCall(request) (okhttp CallTest.kt; client is a property with an inferred type); val connection = connect(peer), connect being a method of the same class with a declared return type (Http2ConnectionTest.kt).\n   - typescript: const applicationContext = await testHelper(..), testHelper declared Promise<NestApplicationContext> (nest core/test/nest-application-context.spec.ts).\n   - rust: let mut printer = StandardBuilder::new().build(w) (ripgrep crates/printer/src/standard.rs): a chained constructor in a let.\n2. An untyped lambda, closure or loop variable over a typed collection: kotlin { chain -> .. } and for (webSocket in webSockets); typescript this.getConnections().forEach((connection) => ..); java reducers.forEach((r) -> r.addArgs(args)).\n3. A field reached by a bare name: java commandObjects in jedis Pipeline.java (an inherited field; a constructor parameter of the same name used to type it); typescript const { message } = this.\n\nHOW TO MEASURE A FIX\n~/hypergumbo_lab_notebook/var_scope_11242026: trees.txt (28 trees), run_arm.sh, compare_all.py, sample.py; the base/ maps are dev 5db33d7f6 and the final/ maps are the INV-zabud branch. A fix shows as gained-new edges on the same callers.\n\nNOT DONE\nThe dropped edges were sampled, not classified one by one: the share of each shape is not known."  # c08f
+    fields: {}  # c08f
