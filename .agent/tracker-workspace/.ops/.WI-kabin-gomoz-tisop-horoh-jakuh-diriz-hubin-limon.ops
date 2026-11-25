@@ -1,0 +1,22 @@
+- op: create  # ae62
+  at: '2026-11-25T09:33:08Z'  # ae62
+  by: agent  # ae62
+  actor: jgstern_agent  # ae62
+  clock: 1  # ae62
+  nonce: ae62  # ae62
+  data:  # ae62
+    kind: work_item  # ae62
+    title: "solidity_abi linker binds a JavaScript call to a Solidity function by method name: 3 of 3 sampled wrong, 6,690 such edges on one repository"  # ae62
+    status: todo_hard  # ae62
+    priority: 2  # ae62
+    parent:  # ae62
+    tags:  # ae62
+    - call_graph  # ae62
+    - analysis_quality  # ae62
+    - call_matrix  # ae62
+    isbefore: []  # ae62
+    duplicate_of: []  # ae62
+    not_duplicate_of: []  # ae62
+    pr_ref:  # ae62
+    description: "STATEMENT\nThe Solidity ABI linker binds a JavaScript call to a Solidity function only when the receiver is known to be a contract instance of the contract that declares the function.\n\nOBSERVED (2026-11-25; blinded sample of resolved call edges judged from source, ~/hypergumbo_lab_notebook/sample_11252026/results.md)\nOn openzeppelin-contracts (`sol_openzeppelin` of the 51-tree set) 6,690 resolved JavaScript `calls` edges are marked key_match at confidence 0.75. Three were drawn at random; all three are wrong:\n- scripts/checks/compareGasReports.js:239 `Report.load(argv._[0])` -> Memory.load (contracts/utils/Memory.sol). Report is a JavaScript class of that file with a static load.\n- test/helpers/strings.js:4 `str.slice(1)` -> Arrays.slice (contracts/utils/Arrays.sol). str is a string; this is String.prototype.slice.\n- test/governance/extensions/GovernorTimelockCompound.test.js:87 `this.mock.quorum(0n)` -> GovernorVoteMocks.quorum. this.mock is deployed as $GovernorTimelockCompoundMock, which has its own quorum.\nThe first two bind a call that is not a contract call at all to a Solidity library function, by method name alone. The third picks one of several contracts that declare the method.\n\nALSO: the mark. `key_match` is declared as \"a linker matched a key both sides declare ... not a name in the caller's language\". A JavaScript method name is a name in the caller's language; nothing on the JavaScript side declares the Solidity function. By the mark's own rule these edges are `name` (the mark was stamped by me in PR #2389; the stamp follows the linker's intent, the sample shows the practice).\n\nSIZE: 3 judged of 6,690; no estimate is offered from three. Not checked: what fraction of the 6,690 has a receiver that is a deployed contract."  # ae62
+    fields: {}  # ae62

@@ -1,0 +1,22 @@
+- op: create  # 49a1
+  at: '2026-11-25T09:33:15Z'  # 49a1
+  by: agent  # 49a1
+  actor: jgstern_agent  # 49a1
+  clock: 1  # 49a1
+  nonce: 49a1  # 49a1
+  data:  # 49a1
+    kind: work_item  # 49a1
+    title: "typescript/javascript: a method call on a typed receiver binds a same-named method of the caller's own file"  # 49a1
+    status: todo_hard  # 49a1
+    priority: 3  # 49a1
+    parent:  # 49a1
+    tags:  # 49a1
+    - call_graph  # 49a1
+    - analysis_quality  # 49a1
+    - call_matrix  # 49a1
+    isbefore: []  # 49a1
+    duplicate_of: []  # 49a1
+    not_duplicate_of: []  # 49a1
+    pr_ref:  # 49a1
+    description: "STATEMENT\nA TypeScript or JavaScript method call on a receiver whose type is declared (a typed field, a typed variable, a value of a collection with a declared element type) is bound on that type, or left unresolved when the type is outside the repository; it is not bound to a same-named method of the caller's own file.\n\nOBSERVED (2026-11-25; blinded sample judged from source, ~/hypergumbo_lab_notebook/sample_11252026/results.md; TypeScript stratum same_file with one candidate in the file: 3 judged, 3 wrong, all evidence_type ast_method_inferred at confidence 0.66)\n- koel, resources/assets/js/services/QueuePlaybackService.ts:122 `this.media.pause()` -> QueuePlaybackService.pause. this.media is declared HTMLMediaElement (BasePlaybackService.ts:7): the DOM method.\n- workadventure, Phaser/Game/GameMap/GameMapFrontWrapper.ts:260 `entity.getCollisionGrid()` -> GameMapFrontWrapper.getCollisionGrid. entity is an Entity (EntitiesManager.getEntities(): Map<string, Entity>): Entity.getCollisionGrid, another file.\n- harbor portal, scanAll.service.ts:36 `this.scanApiRepository.postSchedule(param)` -> ScanAllRepoService.postSchedule (the calling method itself). scanApiRepository is typed ScanApiRepository: its abstract postSchedule.\nPopulation: 27 TypeScript and 35 JavaScript edges are in this stratum on the 51 trees, so the route is small; the mechanism (a method found by name in the caller's file whatever the receiver) is the same one WI-topit says the magnet detector cannot see (7,668 ast_method_inferred edges).\n\nALSO SEEN in the same sample: an import written with its `.ts` extension is not followed (hocuspocus tests: `import { sleep } from \"../utils/index.ts\"`, the call binds a file-local `sleep` of another test file; two of two). The JavaScript `.js` case is WI-lizis."  # 49a1
+    fields: {}  # 49a1

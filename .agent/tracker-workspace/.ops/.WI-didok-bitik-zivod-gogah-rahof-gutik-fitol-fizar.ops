@@ -1,0 +1,22 @@
+- op: create  # 733c
+  at: '2026-11-25T09:33:21Z'  # 733c
+  by: agent  # 733c
+  actor: jgstern_agent  # 733c
+  clock: 1  # 733c
+  nonce: 733c  # 733c
+  data:  # 733c
+    kind: work_item  # 733c
+    title: "kotlin: a call to a class of the caller's own package binds a same-named class of another package"  # 733c
+    status: todo_hard  # 733c
+    priority: 3  # 733c
+    parent:  # 733c
+    tags:  # 733c
+    - call_graph  # 733c
+    - analysis_quality  # 733c
+    - call_matrix  # 733c
+    isbefore: []  # 733c
+    duplicate_of: []  # 733c
+    not_duplicate_of: []  # 733c
+    pr_ref:  # 733c
+    description: "STATEMENT\nA Kotlin call to a class or function of the caller's own package (visible without an import), or one a qualifier names, binds that declaration and not a same-named one of another package.\n\nOBSERVED (2026-11-25; blinded sample judged from source, ~/hypergumbo_lab_notebook/sample_11252026/results.md; okhttp; 8 wrong of 56 judged, all 8 \"another declaration of this repository\")\n- Four calls in files of package mockwebserver3 (`MockWebServer()`, `MockResponse()`, `.enqueue`, `.close`) are bound to the same-named classes of okhttp3.mockwebserver in the mockwebserver-deprecated module. The caller's own package declares the class; no import names the other.\n- `Platform()` called inside package okhttp3.internal.platform is bound to a class `Platform` nested in UrlComponentEncodingTester (not visible from the call site), twice.\n- `Headers.Builder()` and `Request.Builder()` are bound to MockResponse.Builder (mark class_hint): the qualifier the call writes is not used.\nBy stratum: name with several candidates 4 wrong of 15; receiver_type whose owner name is shared 2 of 6; class_hint 2 of 3. With one candidate: 0 wrong of 20.\nKotlin has no guess cell in the call-resolution fixture: the fixture has no same-named class in two packages."  # 733c
+    fields: {}  # 733c

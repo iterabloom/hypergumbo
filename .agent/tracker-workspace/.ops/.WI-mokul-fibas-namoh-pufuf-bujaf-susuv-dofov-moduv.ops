@@ -28,3 +28,10 @@
   clock: 2  # 261a
   nonce: 261a  # 261a
   message: "Code sites, read while stamping resolved_by (PR #2389): objc.py ~1043 local_methods[selector] holds ONE method per selector for the whole file, last writer, whatever the receiver; ~1089 with defer_bare_method_call(suffix): a send to ANY receiver binds the enclosing class's method of that selector. [super m] binding the own class's m was not checked (see the java super item WI-mapas)."  # 261a
+- op: discuss  # 1dc9
+  at: '2026-11-25T09:25:50Z'  # 1dc9
+  by: agent  # 1dc9
+  actor: jgstern_agent  # 1dc9
+  clock: 3  # 1dc9
+  nonce: 1dc9  # 1dc9
+  message: "Fixture, PR #2394, second layout (one class per file): all eight guesses of this item are unresolved across files. The per-file selector table is the only route that binds; across files Objective-C resolves no method call, a constructed receiver included."  # 1dc9
