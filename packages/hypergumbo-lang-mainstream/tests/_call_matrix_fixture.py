@@ -437,18 +437,38 @@ fun via_qual() {{
 
 
 # ---------------------------------------------------------------- scala
-def scala(R, D, B, S, dl):
+def scala(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v):
         return f"class {n} {{\n  def {m}(): Int = {v}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B}\n", cls(S, "ping", 2))
-    main = f"""package app
+    def util(pkg, v):
+        return f"package {pkg}\n\nobject Util {{\n  def helper(): Int = {v}\n}}\n"
+    spare = "class Spare {\n  def execute(): Int = 2\n\n  def ping(): Int = 2\n}\n"
+    dec = ("zdecoy" if dl else "adecoy")
+    files = {"util/Util.scala": util("util", 1), f"{dec}/Util.scala": util(dec, 2)}
+    if third:
+        files[f"{dec}/spare/Util.scala"] = util(f"{dec}.spare", 2)
+    if split:
+        # One class per file, named by role. The right classes are in package
+        # ``model``, the decoys in the decoy package, whose directory sorts after
+        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R and Child.
+        files |= {"model/Store.scala": "package model\n\n" + cls(R, "execute", 1),
+                  f"{dec}/Store.scala": f"package {dec}\n\n" + cls(D, "execute", 2),
+                  "model/Base.scala": "package model\n\n" + cls(B, "ping", 1),
+                  "model/Child.scala": f"package model\n\nclass Child extends {B}\n",
+                  f"{dec}/Stray.scala": f"package {dec}\n\n" + cls(S, "ping", 2)}
+        if third:
+            files[f"{dec}/Spare.scala"] = f"package {dec}\n\n" + spare
+        classes = f"import model.{R}\nimport model.Child\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B}\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["app/Main.scala"] = f"""package app
 
 import ext.Lib
 import util.Util.helper
-
-{ex}
-{pg}
+import util.Util
+{classes}
 object Main {{
   def get_db(): {R} = new {R}()
 
@@ -480,12 +500,13 @@ object Main {{
   def via_import(): Unit = {{
     helper()
   }}
+
+  def via_qual(): Unit = {{
+    Util.helper()
+  }}
 }}
 """
-    dec = ("zdecoy" if dl else "adecoy")
-    return {"app/Main.scala": main,
-            "util/Util.scala": "package util\n\nobject Util {\n  def helper(): Int = 1\n}\n",
-            f"{dec}/Util.scala": f"package {dec}\n\nobject Util {{\n  def helper(): Int = 2\n}}\n"}
+    return files
 
 
 # ---------------------------------------------------------------- c#
