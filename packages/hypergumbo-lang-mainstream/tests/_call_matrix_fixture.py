@@ -824,17 +824,38 @@ func via_qual() {{
 
 
 # ---------------------------------------------------------------- c++
-def cpp(R, D, B, S, dl):
+def cpp(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, ext=""):
         return f"class {n}{ext} {{\npublic:\n    int {m}() {{ return {v}; }}\n}};\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child : public {B} {{}};\n", cls(S, "ping", 2))
-    main = f"""#include <extlib.h>
-#include "util.h"
-
-{ex}
-{pg}
-{R} get_db() {{
+    child = f"class Child : public {B} {{}};\n"
+    spare = "class Spare {\npublic:\n    int execute() { return 2; }\n\n    int ping() { return 2; }\n};\n"
+    side = "z" if dl else "a"
+    files = {"util.h": "#pragma once\nint helper();\n", "util.cpp": '#include "util.h"\n\nint helper() { return 1; }\n',
+             f"{side}_decoy.cpp": "static int helper() { return 2; }\n\nint decoy_user() { return helper(); }\n"}
+    if third:
+        files[f"{side}_spare_util.cpp"] = "static int helper() { return 2; }\n\nint spare_user() { return helper(); }\n"
+    if split:
+        # One class per header. main includes the headers of the classes it
+        # names: R, Child, and D (``scope_decoy_*`` declare a D); S's header is
+        # included by nothing.
+        def header(text, inc=""):
+            return f"#pragma once\n\n{inc}{text}"
+        files |= {"store.h": header(cls(R, "execute", 1)), f"{side}_store.h": header(cls(D, "execute", 2)),
+                  "base.h": header(cls(B, "ping", 1)), "child.h": header(child, '#include "base.h"\n\n'),
+                  f"{side}_stray.h": header(cls(S, "ping", 2))}
+        if third:
+            files[f"{side}_spare.h"] = header(spare)
+        local = sorted(["child.h", "store.h", "util.h", f"{side}_store.h"])
+        classes = ""
+    else:
+        local = ["util.h"]
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes = f"{ex}\n{pg}\n"
+    includes = "".join(f'#include "{h}"\n' for h in local)
+    files["main.cpp"] = f"""#include <extlib.h>
+{includes}
+{classes}{R} get_db() {{
     return {R}();
 }}
 
@@ -866,11 +887,12 @@ void via_amb_ext() {{
 void via_import() {{
     helper();
 }}
+
+void via_qual() {{
+    ::helper();
+}}
 """
-    dec = ("z" if dl else "a") + "_decoy.cpp"
-    return {"main.cpp": main, "util.h": "#pragma once\nint helper();\n",
-            "util.cpp": '#include "util.h"\n\nint helper() { return 1; }\n',
-            dec: "static int helper() { return 2; }\n\nint decoy_user() { return helper(); }\n"}
+    return files
 
 
 # ---------------------------------------------------------------- objective-c
