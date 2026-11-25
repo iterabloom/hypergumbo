@@ -87,12 +87,14 @@ from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core import resolved_by
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_core.analyze.base import (
     record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
@@ -1048,6 +1050,8 @@ def _extract_edges_from_file(
                         evidence_type="message_send",
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        # The file's table by selector, whatever the receiver.
+                        resolved_by=resolved_by.SAME_FILE,
                     ))
                 else:
                     # Try cross-file resolution via resolver.
@@ -1080,6 +1084,16 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_locality": "cross_file"},
+                            # The selector among every class; ``[self m]``
+                            # bound to the enclosing class's ``m`` is own_type.
+                            resolved_by=(
+                                resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.resolved_by, _enclosing_type,
+                                )
+                                if _extract_message_receiver(node, source) == "self"
+                                else lookup_result.resolved_by
+                            ),
                         ))
                     else:
                         # Not found, or a deferred cross-class magnet. Emit an
