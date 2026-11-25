@@ -535,8 +535,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "yet; it is counted (audit-findings 0030). The older partial "
                 "spellings of the same fact -- receiver-flavoured "
                 "``evidence_type`` values, ``resolution_quality``, the outcome "
-                "half of ``receiver``, ``disambiguation_fallback`` -- are "
-                "still written and fold into this key language by language.",
+                "half of ``receiver`` -- are still written and fold into this "
+                "key language by language. ``disambiguation_fallback`` is a "
+                "different fact (a pick among candidates was made) and stays.",
                 applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
                 per_call_site=True,
                 write_discipline=DISCIPLINE_SINGLE_WRITER,

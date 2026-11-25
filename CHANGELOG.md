@@ -144,6 +144,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Scala class-body calls reach the class's own methods**; methods and fields passed as arguments are referenced.
 - **Rust method calls no longer bind by declaration order.**
 - **Variable types no longer cross functions in ten languages.**
+- **Resolved calls say what scoped their target: `resolved_by`.**
 - **Namespaced Ruby class methods sit under their own class.**
 - **IPC and WebSocket channels reach their handlers**; a cobra handler's edge starts at its command.
 - **An OpenAPI document alone yields operation nodes**, with `basePath` applied and real line spans.
