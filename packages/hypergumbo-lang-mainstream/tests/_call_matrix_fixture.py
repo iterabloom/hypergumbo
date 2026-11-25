@@ -305,7 +305,8 @@ def java(R, D, B, S, dl, split=False, third=False):
         # A file's name is its public class's, so the PACKAGE carries the side:
         # the right classes in ``model``, the decoys in the decoy package, whose
         # directory sorts after (``zdecoy``) or before (``adecoy``) every right
-        # one. Main imports R and Child.
+        # one. Main imports R, Child and D (the scope decoys name D); S and Spare
+        # stay unreferenced.
         def unit(pkg, text):
             return f"package {pkg};\n\n{text}"
         files |= {f"model/{R}.java": unit("model", cls(R, "execute", 1, pub="public ")),
@@ -315,7 +316,7 @@ def java(R, D, B, S, dl, split=False, third=False):
                   f"{dec}/{S}.java": unit(dec, cls(S, "ping", 2, pub="public "))}
         if third:
             files[f"{dec}/Spare.java"] = unit(dec, spare("public "))
-        classes = f"import model.{R};\nimport model.Child;\n"
+        classes = f"import model.{R};\nimport {dec}.{D};\nimport model.Child;\n"
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare() if third else ""))
         pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
