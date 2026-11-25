@@ -966,18 +966,37 @@ function via_import()
 
 
 # ---------------------------------------------------------------- groovy
-def groovy(R, D, B, S, dl):
+def groovy(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, ext=""):
         return f"class {n}{ext} {{\n    int {m}() {{ return {v} }}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
-    main = f"""package app
+    def util(pkg, v):
+        return f"package {pkg}\n\nclass Util {{\n    static int helper() {{ return {v} }}\n}}\n"
+    spare = "class Spare {\n    int execute() { return 2 }\n\n    int ping() { return 2 }\n}\n"
+    dec = ("zdecoy" if dl else "adecoy")
+    files = {"util/Util.groovy": util("util", 1), f"{dec}/Util.groovy": util(dec, 2)}
+    if third:
+        files[f"{dec}/spare/Util.groovy"] = util(f"{dec}.spare", 2)
+    if split:
+        # One class per file, named by role. The right classes are in package
+        # ``model``, the decoys in the decoy package, whose directory sorts after
+        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R and Child.
+        files |= {"model/Store.groovy": "package model\n\n" + cls(R, "execute", 1),
+                  f"{dec}/Store.groovy": f"package {dec}\n\n" + cls(D, "execute", 2),
+                  "model/Base.groovy": "package model\n\n" + cls(B, "ping", 1),
+                  "model/Child.groovy": f"package model\n\nclass Child extends {B} {{}}\n",
+                  f"{dec}/Stray.groovy": f"package {dec}\n\n" + cls(S, "ping", 2)}
+        if third:
+            files[f"{dec}/Spare.groovy"] = f"package {dec}\n\n" + spare
+        classes = f"import model.{R}\nimport model.Child\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["app/Main.groovy"] = f"""package app
 
 import ext.Lib
 import util.Util
-
-{ex}
-{pg}
+{classes}
 class Main {{
     static {R} get_db() {{
         return new {R}()
@@ -1015,12 +1034,13 @@ class Main {{
     static void via_import() {{
         Util.helper()
     }}
+
+    static void via_qual() {{
+        util.Util.helper()
+    }}
 }}
 """
-    dec = ("zdecoy" if dl else "adecoy")
-    return {"app/Main.groovy": main,
-            "util/Util.groovy": "package util\n\nclass Util {\n    static int helper() { return 1 }\n}\n",
-            f"{dec}/Util.groovy": f"package {dec}\n\nclass Util {{\n    static int helper() {{ return 2 }}\n}}\n"}
+    return files
 
 
 # ---------------------------------------------------------------- lua
