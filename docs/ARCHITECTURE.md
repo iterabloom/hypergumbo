@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **398** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 140 other core modules (11 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **66889** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 15064, of which 8583 are functions, methods or classes
-- **269801** edges, test code included, by type:
-  - calls: 150878
-  - contains: 62248
-  - imports: 24154
-  - references: 13921
-  - instantiates: 13805
-  - module_attr_ref: 2785
-  - other: 2010
+- **400** Python modules: 143 in the language packages, of which 119 register an analyzer; 64 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 10); 141 other core modules (11 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **67340** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 15194, of which 8670 are functions, methods or classes
+- **271831** edges, test code included, by type:
+  - calls: 152236
+  - contains: 62650
+  - imports: 24288
+  - references: 13999
+  - instantiates: 13855
+  - module_attr_ref: 2787
+  - other: 2016
 
 ## Package Architecture
 
@@ -50,7 +50,7 @@ separate install:
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 117 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 64 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 117 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 38 analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -78,7 +78,7 @@ Source files
   4. ENRICH    YAML patterns add meta.concepts (ADR-3aaa):
   │            12 files always loaded, 105 more when their framework
   │            is detected; route symbols materialized
-  5. LINK      63 linkers (P11 / B11 / F32 / I9) recover cross-file and
+  5. LINK      64 linkers (P11 / B11 / F32 / I10) recover cross-file and
   │            cross-language edges; synthetic identities reconciled;
   │            edges deduplicated
   6. CLASSIFY  fingerprints stamped; supply chain tier assigned per file;
@@ -276,18 +276,18 @@ The project's own symbols with the highest `score = in_degree * (1 + ln(1 + out_
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 2219.9 | hypergumbo_core/ir.py |
-| `node_text` | function | 1517.1 | hypergumbo_core/analyze/base.py |
+| `Symbol` | class | 2229.4 | hypergumbo_core/ir.py |
+| `node_text` | function | 1537.4 | hypergumbo_core/analyze/base.py |
 | `Span` | class | 1290.3 | hypergumbo_core/ir.py |
 | `TreeSitterAnalyzer` | class | 1037.6 | hypergumbo_core/analyze/base.py |
-| `Edge.create` | method | 1011.5 | hypergumbo_core/ir.py |
-| `Edge` | class | 866.4 | hypergumbo_core/ir.py |
-| `iter_tree` | function | 854.3 | hypergumbo_core/analyze/base.py |
-| `AnalysisRun` | class | 833.4 | hypergumbo_core/ir.py |
+| `Edge.create` | method | 1027.1 | hypergumbo_core/ir.py |
+| `Edge` | class | 870.8 | hypergumbo_core/ir.py |
+| `iter_tree` | function | 856.7 | hypergumbo_core/analyze/base.py |
+| `AnalysisRun` | class | 837.7 | hypergumbo_core/ir.py |
 | `make_symbol_id` | function | 709.3 | hypergumbo_core/analyze/base.py |
+| `AnalysisResult` | class | 584.4 | hypergumbo_core/analyze/base.py |
 | `register_analyzer` | function | 570.3 | hypergumbo_core/analyze/registry.py |
-| `AnalysisResult` | class | 568.0 | hypergumbo_core/analyze/base.py |
-| `find_files` | function | 558.1 | hypergumbo_core/discovery.py |
+| `find_files` | function | 562.2 | hypergumbo_core/discovery.py |
 | `FileAnalysis` | class | 556.1 | hypergumbo_core/analyze/base.py |
 | `compute_cyclomatic_complexity` | function | 485.9 | hypergumbo_core/analyze/cyclomatic.py |
 | `find_child_by_type` | function | 468.0 | hypergumbo_core/analyze/base.py |
@@ -749,6 +749,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.test_only_reachability`**: Find production functions whose only callers live in test modules.
 - **`hypergumbo_core.tier_filter`**: The supply-chain tier filter: ONE function for ``run_survey`` and t...
 - **`hypergumbo_core.tier_projection`**: What a budget tier carries of each part of a survey (WI-lavum).
+- **`hypergumbo_core.type_visibility`**: Which type a name means, as seen from one place in one file (ADR-00...
 - **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ...
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
@@ -964,6 +965,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.linkers.router_routes`**: Framework linker: router → route registrations containment.
 - **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI gem calls and C-extension registrations to ...
 - **`hypergumbo_core.linkers.rust_trait_dispatch`**: Framework linker: Rust trait-impl method dispatch (WI-kivut).
+- **`hypergumbo_core.linkers.single_holder_name`**: Infrastructure linker: the last resort, a call bound by its name al...
 - **`hypergumbo_core.linkers.solidity_abi`**: Bridge linker: Solidity ABI bridge for connecting TS/JS contract ca...
 - **`hypergumbo_core.linkers.subprocess_cli`**: Protocol linker: subprocess-to-CLI for detecting cross-process CLI ...
 - **`hypergumbo_core.linkers.swift_objc`**: Bridge linker: Swift/Objective-C bridging.
@@ -1031,8 +1033,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7ec21d6804ff
-  commit_count: 10005
+  commit: 24bf518f10e2
+  commit_count: 10063
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
