@@ -1538,14 +1538,22 @@ def _extract_delegation_specifiers(
 
 
 def _extract_user_type_name(user_type_node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract the type name from a user_type node.
+    """The name a ``user_type`` node writes, without its type arguments.
 
-    Handles both simple names (List) and qualified names (kotlin.collections.List).
-    Returns just the simple name.
+    Every identifier of the path, joined with ``.``: ``List``,
+    ``WebSocket.Factory``, ``kotlin.collections.List``. The first identifier
+    alone was returned until ADR-0064's batch 5a, so ``class C :
+    WebSocket.Factory`` recorded the base ``WebSocket`` and C "implemented"
+    the outer interface: with a hierarchy walker, ``c.close()`` was then bound
+    to ``WebSocket.close``. The inheritance linker reads a dotted base by its
+    last segment and checks the owner it is written with.
     """
-    for child in user_type_node.children:
-        if child.type in ("simple_identifier", "identifier", "type_identifier"):
-            return node_text(child, source)
+    parts = [
+        node_text(child, source) for child in user_type_node.children
+        if child.type in ("simple_identifier", "identifier", "type_identifier")
+    ]
+    if parts:
+        return ".".join(parts)
     # Defensive fallback for unexpected AST shapes
     if True:  # pragma: no cover
         text = node_text(user_type_node, source)
