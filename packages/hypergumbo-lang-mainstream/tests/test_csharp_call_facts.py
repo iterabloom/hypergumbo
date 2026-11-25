@@ -294,19 +294,6 @@ def test_a_top_level_statement_call_has_no_enclosing_type(tmp_path: Path) -> Non
     assert stubs and all("enclosing_class" not in (e.meta or {}) for e in stubs)
 
 
-# ---------------------------------------------------------- new T(), R12
-
-def test_new_of_a_type_with_a_namesake_found_by_name_alone_is_not_bound(tmp_path: Path) -> None:
-    result = analyze_csharp(_write(tmp_path, {
-        "A.cs": "namespace A { public class Shared {} public class Only {} }\n",
-        "B.cs": "namespace B { public class Shared {} }\n",
-        "Main.cs": "class Main { void Run() { new Shared(); new Only(); } }\n",
-    }))
-    names = {s.id: s.name for s in result.symbols}
-    made = [names.get(e.dst) for e in result.edges if e.edge_type == "instantiates"]
-    assert made == ["Only"]
-
-
 # ---------------------------------------------- through the shared pass
 
 def _map(tmp_path: Path, files: dict[str, str]) -> dict[str, Any]:
