@@ -361,7 +361,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=9450,
+                line=9475,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "

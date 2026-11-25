@@ -194,6 +194,31 @@ class TestWhatIsNotRecorded:
         )})
         assert _seen(result) == [("lib.use", "args[0]", "step")]
 
+    def test_a_call_handed_to_the_shared_pass_is_still_local_code(self, tmp_path: Path) -> None:
+        """Whether the analyzer binds a call or reports it (ADR-0064) does not
+        decide: a receiver typed by a class the table binds, a member typed
+        by one, ``this`` of a subclass and a namespace binding of the
+        repository all name repository code, bound or not."""
+        result = _analyze(tmp_path, {
+            "src/pipeline.js": "export class Pipeline { use(fn) {} }\nexport function use(fn) {}\n",
+            "src/app.js": (
+                "import { Pipeline } from './pipeline';\n"
+                "import * as pipes from './pipeline';\n"
+                "function step() {}\n"
+                "const app = new Pipeline();\n"
+                "app.use(step);\n"
+                "pipes.use(step);\n"
+                "class Holder { p = new Pipeline(); go() { this.p.use(step); } }\n"
+                "class Sub extends Pipeline { go() { this.use(step); } }\n"
+                "const lib = require('express')();\n"
+                "lib.use(step);\n"
+                "const typed = new Map();\n"
+                "typed.use(step);\n"
+            ),
+        })
+        # A receiver typed by a library's class (``Map``) names no repository code.
+        assert sorted(_seen(result)) == [("lib.use", "args[0]", "step"), ("typed.use", "args[0]", "step")]
+
     def test_library_objects_are_not_handlers(self, tmp_path: Path) -> None:
         result = _analyze(tmp_path, {"app.js": (
             "const express = require('express');\n"

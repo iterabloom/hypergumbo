@@ -7674,6 +7674,33 @@ def _extract_edges(
                 key_text = _node_text(key, source).strip("'\"")
                 yield from _registration_handlers(value, f"{position}.{key_text}", depth + 1)
 
+    def _names_repository_code(edge: Edge) -> bool:
+        """Whether a call's edge says its callee is the repository's, on this
+        file's evidence: bound here (a local symbol; a bind by the method
+        NAME alone, ``ast_method_inferred``, is a guess and does not count),
+        or reported with a fact that points into the repository: the
+        enclosing class (``this.m()``), a qualifier (emitted only for a class
+        or binding of the repository), a receiver typed by a class this file
+        declares or its table binds, or a bare name its table binds."""
+        if edge.is_resolved:
+            return (
+                not edge.dst.endswith(":unresolved") and ":0-0:" not in edge.dst
+                and edge.evidence_type != "ast_method_inferred"
+            )
+        meta = edge.meta or {}
+        if meta.get("enclosing_class") or meta.get("qualifier"):
+            return True
+        hint = meta.get("receiver_type_hint")
+        if hint:
+            head = without_type_arguments(str(hint)).partition(".")[0]
+            return bool(
+                scope.named(head) or scope.namespace(head) or _file_classes(head)
+            )
+        return (
+            meta.get("call_construct") != "method"
+            and scope.named(edge.dst.rsplit(":", 2)[-2]) is not None
+        )
+
     def _record_registrations(
         call: "tree_sitter.Node", args_node: "tree_sitter.Node", edges_from: int,
     ) -> None:
@@ -7684,11 +7711,11 @@ def _extract_edges(
         for each argument's position: no call name is listed in the analyzer,
         so a new row is enough to make a call recorded, and only the
         argument a row is about is. The callee
-        must not be repository code: a call this pass resolved to a local
-        symbol (a ``calls`` edge from this call that is not unresolved) is an
-        ordinary call with an ordinary edge. A resolution by the method NAME
-        alone (``ast_method_inferred``: an untyped ``lib.use`` bound to the
-        only local ``use`` method) is a guess and does not count. The positional handler of an
+        must not be repository code (``_names_repository_code``), which this
+        pass reads off the call's own edges whether it bound the call or
+        handed it to the shared pass: which of the two it does moves with
+        every adapter round, and handler detection must not move with it.
+        The positional handler of an
         Express-style route call is the route extractor's
         (``_extract_express_usage_contexts``) and is not recorded twice; its
         option objects are (``{preHandler: [...]}``).
@@ -7703,9 +7730,7 @@ def _extract_edges(
             return
         call_line = call.start_point[0] + 1 + line_offset
         if any(
-            e.edge_type == "calls" and e.line == call_line
-            and not e.dst.endswith(":unresolved") and ":0-0:" not in e.dst
-            and e.evidence_type != "ast_method_inferred"
+            e.edge_type == "calls" and e.line == call_line and _names_repository_code(e)
             for e in edges[edges_from:]
         ):
             return
