@@ -24,6 +24,20 @@ thing a call site needs on top, the order):
 3. otherwise the file's wildcard imports (``using N;``) are searched
    together; a name two of them supply is a tie, and both are returned.
 
+A language whose imports name FILES (JavaScript, TypeScript, Rust: the scope
+says which kind it holds, ``ImportScope.module_kind``) has a different rule,
+because its declarations carry no namespace:
+
+1. a declaration of the caller's own file with that name;
+2. otherwise, if the name is an explicit binding of the file's imports
+   (``import {Conn as C} from './db'``), the declaration with the ORIGINAL
+   name in the file the binding names;
+3. ``ns.Name`` with ``ns`` a namespace binding (``import * as ns``, ``use
+   crate::db;``): the declaration ``Name`` of that file.
+
+Nothing else is visible: a global, a library type and a name re-exported
+through another file all come back empty.
+
 The answer is a list: empty when no declaration of that name is visible from
 here (the name is then a type of a library, or of nothing: it must not be
 bound to a same-named type elsewhere in the repository), one element when the
@@ -31,20 +45,22 @@ name is settled, more when it is tied. ``None`` means the rule cannot be
 applied (a candidate records no qualified name) and the caller keeps whatever
 it did before.
 
-WHAT THIS DOES NOT DO. It does not find candidates: the caller supplies the
-declarations that share the short name, of the kinds and language it wants.
+WHAT THIS DOES NOT DO. It does not hold an index: the caller supplies a
+function from a short name to the declarations of the kinds and language it
+wants. It does not follow a re-export (``export {a} from './b'``, ``pub
+use``): the binding then names a file that does not declare the name.
 It does not tell a generic type from a non-generic one of the same name
 (``Policy`` and ``Policy<TResult>`` have one qualified name): the caller
 does, with ``written_arity`` and what its declarations record.
-It does not know path-based modules (a JavaScript or Rust import names a
-file, not a namespace); that half of piece (a) arrives with those adapters.
 Inherited nested types (a type nested in a base class, visible in the
 derived class) are not searched.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
+
+from .import_scope import MODULES_ARE_FILES
 
 if TYPE_CHECKING:
     from .import_scope import ImportScope
@@ -100,25 +116,40 @@ def visible_types(
     written: str,
     caller_qualified_name: str | None,
     scope: "ImportScope",
-    candidates: Sequence["Symbol"],
+    candidates_named: Callable[[str], Sequence["Symbol"]],
+    caller_path: str | None = None,
 ) -> list["Symbol"] | None:
-    """The declarations among ``candidates`` that ``written`` can mean for a
-    caller named ``caller_qualified_name`` in a file whose imports are
-    ``scope``. See the module docstring for the rule and the three answers."""
+    """The declarations ``written`` can mean for a caller named
+    ``caller_qualified_name`` in the file ``caller_path`` whose imports are
+    ``scope``. ``candidates_named(short)`` supplies the declarations with a
+    given short name, of the kinds and language the caller wants: the name
+    looked for is not always the one written (an alias names a type whose own
+    name is different). See the module docstring for the rules and the three
+    answers."""
+    if scope.module_kind == MODULES_ARE_FILES:
+        return _by_file(written, caller_path, scope, candidates_named)
+    return _by_declared_name(written, caller_qualified_name, scope, candidates_named)
+
+
+def _by_declared_name(
+    written: str,
+    caller_qualified_name: str | None,
+    scope: "ImportScope",
+    candidates_named: Callable[[str], Sequence["Symbol"]],
+) -> list["Symbol"] | None:
+    name, rooted = _written_name(written)
+    head, _, rest = name.partition(".")
+    alias = None if rooted else scope.named(head)
+    if alias is not None:
+        name = ".".join(part for part in (dotted(alias.module), alias.name, rest) if part)
+    candidates = candidates_named(name.rpartition(".")[2])
     if any(not c.qualified_name for c in candidates):
         return None
     declared: dict[str, list["Symbol"]] = {}
     for candidate in candidates:
         declared.setdefault(dotted(candidate.qualified_name or ""), []).append(candidate)
-
-    name, rooted = _written_name(written)
-    if rooted:
+    if rooted or alias is not None:
         return list(declared.get(name, ()))
-    head, _, rest = name.partition(".")
-    alias = scope.named(head)
-    if alias is not None:
-        full = ".".join(part for part in (dotted(alias.module), alias.name, rest) if part)
-        return list(declared.get(full, ()))
 
     for enclosing in _enclosing_scopes(caller_qualified_name):
         found = declared.get(f"{enclosing}.{name}" if enclosing else name)
@@ -129,3 +160,25 @@ def visible_types(
     for module in scope.wildcard_modules:
         supplied += declared.get(f"{dotted(module)}.{name}", ())
     return supplied
+
+
+def _by_file(
+    written: str,
+    caller_path: str | None,
+    scope: "ImportScope",
+    candidates_named: Callable[[str], Sequence["Symbol"]],
+) -> list["Symbol"]:
+    name, _ = _written_name(written)
+    head, _, rest = name.partition(".")
+    if not rest:
+        own = [c for c in candidates_named(head) if c.path == caller_path]
+        if own:
+            return own
+        bound = scope.named(head)
+        if bound is None:
+            return []
+        return [c for c in candidates_named(bound.name) if c.path == bound.module]
+    module = scope.namespace(head)
+    if module is None or "." in rest:
+        return []
+    return [c for c in candidates_named(rest) if c.path == module]

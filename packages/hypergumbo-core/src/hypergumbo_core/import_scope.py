@@ -77,6 +77,16 @@ from typing import Iterable, Optional
 from hypergumbo_core.ir import ExternalRef
 
 
+#: ``ImportScope.module_kind``: what a binding's ``module`` is. A namespace
+#: (C# ``using N;``: the declarations of N are found by their qualified
+#: names) or a file of the repository (a JavaScript, TypeScript or Rust
+#: import: the declarations are the ones in that file). The two are looked up
+#: by different rules (``type_visibility``), and the scope says which it holds
+#: so that no reader has to guess from the strings.
+MODULES_ARE_NAMESPACES = "namespace"
+MODULES_ARE_FILES = "file"
+
+
 @dataclass(frozen=True)
 class CanonicalName:
     """Canonical (module, name) pair returned by :py:meth:`ImportScope.resolve`.
@@ -115,6 +125,7 @@ class ImportScope:
     a known module alias).
     """
 
+    module_kind: str = MODULES_ARE_NAMESPACES  # axis: bounded-enum
     _named: dict[str, CanonicalName] = field(default_factory=dict)
     _modules: dict[str, str] = field(default_factory=dict)
     _wildcards: list[str] = field(default_factory=list)
@@ -190,6 +201,10 @@ class ImportScope:
     def named(self, local_name: str) -> Optional[CanonicalName]:
         """The explicit name binding of ``local_name``, if it has one."""
         return self._named.get(local_name)
+
+    def namespace(self, alias: str) -> Optional[str]:
+        """The module a namespace alias stands for, if ``alias`` is one."""
+        return self._modules.get(alias)
 
     def add_aliased_module(self, module: str, alias: str) -> None:
         """Alias for :py:meth:`add_namespace`.
