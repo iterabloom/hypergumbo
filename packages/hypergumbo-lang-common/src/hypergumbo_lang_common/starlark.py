@@ -556,6 +556,10 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                         is_resolved=resolution_score is not None,
                         origin=PASS_ID,
                         origin_run_id=ctx.run_id,
+                        resolved_by=(
+                            lookup_result.resolved_by
+                            if resolution_score is not None else None
+                        ),
                     ))
 
 
