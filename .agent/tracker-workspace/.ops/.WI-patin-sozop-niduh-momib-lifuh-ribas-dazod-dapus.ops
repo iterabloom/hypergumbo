@@ -1,0 +1,22 @@
+- op: create  # e4d3
+  at: '2026-11-25T07:32:06Z'  # e4d3
+  by: agent  # e4d3
+  actor: jgstern_agent  # e4d3
+  clock: 1  # e4d3
+  nonce: e4d3  # e4d3
+  data:  # e4d3
+    kind: work_item  # e4d3
+    title: "lua_ffi linker rebinds any language's unresolved call to a same-named C function: 565 edges labelled ffi on a tree with no Lua"  # e4d3
+    status: todo_hard  # e4d3
+    priority: 2  # e4d3
+    parent:  # e4d3
+    tags:  # e4d3
+    - call_graph  # e4d3
+    - analysis_quality  # e4d3
+    - cross_language_linkers  # e4d3
+    isbefore: []  # e4d3
+    duplicate_of: []  # e4d3
+    not_duplicate_of: []  # e4d3
+    pr_ref:  # e4d3
+    description: "STATEMENT\nThe Lua FFI linker emits an edge only for a call that Lua FFI evidence supports (an ffi.cdef declaration, an ffi.load library, a call through ffi.C or a loaded library). A call left unresolved by another language's analyzer is not rebound by this linker.\n\nOBSERVED (2026-11-25, dev b26c7dcf7, tree ~/curriculum_repos zstd as `c_make_zstd` of the 51-tree set; map ~/hypergumbo_lab_notebook/resolution_mark_11252026/full/c_make_zstd.json)\nThe tree holds no Lua. The linker emits 565 `calls` edges there, origin lua-ffi-linker, evidence_type luajit_ffi_lookup, meta bridge_kind=ffi: 448 from C callers, 86 from C++, 30 from Python, 1 from Bash. Examples:\n  c:contrib/externalSequenceProducer/sequence_producer.c simpleSeq... -> cpp:lib/compress/zstd_compress_internal.h ZSTD_hashPtr  (0.85)\n  c:contrib/seekable_format/zstdseek_compress.c ZSTD_stwrite32 -> cpp:contrib/linux-kernel/mem.h MEM_writeLE32  (0.5, disambiguation_fallback)\n  bash:tests/playTests.sh (file) -> cpp:contrib/pzstd/Pzstd.cpp split  (0.85): the shell command `split` bound to a C++ function.\n\nMECHANISM (linkers/lua_ffi.py, \"Phase 2: Match unresolved Lua call edges against C symbols\")\nThe loop runs over EVERY edge whose dst ends `:unresolved`, with no language filter and no edge-type filter (the module docstring says so), takes the id's name slot and binds it to a C/C++ function of that name. It needs no Lua file in the tree. It passes is_resolved=False for a target that is in the repository; finalize's verdict makes the edge resolved.\n\nWHY IT MATTERS\n- \"Unresolved beats a guess\" (owner, 2026-11-24): an analyzer that withheld a bind has it made anyway by this linker, by bare name, and labelled as an FFI bridge.\n- Many of the C edges may be right (a C file calling a function a header defines; the C analyzer does not see the header's functions, the C++ analyzer does). That is a C / header resolution gap, and this linker is not where it belongs. How many are right was not counted.\n- The 565 edges carried no resolution mark; the follow-up to PR #2389 marks them `name`.\n\nNOT CHECKED: other trees of the set (only zstd had such edges among the 51); the analogous second phases of the other bridge linkers (grpc `_resolve_unresolved`-style rebinding at linkers/grpc.py ~1240 has the same shape: an unresolved edge's callee name matched among the linker's symbols, first candidate, package hint preferred)."  # e4d3
+    fields: {}  # e4d3

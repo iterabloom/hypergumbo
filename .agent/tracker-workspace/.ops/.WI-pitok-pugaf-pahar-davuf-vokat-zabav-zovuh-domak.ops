@@ -1,0 +1,22 @@
+- op: create  # cb16
+  at: '2026-11-25T07:32:12Z'  # cb16
+  by: agent  # cb16
+  actor: jgstern_agent  # cb16
+  clock: 1  # cb16
+  nonce: cb16  # cb16
+  data:  # cb16
+    kind: work_item  # cb16
+    title: "Nothing gates 'a resolved call edge carries resolved_by' at run time: the census is run by hand, and three producer shapes got past the static checks"  # cb16
+    status: todo_hard  # cb16
+    priority: 3  # cb16
+    parent:  # cb16
+    tags:  # cb16
+    - call_graph  # cb16
+    - analysis_quality  # cb16
+    - call_matrix  # cb16
+    isbefore: []  # cb16
+    duplicate_of: []  # cb16
+    not_duplicate_of: []  # cb16
+    pr_ref:  # cb16
+    description: "STATEMENT\nA resolved call-family edge with no `resolved_by` cannot reach a published map without a gate saying so.\n\nWHAT EXISTS (PR #2389)\n- scripts/check-resolved-by-sites reads whether each creation site PASSES the keyword.\n- check-meta-write-discipline rule 3 refuses a dict literal assigned to `.meta` after a creation that passed it.\n- finalize removes the mark from an edge that leaves the repository (the \"only if\" half).\n- The \"if\" half (resolved => marked) is checked only by a census script run by hand over stored maps (~/hypergumbo_lab_notebook/resolution_mark_11252026/census.py).\n\nWHAT GOT THROUGH THE STATIC CHECKS, each found another way\n1. GraphQL (2 sites) and HTTP linkers: the mark was passed and then lost to `edge.meta = {...}`. Found by widening rule 3. No such edge in the 28 measured trees.\n2. Lua FFI phase 2 and two gRPC sites pass the literal is_resolved=False for a target that is in the repository; the site check exempts such a site; finalize makes the edge resolved. 565 unmarked edges on zstd, found only by the 51-tree census.\n3. The site check does not judge a site whose edge_type is not a literal (17 sites), a meta replaced through a helper, or a non-literal replacement.\n4. 26 linker creation sites have no test that pins their value.\n\nPROPOSAL (not built)\nfinalize's edge-resolution sub-step already visits every edge with the verdict in hand: count resolved call-family edges with no mark there and surface the count where a gate reads it (the map's validation section, checked by the self-tree step and by the bakeoff diagnostics), so a new producer that forgets or loses the mark fails on the first tree that reaches it. And one value-pinning test per linker site.\n\nACCEPTANCE: a mutation that drops the mark at one linker site turns a test red without anyone running the census."  # cb16
+    fields: {}  # cb16

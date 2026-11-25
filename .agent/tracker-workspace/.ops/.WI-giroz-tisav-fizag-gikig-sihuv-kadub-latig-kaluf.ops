@@ -1,0 +1,22 @@
+- op: create  # 0660
+  at: '2026-11-25T07:14:38Z'  # 0660
+  by: agent  # 0660
+  actor: jgstern_agent  # 0660
+  clock: 1  # 0660
+  nonce: '0660'  # 0660
+  data:  # 0660
+    kind: work_item  # 0660
+    title: "lang-extended1: what each analyzer does when a name has several declarations (the probe list for batch 5f)"  # 0660
+    status: todo_hard  # 0660
+    priority: 3  # 0660
+    parent:  # 0660
+    tags:  # 0660
+    - call_graph  # 0660
+    - analysis_quality  # 0660
+    - call_matrix  # 0660
+    isbefore: []  # 0660
+    duplicate_of: []  # 0660
+    not_duplicate_of: []  # 0660
+    pr_ref:  # 0660
+    description: "PURPOSE\nThe probe result for batch 5f (lang-extended1): what each analyzer was seen to do when a name has more than one declaration, read in the code while stamping resolved_by (2026-11-25; lines at the mark PR's head). Fourteen of these languages have no real tree on this machine; fixtures only.\n\nSTATEMENT\nAfter batch 5f, each route below binds by the language's own visibility rule or leaves the call unresolved with its candidates.\n\nWRONG BY THE LANGUAGE'S RULE (reproduced on a fixture)\n- hack.py:379: the verbatim key is tried first, so a bare `f()` inside `namespace App` binds the global `f` even when `App\\f` exists. Hack resolves an unqualified function name in the current namespace first.\n- haxe.py:376: the receiver is discarded. `o.work()` with `var o = new Other()` binds `Main.work` (the enclosing class's) when one exists.\n- ada.py:537 / 567: registry keyed by simple name, last writer wins; an exact hit ignores the rename path hint (`T.Show` with `T renames Util.Text` bound util-text.adb's `Show` by registration order).\n\nRECEIVER OR QUALIFIER DROPPED\n- apex.py:784: `h.go()` (h a variable) binds a CLASS named `go` (any top-level symbol named like the method).\n- luau.py:394: `obj:fn()` / `obj.fn()` falls back to the short name and binds a free function `fn`.\n- jsonnet.py:304: `x.helper()` binds any field named `helper` in the run, the last registered.\n- zig.py:610: an exact key ignores the import-alias path hint (the core lookup item).\n\nRUN-WIDE ONE-PER-NAME TABLE, LAST WRITER WINS\nasm.py:279, fennel.py:290, janet.py:278, gleam.py:348, v_lang.py:571, odin.py:350 (gleam and odin ignore the caller's own module / package); gdscript.py:397 (ignores that a bare call is to the script's own function), wolfram.py:455; tcl.py:298 (registry fallback by the word); pony.py:612 (per file: the last declaration of a name in the file).\n\nA PICK AMONG SEVERAL\n- llvm_ir.py `_resolve_calls`: a call to a function this file only DECLARES asks the run-wide one-per-name table, which holds another file's `define` or this file's own `declare`, whichever file was read last. The module docstring says a declare does not pre-empt another file's define; under one file order it does. Seen as a PR CI failure (PR #2389): the same two-file fixture bound lib.ll's define on one machine and main.ll's declare on another. An older test of the route, test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution, fails when files are read in descending name order.\n- circom.py:423 (two same-name templates in one file: the first), :426 (the first file in include-closure order), :434 (`candidates[-1]`).\n- cobol.py:386 (`program_targets.setdefault`: the first header of a name).\n- solidity.py:427 (`_ScopeIndex.member`: the last-declared overload, arguments not matched), :1294 (`declared[-1]` among one library's overloads).\n- nim: core overload_arity.py:310 picks `ordered[0]` by position among a tier's admitted candidates.\n- verilog.py:718 (`lookup_one` over all design units of the name; a multi-candidate pick sets disambiguation_fallback).\n\nRepro trees were under /tmp/mark_extended (not kept across a reboot); the fixtures are described in the report.\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/extended/RESULTS.md."  # 0660
+    fields: {}  # 0660
