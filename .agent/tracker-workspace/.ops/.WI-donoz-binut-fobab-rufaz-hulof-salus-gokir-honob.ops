@@ -1,0 +1,22 @@
+- op: create  # ad48
+  at: '2026-11-25T01:50:42Z'  # ad48
+  by: agent  # ad48
+  actor: jgstern_agent  # ad48
+  clock: 1  # ad48
+  nonce: ad48  # ad48
+  data:  # ad48
+    kind: work_item  # ad48
+    title: "Variable types per function: dart, d and solidity are not probed; objc and php cannot be read from the fixture"  # ad48
+    status: todo_hard  # ad48
+    priority: 2  # ad48
+    parent:  # ad48
+    tags:  # ad48
+    - call_graph  # ad48
+    - analysis_quality  # ad48
+    - call_matrix  # ad48
+    isbefore: []  # ad48
+    duplicate_of: []  # ad48
+    not_duplicate_of: []  # ad48
+    pr_ref:  # ad48
+    description: "WHAT\nINV-zabud (a variable's type belongs to the function that binds it) was fixed and probed for the 17 mainstream languages. Three analyzers outside that package keep a variable-type table and were NOT probed: dart (lang-common; dart.py writes parameters with var_types.update), d, solidity. Objective-C and PHP were probed and cannot be read: Objective-C binds every call by selector whatever the receiver's type (WI-mokul), PHP's typed receivers resolve by another path and the probe row is the same in both function orders.\n\nHOW TO CHECK\n~/hypergumbo_lab_notebook/var_scope_11242026/probe.py and probe_param.py: three functions each binding a local db (a decoy class, an external value, the right class), written in both orders. A leak shows as a row that changes with the order, or the external-value function reaching a class. Add a row per language.\n\nFIX, IF IT LEAKS\nhypergumbo_core/analyze/var_scope.py::ScopedVarTypes is the one mechanism; ten analyzers use it (one commit each in the PR that fixed INV-zabud). Do not write a second one.\n\nNOT KNOWN\nWhether any of the three leaks."  # ad48
+    fields: {}  # ad48

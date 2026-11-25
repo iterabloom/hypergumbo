@@ -24,3 +24,10 @@
     fields:  # df39
       statement: "A local variable's type is taken from the function that binds it; a type written for a same-named variable in another function of the file does not type it."  # df39
       root_cause: "rust.py keeps one variable-type map per file, first writer wins (_extract_var_types_rust), a convention its docstring attributes to ADR-0006 and to the Java, Kotlin, C# and Go analyzers (those were not checked)."  # df39
+- op: discuss  # 2213
+  at: '2026-11-24T22:19:24Z'  # 2213
+  by: agent  # 2213
+  actor: jgstern_agent  # 2213
+  clock: 2  # 2213
+  nonce: '2213'  # 2213
+  message: "OWNER RULING, in session 2026-11-24: 'yes we should definitely change it.' Variable types are to be scoped to the function that binds them; ADR-0006's file-scope convention (its Scope Handling section, the Scope column of its table, limitation 1, future-work 9, line 104) is to be amended. PROBE of all 17 class-bearing mainstream languages the same day (~/hypergumbo_lab_notebook/var_scope_11242026/probe.py, probe_run1.md; three functions each binding a local db: an Other, an external value, a Conn; written in both orders): LEAKS in 8. First writer wins, so even a function that constructs its own value is mistyped: rust, ruby, lua. A stale type, so a later function's untyped db keeps the previous function's type: javascript, typescript, scala, csharp, groovy. NO leak: python, java, kotlin, go, swift, cpp, perl. objc binds everything by selector (WI-mokul), so the probe cannot see its scope; php is the same in both orders. NOT probed: parameters, fields, closures and nested functions, module-level variables, dart / d / solidity (lang-common and extended1 have var_types too), and the module slot of external calls (rust's var_type_paths is per file too)."  # 2213
