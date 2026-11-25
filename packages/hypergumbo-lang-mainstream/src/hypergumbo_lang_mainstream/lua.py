@@ -110,6 +110,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -300,7 +301,7 @@ def _find_enclosing_lua_function(
 def _extract_var_types(
     tree: "tree_sitter.Tree",
     source: bytes,
-) -> dict[str, str]:
+) -> ScopedVarTypes:
     """Extract variable type assignments from local variable declarations.
 
     Tracks single-assignment patterns like:
@@ -308,18 +309,25 @@ def _extract_var_types(
     - ``local sock = mod.tcp()`` → sock has type mod.tcp (dot-index receiver)
     - ``local x = MyClass:new()`` → x has type MyClass (constructor pattern)
 
-    Only tracks the first assignment to each variable within a file scope.
-    Does not handle reassignment or conditional assignment — Lua's dynamic
-    nature makes flow-sensitive analysis infeasible without a type system.
+    SCOPE (INV-zabud). A ``local`` belongs to the function that declares it;
+    the first assignment to a name IN THAT FUNCTION wins. A ``local`` of the
+    chunk is seen by every function after it (an upvalue). Does not handle
+    reassignment or conditional assignment — Lua's dynamic nature makes
+    flow-sensitive analysis infeasible without a type system.
 
     Returns:
-        Dict mapping variable name to inferred type string. The type string
+        Variable name to inferred type string, per scope: ask it for the
+        bindings a call sees with ``var_types.at(call_node)``. The type string
         matches the naming convention used in symbol registration (e.g.,
         "MyClass" for ``function MyClass:method()`` definitions).
     """
-    var_types: dict[str, str] = {}
+    var_types = ScopedVarTypes(remember=True)
 
     for node in iter_tree(tree.root_node):
+        var_types.close_scopes_before(node)
+        if node.type in ("function_declaration", "function_definition"):
+            var_types.open_scope(node)
+            continue
         if node.type != "variable_declaration":
             continue
 
@@ -354,7 +362,7 @@ def _extract_var_types(
 
         # Infer type from expression
         inferred = _infer_type_from_expr(expr, source, var_types)
-        if inferred and var_name not in var_types:
+        if inferred and not var_types.bound_here(var_name):
             var_types[var_name] = inferred
 
     return var_types
@@ -912,8 +920,9 @@ def _extract_edges_from_file(
                     elif is_method_call:
                         # Try type-based resolution for method calls
                         typed_resolved = False
-                        if receiver_name and receiver_name in var_types:
-                            receiver_type = var_types[receiver_name]
+                        _seen_types = var_types.at(node)
+                        if receiver_name and receiver_name in _seen_types:
+                            receiver_type = _seen_types[receiver_name]
                             qualified_name = f"{receiver_type}.{callee_name}"
                             typed_lookup = resolver.lookup(qualified_name, caller_path=_caller_path)
                             if typed_lookup.found:
