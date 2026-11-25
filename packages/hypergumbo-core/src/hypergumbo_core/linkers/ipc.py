@@ -146,6 +146,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from .. import resolved_by
 from ..analyze.base import make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
@@ -1154,6 +1155,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     # derived-from consumed-none: both ends are minted from a file scan and joined
                     #   on namespace/method
                     derived_from=[],
+                    resolved_by=resolved_by.KEY_MATCH,
                 )
                 edges.append(edge)
 
@@ -1236,6 +1238,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     # derived-from consumed-none: both ends are minted from a file scan and joined
                     #   on the function name
                     derived_from=[],
+                    resolved_by=resolved_by.KEY_MATCH,
                 )
                 edges.append(edge)
 

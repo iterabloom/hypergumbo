@@ -53,6 +53,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from .. import resolved_by
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -213,6 +214,7 @@ def link_cgo(
             data_direction="src_to_dst",
             meta=edge_meta,
             derived_from=[edge.src, c_sym.id, edge.id],
+            resolved_by=resolved_by.KEY_MATCH,
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

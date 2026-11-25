@@ -74,6 +74,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+from .. import resolved_by
 from ..analyze.base import make_symbol_id, mint_stand_in_fingerprint
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
@@ -729,6 +730,7 @@ def link_tauri_ipc(
                 # derived-from endpoints: the publisher node is minted here; the command is joined
                 #   by name
                 derived_from=[target_sym.id],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -849,6 +851,7 @@ def link_tauri_ipc(
                     # derived-from consumed-none: both ends are minted by this pass and joined on
                     #   the command name
                     derived_from=[],
+                    resolved_by=resolved_by.KEY_MATCH,
                 ))
 
     # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)

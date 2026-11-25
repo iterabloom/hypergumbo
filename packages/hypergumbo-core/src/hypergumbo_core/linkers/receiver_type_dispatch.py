@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import time
 
+from .. import resolved_by
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .method_call_recovery import parse_unresolved_name, short_name
 from .registry import (
@@ -168,6 +169,7 @@ def link_receiver_type_dispatch(ctx: LinkerContext) -> LinkerResult:
             evidence_type=evidence_type,
             is_resolved=True,
             derived_from=[edge.src, target_id, edge.id],
+            resolved_by=resolved_by.RECEIVER_TYPE,
         )
         new_edges.append(resolved)
         existing_call_pairs.add((edge.src, target_id))

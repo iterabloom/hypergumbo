@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import posixpath
 
+from .. import resolved_by
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
@@ -243,6 +244,7 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             derived_from=[edge.src, main_fn.id, edge.id],
+            resolved_by=resolved_by.KEY_MATCH,
         ))
 
     return LinkerResult(edges=edges, run=run)

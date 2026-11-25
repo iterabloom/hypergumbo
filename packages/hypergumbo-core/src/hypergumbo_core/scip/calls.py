@@ -118,6 +118,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, List, Optional, Tuple
 
+from .. import resolved_by
 from ..ir import Edge
 from ._generated import scip_pb2
 from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
@@ -308,10 +309,11 @@ def scip_index_to_call_edges(
             if src_resolved is None or dst_resolved is None:
                 continue
 
+            edge_type = _edge_type_for(occ.symbol, declared_kinds)
             out.append(Edge.create(
                 src=src_resolved,
                 dst=dst_resolved,
-                edge_type=_edge_type_for(occ.symbol, declared_kinds),
+                edge_type=edge_type,
                 line=ref_span[0] + 1,
                 origin="scip",
                 evidence_type=_EVIDENCE_TYPE,
@@ -322,5 +324,10 @@ def scip_index_to_call_edges(
                     "symbol_roles": int(occ.symbol_roles),
                 },
                 origin_run_id=run_id,
+                # The indexer's own binding chose the target. A target outside
+                # the repository loses the mark at finalize.
+                resolved_by=(
+                    resolved_by.SEMANTIC_BACKEND if edge_type == "calls" else None
+                ),
             ))
     return out

@@ -137,6 +137,7 @@ import time
 from collections import defaultdict, deque
 from typing import Callable
 
+from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .method_call_recovery import parse_unresolved_name
@@ -1245,6 +1246,7 @@ def _resolve_site1(
         evidence_type="ast_call_inherited",
         is_resolved=True,
         derived_from=[edge.id, resolved_start_id],
+        resolved_by=resolved_by.OWN_TYPE,
     )
 
 
@@ -1338,6 +1340,7 @@ def _resolve_site2(
             evidence_type="ast_call_type_inferred",
             is_resolved=True,
             derived_from=[edge.id, type_class_id],
+            resolved_by=resolved_by.RECEIVER_TYPE,
         )
 
     # Step 2: MRO walk (requires a registered walker).
@@ -1364,6 +1367,7 @@ def _resolve_site2(
                     evidence_type="ast_call_inherited_method",
                     is_resolved=True,
                     derived_from=[edge.id, type_class_id],
+                    resolved_by=resolved_by.RECEIVER_TYPE,
                 )
 
     # Step 3: the method is nowhere on the type's chain (an external base's,
@@ -1524,4 +1528,5 @@ def _resolve_site3(
         evidence_type="ast_call_inherited_field",
         is_resolved=True,
         derived_from=[edge.id, resolved_field_type_id],
+        resolved_by=resolved_by.RECEIVER_TYPE,
     )

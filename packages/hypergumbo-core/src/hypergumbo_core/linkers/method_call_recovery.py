@@ -83,6 +83,7 @@ import time
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from .. import resolved_by
 from ..member_names import member_short_name
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, NodeId, make_pass_id, stated_module_of,
@@ -423,6 +424,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 confidence=confidence,
                 meta=edge_meta,
                 derived_from=[ucall.id, chosen_hint.id],
+                resolved_by=resolved_by.CLASS_HINT,
             ))
             # Mark resolved so a second unresolved sibling on the same
             # method doesn't double-emit.

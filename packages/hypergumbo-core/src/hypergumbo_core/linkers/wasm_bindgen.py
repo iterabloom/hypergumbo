@@ -52,6 +52,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import resolved_by
 from ..analyze.base import make_file_id, make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
@@ -332,6 +333,7 @@ def link_wasm_bindgen(
                 # derived-from endpoints: the import node is minted here; the export is joined by
                 #   name
                 derived_from=[target_sym.id],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     run.silence_reason = silence_reason_for_candidates(all_imports)

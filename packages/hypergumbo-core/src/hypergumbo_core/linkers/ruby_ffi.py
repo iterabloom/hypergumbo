@@ -53,6 +53,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import resolved_by
 from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
@@ -278,6 +279,7 @@ def link_ruby_ffi(
                     # derived-from endpoints: the enclosing Ruby symbol plus an attach_function name
                     #   match
                     derived_from=[src_sym.id, c_sym.id],
+                    resolved_by=resolved_by.KEY_MATCH,
                 ))
             else:
                 # Unresolved: external library (e.g., libzmq, libc)
@@ -358,6 +360,7 @@ def link_ruby_ffi(
                 # derived-from endpoints: only the C function is read; the self-loop src is
                 #   defect WI-judov
                 derived_from=[c_sym.id],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     run.silence_reason = silence_reason_for_candidates(found)

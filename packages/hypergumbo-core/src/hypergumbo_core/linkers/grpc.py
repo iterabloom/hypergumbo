@@ -97,6 +97,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from .. import resolved_by
 from ..discovery import find_files, find_non_test_files
 from ..analyze.base import make_route_symbol, make_symbol_id
 from ..ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, make_pass_id
@@ -890,6 +891,7 @@ def link_grpc(
                 },
                 # derived-from consumed-none: stub and servicer are both minted from a file scan
                 derived_from=[],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     # WI-ropoz: fallback — stubs/clients without an in-tree servicer

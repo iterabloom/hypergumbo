@@ -52,6 +52,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
+from .. import resolved_by
 from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -384,6 +385,7 @@ def link_graphql(
                     # derived-from endpoints: the client node is minted here; the operation is
                     #   joined by name (meta operation_name)
                     derived_from=[schema_sym.id],
+                    resolved_by=resolved_by.KEY_MATCH,
                 )
                 # ADR-0028 Phase 3 / audit-findings 0014: framework-dispatch
                 # leak; meta["framework_dispatch"]="graphql_operation".
@@ -420,6 +422,7 @@ def link_graphql(
             # derived-from endpoints: the client node is minted here; the field is joined by root-
             #   field name
             derived_from=[schema_field.id],
+            resolved_by=resolved_by.KEY_MATCH,
         )
         edge.meta = {
             "protocol": "graphql",

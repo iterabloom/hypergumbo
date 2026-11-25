@@ -47,6 +47,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import resolved_by
 from ..analyze.base import make_symbol_id
 from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from ._text_filters import js_ts_language_from_path, read_source_text
@@ -268,6 +269,7 @@ def link_solidity_abi(
                 # derived-from endpoints: the call-site node is minted here; the function is joined
                 #   by name
                 derived_from=[target.id],
+                resolved_by=resolved_by.KEY_MATCH,
             ))
 
     run.silence_reason = silence_reason_for_candidates(call_sites)
