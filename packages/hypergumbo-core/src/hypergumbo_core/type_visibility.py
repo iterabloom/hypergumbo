@@ -13,7 +13,8 @@ rule a language with DECLARED names uses (namespaces: C#; the rule the
 inheritance linker's ``_namespace_fit`` applies to base classes, with the one
 thing a call site needs on top, the order):
 
-1. a name rooted at the global namespace (``global::A.B``) is a full name;
+1. a name rooted at the global namespace (``global::A.B``; PHP's
+   ``\\A\\B``) is a full name;
    an alias of the file (``using Svc = A.B;``) is replaced by what it names
    and the result is taken as a full name;
 2. otherwise the scopes that enclose the caller are searched from the
@@ -79,16 +80,19 @@ def dotted(name: str) -> str:
     return name.replace("::", ".").replace("\\", ".").lstrip(".")
 
 
-_GLOBAL_ROOT = "global::"
+#: How a name is written rooted at the global namespace: C#'s ``global::A.B``
+#: and PHP's ``\\A\\B``.
+_GLOBAL_ROOTS = ("global::", "\\")
 
 
 def _written_name(written: str) -> tuple[str, bool]:
     """The name as a dotted path with its type arguments removed, and whether
-    it was rooted at the global namespace (``global::A.B``), which makes it a
-    full name that no enclosing scope or import may reinterpret."""
+    it was rooted at the global namespace (``global::A.B``, PHP's
+    ``\\A\\B``), which makes it a full name that no enclosing scope or
+    import may reinterpret."""
     name = without_type_arguments(written)
-    rooted = name.startswith(_GLOBAL_ROOT)
-    return dotted(name[len(_GLOBAL_ROOT):] if rooted else name), rooted
+    root = next((r for r in _GLOBAL_ROOTS if name.startswith(r)), "")
+    return dotted(name[len(root):]), bool(root)
 
 
 #: Languages whose declarations call each other as one language. A TypeScript

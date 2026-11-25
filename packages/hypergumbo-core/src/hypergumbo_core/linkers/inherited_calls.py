@@ -1286,7 +1286,9 @@ def _declaration_named(
     name in the scope that answers. Several declarations with one qualified
     name and one kind of thing are one: the overloads of a function (the
     first in its file is bound; overload selection is not made, WI-tosut) and
-    the parts of a type.
+    the parts of a type. Where several FILES declare it, the caller's own
+    file's declaration is the one meant: two scripts that each define a
+    function of one name are not loaded together.
     """
     language = caller.language or ""
 
@@ -1315,7 +1317,9 @@ def _declaration_named(
     one_kind = {s.kind == "function" for s in seen}
     if len(one_name) != 1 or len(one_kind) != 1:
         return None
-    first = min(seen, key=lambda s: (s.path, s.span.start_line if s.span else 0, s.id))
+    first = min(seen, key=lambda s: (
+        s.path != caller.path, s.path, s.span.start_line if s.span else 0, s.id,
+    ))
     return first, scoped
 
 
