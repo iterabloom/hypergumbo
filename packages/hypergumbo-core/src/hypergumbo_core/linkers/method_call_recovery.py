@@ -393,15 +393,10 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 # Of several overloads, the ones that can take the arguments
                 # the call writes (``overload_arity``); of those the last, as
                 # before the count was read. None taking it: no candidate.
-                # The caller already has an edge to an overload of that name on
-                # this class: the call the hint stands for is answered, and a
-                # second stub of the name is some other receiver's
-                # (``response.trailers()`` beside ``MockResponse.Builder()
-                # .trailers(h)``), not another overload's.
-                of_that_name = class_methods.get(hint.dst, {}).get(name, [])
-                if any(m.id in already_resolved for m in of_that_name):
-                    continue
-                overloads = best_by_arity(of_that_name, (ucall.meta or {}).get("argument_count"))
+                overloads = best_by_arity(
+                    class_methods.get(hint.dst, {}).get(name, []),
+                    (ucall.meta or {}).get("argument_count"),
+                )
                 if not overloads:
                     continue
                 method = overloads[-1]
@@ -423,8 +418,17 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 candidates,
                 key=lambda pair: (abs(pair[0].line - ucall.line), pair[0].id),
             )
-            if chosen_method.id in already_resolved:
-                continue  # avoid duplicating an existing direct edge
+            # The caller already has an edge to the chosen method, or to
+            # another overload of that name on the chosen class: the call the
+            # hint stands for is answered, and this stub is some other
+            # receiver's (``response.trailers()`` beside ``MockResponse
+            # .Builder().trailers(h)``), not another overload's. The stub is
+            # left alone: a class hinted further away is not tried instead.
+            if any(
+                m.id in already_resolved
+                for m in class_methods.get(chosen_hint.dst, {}).get(name, [])
+            ):
+                continue
             # INV-zuhub: when multiple class hints each have a method
             # matching ``name``, the line-proximity tiebreaker is a
             # heuristic — the chosen method may not be the one the
