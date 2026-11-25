@@ -525,3 +525,64 @@ def test_a_nearer_namesake_of_another_arity_does_not_hide_the_type() -> None:
     # Written without type arguments, the same receiver is the nearer one.
     (edge,) = _link(symbols, _stub(caller, "Dispose", receiver_type_hint="Registry"), _scope("Lib"))
     assert edge.dst == nearer[1].id
+
+
+# --- found on the JavaScript / TypeScript adapter -----------------------------------
+
+
+def test_the_caller_of_a_component_script_binds_typescript_declarations() -> None:
+    """A call at the top of a ``.vue`` script has the component FILE for its
+    caller, labelled ``vue``; the function it imports is TypeScript. One
+    language for calls (``type_visibility.call_language``)."""
+    helper = _ts("function", "helper", "src/util.ts")
+    component = Symbol(
+        id="vue:src/Main.vue:1-40:Main.vue:file", name="Main.vue", kind="file", language="vue",
+        path="src/Main.vue", span=Span(start_line=1, end_line=40, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+    scope = _file_scope()
+    scope.add_named("src/util.ts", "helper")
+    stub = make_unresolved_edge("vue", component.id, "helper", 12, "test-pass", "test-run")
+    ctx = LinkerContext(repo_root=Path("/"), symbols=[helper, component], edges=[stub],
+                        import_scopes={"src/Main.vue": scope})
+    (edge,) = link_inherited_calls(ctx).edges
+    assert edge.dst == helper.id
+    # A typed receiver in the same script: the class is TypeScript too.
+    conn = [_ts("class", "Conn", "src/db.ts", (1, 9)), _ts("method", "Conn.execute", "src/db.ts", (3, 5))]
+    scope.add_named("src/db.ts", "Conn")
+    typed = make_unresolved_edge("vue", component.id, "execute", 14, "test-pass", "test-run",
+                                 receiver_type_hint="Conn")
+    ctx = LinkerContext(repo_root=Path("/"), symbols=[*conn, component], edges=[typed],
+                        import_scopes={"src/Main.vue": scope})
+    (edge,) = link_inherited_calls(ctx).edges
+    assert edge.dst == conn[1].id
+
+
+def test_a_call_on_a_receiver_is_not_a_call_of_an_imported_function() -> None:
+    """``import {merge} from './util'`` and, elsewhere, ``x.merge()``: the
+    member call has a receiver, so the import does not say what it invokes."""
+    merge = _ts("function", "merge", "src/util.ts")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_named("src/util.ts", "merge")
+    member = make_unresolved_edge("typescript", caller.id, "merge", 12, "test-pass", "test-run",
+                                  call_construct="method")
+    assert _ts_link([merge, caller], member, scope) == []
+
+
+def test_a_type_of_a_language_whose_imports_name_files_is_one_file() -> None:
+    """Two classes ``Handler`` in two TypeScript files share the qualified
+    name ``Handler`` and are two types. ``this.helper()`` in one of them must
+    not find the other's ``helper`` (in C# the two would be parts of one
+    partial class)."""
+    own = [_ts("class", "Handler", "src/main.ts", (1, 30)),
+           Symbol(id="typescript:src/main.ts:10-20:Handler.get:method", name="Handler.get", kind="method",
+                  language="typescript", path="src/main.ts", qualified_name="Handler.get",
+                  span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+                  origin="test", origin_run_id="test-run")]
+    own[0].qualified_name = "Handler"
+    other = [_ts("class", "Handler", "legacy/main.ts", (1, 30)), _ts("method", "Handler.helper", "legacy/main.ts", (3, 5))]
+    other[0].qualified_name, other[1].qualified_name = "Handler", "Handler.helper"
+    stub = make_unresolved_edge("typescript", own[1].id, "helper", 12, "test-pass", "test-run",
+                                enclosing_class="Handler")
+    assert _ts_link([*own, *other], stub, _file_scope()) == []

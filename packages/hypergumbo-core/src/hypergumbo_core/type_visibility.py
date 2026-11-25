@@ -87,6 +87,21 @@ def _written_name(written: str) -> tuple[str, bool]:
     return dotted(name[len(_GLOBAL_ROOT):] if rooted else name), rooted
 
 
+#: Languages whose declarations call each other as one language. A TypeScript
+#: file imports a JavaScript one; the script of a Vue or Svelte component is
+#: JavaScript or TypeScript, while a call at the top of that script has the
+#: component FILE for its caller, labelled by the component's own language.
+_ONE_CALL_LANGUAGE = {"typescript": "javascript", "vue": "javascript", "svelte": "javascript"}
+
+
+def call_language(language: str) -> str:
+    """The language ``language`` binds calls in: itself, but for the members
+    of a family that share one (JavaScript, TypeScript, Vue, Svelte). Every
+    "is this declaration in the caller's language" test of the shared call
+    resolution compares these, so that it is asked one way."""
+    return _ONE_CALL_LANGUAGE.get(language, language)
+
+
 def without_type_arguments(written: str) -> str:
     """``written`` with its type arguments removed: ``Policy<int>`` is
     ``Policy``. The ONE reduction for every reader of a stub's
