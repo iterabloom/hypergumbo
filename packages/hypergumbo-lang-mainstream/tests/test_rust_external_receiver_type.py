@@ -249,16 +249,18 @@ class TestQualifiedPathHelperRefusesToInvent:
 
 
 class TestQualifiedPathWalkerBindingRules:
-    def test_first_writer_wins_like_the_bare_map(self, tmp_path: Path) -> None:
-        """Same rule as ``_extract_var_types_rust``, so the maps agree.
+    def test_each_function_keeps_its_own_binding_like_the_bare_map(self, tmp_path: Path) -> None:
+        """Same rule as ``_extract_var_types_rust``, so the maps agree (INV-zabud).
 
         If the two disagreed about which binding a name refers to, the bare
         name would resolve against one type and the module path against
         another — the one-fact-two-homes failure in its most dangerous form,
-        because both halves would look individually correct.
+        because both halves would look individually correct. Both are scoped
+        to the function: ``h`` in ``b`` is ``b``'s, whatever ``a`` bound first.
         """
         from hypergumbo_lang_mainstream.rust import (
             _extract_qualified_var_type_paths,
+            _extract_var_types_rust,
         )
         import tree_sitter
         import tree_sitter_rust
@@ -266,6 +268,7 @@ class TestQualifiedPathWalkerBindingRules:
         src = (
             b"pub fn a() {\n"
             b"    let h = std::fs::File::create(\"x\");\n"
+            b"    let h = std::process::Command::new(\"x\");\n"
             b"}\n"
             b"pub fn b() {\n"
             b"    let h = std::process::Command::new(\"x\");\n"
@@ -274,10 +277,14 @@ class TestQualifiedPathWalkerBindingRules:
         parser = tree_sitter.Parser(
             tree_sitter.Language(tree_sitter_rust.language())
         )
-        paths = _extract_qualified_var_type_paths(
-            parser.parse(src).root_node, src,
-        )
-        assert paths["h"] == "std::fs::File"
+        root = parser.parse(src).root_node
+        in_a, in_b = (c for c in root.children if c.type == "function_item")
+        paths = _extract_qualified_var_type_paths(root, src)
+        # Inside one function the first writer still wins.
+        assert paths.at(in_a) == {"h": "std::fs::File"}
+        assert paths.at(in_b) == {"h": "std::process::Command"}
+        bare = _extract_var_types_rust(root, src, None)
+        assert (bare.at(in_a), bare.at(in_b)) == ({"h": "File"}, {"h": "Command"})
 
     def test_destructuring_and_uninitialized_bindings_are_skipped(
         self, tmp_path: Path,
@@ -325,7 +332,8 @@ class TestQualifiedPathWalkerBindingRules:
         parser = tree_sitter.Parser(
             tree_sitter.Language(tree_sitter_rust.language())
         )
-        paths = _extract_qualified_var_type_paths(
-            parser.parse(src).root_node, src,
-        )
-        assert paths == {"self_like": "std::fs::File"}
+        root = parser.parse(src).root_node
+        in_a, in_b, in_c = (c for c in root.children if c.type == "function_item")
+        paths = _extract_qualified_var_type_paths(root, src)
+        assert paths.at(in_b) == {"self_like": "std::fs::File"}
+        assert paths.at(in_a) == {} and paths.at(in_c) == {}

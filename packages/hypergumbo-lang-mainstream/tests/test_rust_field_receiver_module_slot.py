@@ -28,11 +28,12 @@ THE FIVE RECEIVER SHAPES, each of which must classify as ``fs_write``:
 D and E are the identifier-receiver shapes; they are pinned so a regression
 there is attributed here rather than discovered later.
 
-A CAUTION FOR THE FIXTURE: Rust's ``_var_types`` is FILE-scoped and
-first-writer-wins, so a receiver named ``f`` in one function is typed by an
-annotation on a DIFFERENT function's ``f``. Sharing a receiver name across
-shapes lets one shape type another (D's ``d: &mut File`` would make C pass
-spuriously). Every receiver below has a distinct name for that reason.
+THE FIXTURE'S RECEIVER NAMES are all distinct. That dates from when Rust's
+``_var_types`` was one map per file, first writer wins, and a receiver named
+``f`` in one function was typed by an annotation on another function's ``f``
+(D's ``d: &mut File`` would have made C pass spuriously). The map is per
+function now (INV-zabud); the distinct names are kept because they cost
+nothing.
 """
 
 from __future__ import annotations
