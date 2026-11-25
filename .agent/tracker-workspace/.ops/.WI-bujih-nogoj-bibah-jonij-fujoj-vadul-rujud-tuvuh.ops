@@ -1,0 +1,22 @@
+- op: create  # 91fc
+  at: '2026-11-25T07:14:32Z'  # 91fc
+  by: agent  # 91fc
+  actor: jgstern_agent  # 91fc
+  clock: 1  # 91fc
+  nonce: 91fc  # 91fc
+  data:  # 91fc
+    kind: work_item  # 91fc
+    title: "lang-common: what each analyzer does when a name has several declarations (the probe list for batch 5e)"  # 91fc
+    status: todo_hard  # 91fc
+    priority: 3  # 91fc
+    parent:  # 91fc
+    tags:  # 91fc
+    - call_graph  # 91fc
+    - analysis_quality  # 91fc
+    - call_matrix  # 91fc
+    isbefore: []  # 91fc
+    duplicate_of: []  # 91fc
+    not_duplicate_of: []  # 91fc
+    pr_ref:  # 91fc
+    description: "PURPOSE\nThe probe result for batch 5e (lang-common): what each analyzer was seen to do when a name has more than one declaration, read in the code while stamping resolved_by (2026-11-25; lines at the mark PR's head). The design says 5e moves \"only the analyzers a probe shows guessing or leaking\". This is that list. Fixtures only for most; no real-code count per route.\n\nSTATEMENT\nAfter batch 5e, each route below binds by the language's own visibility rule or leaves the call unresolved with its candidates.\n\nBY MECHANISM\nA. Run-wide one-declaration-per-name table, last writer wins (core `register_symbol`, see the core lookup item): commonlisp, cuda, elm, haskell (977: even a call to a function of the caller's own module), julia, nix (551: ignores let / with / import scope), glsl, hlsl, wgsl, starlark, fortran, clojure, dart, erlang bare calls; own tables in matlab.py:360, racket.py:246, scheme.py:439 (both ignore `require` and local scope), robot.py:289 / 364, purescript.py:255.\nB. The qualifier or receiver the call writes is dropped:\n   - clojure.py:564-566: an alias-qualified call whose alias is not in the require map is looked up by bare name.\n   - julia.py:1137: `Other.add(x)` is first looked up in the caller's file table by `add` alone.\n   - ocaml.py:511: `M.f` whose exact key misses falls back to bare `f`.\n   - fsharp.py:1871-1880: a dotted `x.F` whose member resolution fails falls back to bare `F` run-wide.\nC. The language's own rule is contradicted:\n   - erlang.py:875-881: a bare `f()` not defined in the module binds by run-wide name with no `-import` (Erlang allows local, imported, or auto-imported): 108 such edges on rebar3/apps.\n   - erlang.py:1113-1115: `mod:f(a, b)` binds whichever arity registered last; the call's arity is not used.\n   - purescript.py:543-549: the bare-name lookup runs BEFORE the caller's-module lookup.\n   - robot.py:364 registers TEST CASES in the keyword table; `Resource` imports are not consulted.\n   - starlark.py:535: an aliased load `cr = \"custom_rule\"` looks up the alias, never the original name.\n   - r_lang.py:669: R names may contain dots; the suffix match splits `a.helper` at the dot, so `pkga::helper` binds a function literally named `a.helper`.\nD. A pick among several:\n   - fsharp.py:1016 `_fsharp_pick`: several overloads that take the argument count, first by position (flagged ambiguous, an edge is still emitted).\n   - dart.py:1835 `_pick_supertype`: several same-named supertypes outside the file, first by id (flagged fallback, 0.5).\n   - elixir.py:3185-3196 and the pipe route 3337-3347: the local table is the FILE's, so a file with two modules defining f/1 emits an edge to BOTH.\nE. Variable types per file, not per function: dart.py:1324 `var_types` (the defect step 1 fixed in ten languages; dart was not probed there).\n\nSEEN, NOT INVESTIGATED\n- julia: a function's own signature `run(x)` is a call_expression, so every function emits a self `calls` edge at pass time; gone from the finalized map, why was not checked.\n- fsharp: `let c = Shape.Make 1.0` inside a function body after another let produced no edge; the same call at top level did.\n- erlang.py:788 / 849 and ocaml.py:542 create a `calls` edge with the default is_resolved=True to an id no node has; finalize makes it unresolved. Whether finalize re-derives confidence for these was not checked.\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/common/RESULTS.md."  # 91fc
+    fields: {}  # 91fc
