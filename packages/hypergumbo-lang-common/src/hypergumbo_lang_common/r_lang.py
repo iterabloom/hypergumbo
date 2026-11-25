@@ -115,7 +115,8 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id,
 )
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.symbol_resolution import MATCH_PATH_HINT, NameResolver
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.edge_target import external_target
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -663,6 +664,12 @@ def _extract_r_edges(
                         evidence_type="qualified_call",
                         origin_run_id=run_id,
                         dst_ref=dst_ref,
+                        # ``pkg::f``: the hint is the package the call site
+                        # names, matched as a substring of the file's path.
+                        resolved_by=(  # resolved_by: closest fit, see report
+                            resolved_by.QUALIFIED if lookup_result.match_type == MATCH_PATH_HINT
+                            else lookup_result.resolved_by
+                        ) if resolved else None,
                     )
                 else:
                     edge = Edge.create(
@@ -677,6 +684,7 @@ def _extract_r_edges(
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
                         origin_run_id=run_id,
+                        resolved_by=lookup_result.resolved_by if resolved else None,
                     )
                 edges.append(edge)
 

@@ -43,6 +43,7 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import new_execution_id
 from hypergumbo_core.ir import AnalysisRun, Edge, NodeId, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_symbol_id,
     populate_docstrings_from_tree,
@@ -296,6 +297,8 @@ def _extract_edges_recursive(
                     evidence_type="ast_call_direct",
                     is_resolved=resolved,
                     evidence_lang="matlab",
+                    # The run-wide name table, last declaration winning.
+                    resolved_by=resolved_by.NAME if resolved else None,
                 )
                 edges.append(edge)
 
