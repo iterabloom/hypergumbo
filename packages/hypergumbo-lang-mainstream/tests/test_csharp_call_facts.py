@@ -294,7 +294,9 @@ def test_a_receiver_of_known_type_in_another_file_carries_the_type(tmp_path: Pat
 def test_a_hint_keeps_the_type_arguments_the_source_wrote(tmp_path: Path) -> None:
     """A parameter, a field, a field chain, a ``new``: the type as written,
     type arguments kept on the named type, those of an enclosing type and a
-    leading ``global::`` dropped, an array's or a nullable's element type."""
+    leading ``global::`` dropped, a nullable's ``?`` dropped. An array is no
+    type a hint carries: ``cells.C()`` calls a method of ``Cell<int>[]``,
+    not of ``Cell<int>``."""
     edges = _calls(tmp_path, {
         "Inner.cs": "public class Inner<T> { public Db<T> _db; }\n",
         "Main.cs": (
@@ -309,11 +311,13 @@ def test_a_hint_keeps_the_type_arguments_the_source_wrote(tmp_path: Path) -> Non
             "}\n"
         ),
     }, "Main.Run")
-    assert sorted(((e.meta or {})["callee_name"], _facts(e)["receiver_type_hint"]) for e in edges) == [
-        ("A", "Outer.Nested"), ("B", "Acme.Map<string,List<int>>"), ("C", "Cell<int>"),
+    assert sorted(((e.meta or {})["callee_name"], _facts(e).get("receiver_type_hint")) for e in edges
+                  if (e.meta or {})["callee_name"] != "C") == [
+        ("A", "Outer.Nested"), ("B", "Acme.Map<string,List<int>>"),
         ("D", "Cell<long>"), ("E", "Box<int>"), ("Execute", "Policy"), ("Execute", "Policy<TResult>"),
         ("F", "Box<int>"), ("G", "Cache<int>"), ("Save", "Db<T>"),
     ]
+    assert _facts(_one(edges, "C")) == {"call_construct": "method"}
     assert not any(e.is_resolved for e in edges)
 
 
@@ -458,6 +462,194 @@ def test_a_field_chain_whose_method_is_elsewhere_carries_the_chain_type(tmp_path
     }, "Outer.Run")
     assert sorted(_facts(e)["receiver_type_hint"] for e in edges) == ["Cache", "Db"]
     assert not any(e.is_resolved for e in edges)
+
+
+# ------------------------------------------ a variable's declared type
+
+def _hints(edges: list[Edge], skip: tuple[str, ...] = ()) -> dict[str, Any]:
+    """callee name -> the stub's ``receiver_type_hint`` (None: no hint), one
+    call per callee name, the names in ``skip`` left out."""
+    stubs = [e for e in edges if not e.is_resolved and (e.meta or {}).get("callee_name") not in skip]
+    names = [(e.meta or {}).get("callee_name") for e in stubs]
+    assert len(names) == len(set(names)), names
+    return {(e.meta or {}).get("callee_name"): _facts(e).get("receiver_type_hint") for e in stubs}
+
+
+def test_every_declaration_that_writes_a_type_types_its_variable(tmp_path: Path) -> None:
+    """THE RULE: a variable's type is the type its declaration writes, as
+    written with its type arguments, ``?`` and ``ref`` removed: a local (with
+    or without a value, ``new()``, several declarators), ``using``,
+    ``using (...)``, ``for``, ``foreach``, ``out``, a declaration pattern, a
+    recursive pattern, a ``case`` label, a switch arm, ``catch``, a lambda's
+    and a local function's explicitly typed parameters."""
+    hints = _hints(_calls(tmp_path, {
+        "Main.cs": (
+            "class Main {\n"
+            "    void Run(object e, Foo[] xs) {\n"
+            "        Foo<int> a = new(), b;\n"
+            "        a.A(); b.B();\n"
+            "        Acme.Conn<int>? c = null; c.C();\n"
+            "        global::Acme.Db d = Open(); d.D();\n"
+            "        ref Foo r = ref xs[0]; r.R();\n"
+            "        using Foo u = Open(); u.U();\n"
+            "        using (Foo s = Open()) { s.S(); }\n"
+            "        for (Foo f = null; ;) { f.F(); }\n"
+            "        foreach (Foo j in xs) { j.J(); }\n"
+            "        Take(out Foo o); o.O();\n"
+            "        if (e is Foo k) { k.K(); }\n"
+            "        if (e is Foo { Size: 1 } p) { p.P(); }\n"
+            "        switch (e) { case Foo l: l.L(); break; }\n"
+            "        var n = e switch { Foo w => w.W(), _ => 0 };\n"
+            "        try { } catch (Oops ex) { ex.X(); }\n"
+            "        Each((Foo m) => m.M());\n"
+            "        void Local(Foo q) { q.Q(); }\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run"), skip=("Open", "Take", "Each"))
+    assert hints == {
+        "A": "Foo<int>", "B": "Foo<int>", "C": "Acme.Conn<int>", "D": "Acme.Db", "R": "Foo",
+        "U": "Foo", "S": "Foo", "F": "Foo", "J": "Foo", "O": "Foo", "K": "Foo", "P": "Foo",
+        "L": "Foo", "W": "Foo", "X": "Oops", "M": "Foo", "Q": "Foo",
+    }
+
+
+def test_a_declaration_of_no_type_a_hint_can_carry_types_nothing(tmp_path: Path) -> None:
+    """``var`` from a call, ``dynamic``, an array, a tuple, a pointer, ``var
+    (a, b)``, a lambda's implicit parameter, a ``params`` array: no hint, and
+    no qualifier (each is a variable). A predefined type is kept: a
+    repository declares extension methods on ``string``, and the
+    receiver-type-dispatch linker matches that spelling."""
+    edges = _calls(tmp_path, {
+        "Main.cs": (
+            "class Main {\n"
+            "    unsafe void Run(params Foo[] ps) {\n"
+            "        var v = Factory.Make(); v.V();\n"
+            "        dynamic d = Factory.Make(); d.D();\n"
+            "        Foo[] arr = null; arr.A();\n"
+            "        (Foo, Bar) t = default; t.T();\n"
+            "        Foo* ptr = null; ptr.P();\n"
+            "        var (left, right) = Factory.Pair(); left.L();\n"
+            "        Each(x => x.X());\n"
+            "        ps.S();\n"
+            "        string text = null; text.Shout();\n"
+            "        int? count = null; count.Twice();\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run")
+    facts = {(e.meta or {}).get("callee_name"): _facts(e) for e in edges}
+    for name in ("V", "D", "A", "T", "P", "L", "X", "S"):
+        assert facts[name] == {"call_construct": "method"}, (name, facts[name])
+    assert facts["Shout"]["receiver_type_hint"] == "string"
+    assert facts["Twice"]["receiver_type_hint"] == "int"
+
+
+def test_var_is_typed_by_an_initializer_that_writes_its_type(tmp_path: Path) -> None:
+    """``var x = new Foo<int>()``, ``new A.B()``, ``(T)e``, ``(T?)e``, ``e as
+    T``: the type the initializer writes. Not a call's result (a call this
+    file does not bind types nothing)."""
+    hints = _hints(_calls(tmp_path, {
+        "Main.cs": (
+            "class Main {\n"
+            "    void Run(object e) {\n"
+            "        var g = new Policy<int>(); g.G();\n"
+            "        var q = new Acme.Conn(); q.Q();\n"
+            "        var c = (Cache)e; c.C();\n"
+            "        var n = (TypeDeserializerCache?)e; n.N();\n"
+            "        var a = e as Acme.Db<string>; a.A();\n"
+            "        var k = Factory.Make(); k.K();\n"
+            "        var arr = new Foo[3]; arr.R();\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run"))
+    assert {k: v for k, v in hints.items() if k != "Make"} == {
+        "G": "Policy<int>", "Q": "Acme.Conn", "C": "Cache", "N": "TypeDeserializerCache",
+        "A": "Acme.Db<string>", "K": None, "R": None,
+    }
+
+
+def test_the_declared_type_wins_over_the_value_assigned(tmp_path: Path) -> None:
+    """``IConn c = new Conn()``: C# looks the method up on ``IConn``. Same for
+    a call this file binds: the declaration's type, not the callee's return
+    type."""
+    hints = _hints(_calls(tmp_path, {
+        "Main.cs": (
+            "class Main {\n"
+            "    static Conn GetDb() { return null; }\n"
+            "    void Run() {\n"
+            "        IConn c = new Conn(); c.Open();\n"
+            "        IStore s = GetDb(); s.Save();\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run"))
+    assert hints["Open"] == "IConn" and hints["Save"] == "IStore"
+
+
+def test_a_declaration_in_a_block_or_statement_does_not_leak_out_of_it(tmp_path: Path) -> None:
+    """A field ``Bar x``; a local ``Foo x`` in a block, a ``foreach``, a
+    ``using (...)``, a ``catch``, a ``for``, a ``case`` section, a lambda:
+    after each, ``x`` is the field again."""
+    hints = _hints(_calls(tmp_path, {
+        "Main.cs": (
+            "class Main {\n"
+            "    Bar x;\n"
+            "    void Run(Foo[] xs, object e) {\n"
+            "        { Foo x = null; x.InBlock(); }\n"
+            "        x.AfterBlock();\n"
+            "        foreach (Foo x in xs) { }\n"
+            "        x.AfterForeach();\n"
+            "        using (Foo x = null) { }\n"
+            "        x.AfterUsing();\n"
+            "        try { } catch (Foo x) { }\n"
+            "        x.AfterCatch();\n"
+            "        for (Foo x = null; ;) { break; }\n"
+            "        x.AfterFor();\n"
+            "        switch (e) { case Foo x: break; }\n"
+            "        x.AfterCase();\n"
+            "        Each((Foo x) => 0);\n"
+            "        x.AfterLambda();\n"
+            "    }\n"
+            "    void Other() { x.InOther(); }\n"
+            "}\n"
+        ),
+    }, "Main.Run") + _calls(tmp_path / "other", {
+        "Main.cs": (
+            "class Main {\n"
+            "    Bar x;\n"
+            "    void Run() { Foo x = null; }\n"
+            "    void Other() { x.InOther(); }\n"
+            "}\n"
+        ),
+    }, "Main.Other"))
+    assert hints.pop("InBlock") == "Foo"
+    assert set(hints.values()) - {None} == {"Bar"}
+    assert all(hints[name] == "Bar" for name in hints if name.startswith(("After", "InOther"))), hints
+
+
+def test_a_shadowing_declaration_wins_inside_its_scope(tmp_path: Path) -> None:
+    """A field ``Bar x``. A local ``Foo x`` types ``x`` as ``Foo``; a local
+    of no type (``var x = Make()``, a lambda's ``x =>``) hides the field: the
+    call carries no type rather than the field's. A sibling block's type does
+    not reach the next block's untyped ``y``."""
+    edges = analyze_csharp(_write(tmp_path, {
+        "Main.cs": (
+            "class Main {\n"
+            "    Bar x;\n"
+            "    void Typed() { Foo x = null; x.Typed(); }\n"
+            "    void Untyped() { var x = Factory.Make(); x.Untyped(); }\n"
+            "    void Lambda() { Each(x => x.Lambda()); }\n"
+            "    void Siblings() { { Foo y = null; y.First(); } { var y = Factory.Make(); y.Second(); } }\n"
+            "    void Field() { x.Field(); }\n"
+            "}\n"
+        ),
+    })).edges
+    hints = _hints([e for e in edges if e.edge_type == "calls"
+                    and (e.meta or {}).get("callee_name") not in ("Make", "Each")])
+    assert hints == {"Typed": "Foo", "Untyped": None, "Lambda": None, "First": "Foo",
+                     "Second": None, "Field": "Bar"}
 
 
 # ------------------------------------------------------------ bare calls
@@ -620,6 +812,51 @@ def test_end_to_end_a_generic_type_and_its_plain_namesake_each_get_their_calls(t
     }
     assert {p.rsplit("/", 1)[-1] for p in file_of["Main.Plain"]} == {"Policy.cs"}
     assert {p.rsplit("/", 1)[-1] for p in file_of["Main.Generic"]} == {"Policy.TResult.cs"}
+
+
+def _conn_files(main: str) -> dict[str, str]:
+    """``Data.Conn`` and its namesake ``Legacy.Conn`` in two files, a factory
+    in a fourth (none in the caller's file), and the caller ``main``."""
+    return {
+        "Data/Conn.cs": "namespace Data { public class Conn { public void Open() {} } }\n",
+        "Legacy/Conn.cs": "namespace Legacy { public class Conn { public void Open() {} } }\n",
+        "Data/Factory.cs": (
+            "namespace Data { public static class Factory { public static object Make() { return null; } } }\n"
+        ),
+        "App/Main.cs": main,
+    }
+
+
+def test_end_to_end_a_local_declared_with_its_type_reaches_its_type_not_a_namesake(tmp_path: Path) -> None:
+    data = _map(tmp_path, _conn_files(
+        "using Data;\n"
+        "namespace App { public class Main {\n"
+        "    public void Run() { Conn c = (Conn)Factory.Make(); c.Open(); }\n"
+        "} }\n"
+    ))
+    assert _resolved(data, "Main.Run", "Open") == [("Data.Conn.Open", "receiver_type")]
+
+
+def test_end_to_end_a_local_declared_with_its_type_and_new(tmp_path: Path) -> None:
+    data = _map(tmp_path, _conn_files(
+        "using Legacy;\n"
+        "namespace App { public class Main {\n"
+        "    public void Run() { Conn c = new(); c.Open(); }\n"
+        "} }\n"
+    ))
+    assert _resolved(data, "Main.Run", "Open") == [("Legacy.Conn.Open", "receiver_type")]
+
+
+def test_end_to_end_a_local_typed_by_a_cast(tmp_path: Path) -> None:
+    data = _map(tmp_path, _conn_files(
+        "using Data;\n"
+        "namespace App { public class Main {\n"
+        "    public void Run(object o) { var c = (Conn?)o; c.Open(); }\n"
+        "    public void RunAs(object o) { var d = o as Legacy.Conn; d.Open(); }\n"
+        "} }\n"
+    ))
+    assert _resolved(data, "Main.Run", "Open") == [("Data.Conn.Open", "receiver_type")]
+    assert _resolved(data, "Main.RunAs", "Open") == [("Legacy.Conn.Open", "receiver_type")]
 
 
 def test_end_to_end_a_static_call_through_a_using(tmp_path: Path) -> None:

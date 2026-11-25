@@ -323,68 +323,6 @@ def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tr
     return [child for child in node.children if child.type == type_name]
 
 
-#: The node types that spell a type when it is not a bare ``identifier`` (a
-#: user type): a parameter's type, a method's return type.
-_CSHARP_SIGNATURE_TYPE_NODES: tuple[str, ...] = (
-    "predefined_type", "generic_name", "array_type",
-    "nullable_type", "qualified_name", "ref_type", "pointer_type",
-)
-
-
-def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract type text from a type node."""
-    return node_text(node, source)
-
-
-def _extract_param_types(
-    node: "tree_sitter.Node", source: bytes
-) -> dict[str, str]:
-    """Extract parameter name -> type mapping from a member declaration (a
-    method, constructor, operator or indexer; ``_CSHARP_MEMBER_BODY_NODES``).
-
-    This enables type inference for method calls on parameters, e.g.:
-        void Process(Database db) {
-            db.Save();  // resolves to Database.Save
-        }
-
-    Returns:
-        Dict mapping parameter names to their types as written, type
-        arguments included (``Policy<TResult>``).
-    """
-    param_types: dict[str, str] = {}
-
-    # The parameter list: a ``parameter_list``, or an indexer's
-    # ``bracketed_parameter_list``; a property and an event have none.
-    params_node = node.child_by_field_name("parameters")
-    if params_node is None:
-        return param_types
-
-    # Extract parameter types
-    for child in params_node.children:
-        if child.type == "parameter":
-            param_type = None
-            param_name = None
-            for subchild in child.children:
-                # Type nodes
-                if subchild.type in _CSHARP_SIGNATURE_TYPE_NODES:
-                    # As written, type arguments kept (``List<T>``); an
-                    # array's or a nullable's element type (``int[]`` and
-                    # ``int?`` -> ``int``).
-                    param_type = _element_type(_extract_type_text(subchild, source))
-                # Custom types use identifier
-                elif subchild.type == "identifier":
-                    if param_type is None:
-                        # First identifier is the type
-                        param_type = node_text(subchild, source)
-                    else:
-                        # Second identifier is the name
-                        param_name = node_text(subchild, source)
-            if param_type and param_name:
-                param_types[param_name] = param_type
-
-    return param_types
-
-
 def _csharp_extension_receiver(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The type of a method's first parameter as written when that parameter
     carries the ``this`` modifier (an extension method: ``x.M()`` on a ``T``
@@ -496,10 +434,19 @@ _CSHARP_MEMBER_BODY_NODES: frozenset[str] = frozenset({
     *_CSHARP_BODY_MEMBER_DECLS,
 })
 
-#: What a local variable or a parameter is scoped to (INV-zabud): a member, or
-#: a local function or lambda inside one.
+#: What a local variable or a parameter is scoped to (INV-zabud): a member, a
+#: local function or lambda inside one, and C#'s local scopes inside those: a
+#: block, and a statement that declares its own variables (``for``,
+#: ``foreach``, ``using (...)``, ``catch (...)``, a ``while`` condition's
+#: pattern, a ``case`` label's or a switch arm's pattern). A pattern or
+#: ``out`` variable of an ``if`` condition or of an expression statement is in
+#: the enclosing block's scope, as in C#: no scope node for those. A local
+#: declared in one ``case`` section and used in another (C# scopes it to the
+#: whole switch block) is not seen there.
 _CSHARP_VARIABLE_SCOPE_NODES: frozenset[str] = _CSHARP_MEMBER_BODY_NODES | {
     "local_function_statement", "lambda_expression", "anonymous_method_expression",
+    "block", "for_statement", "foreach_statement", "using_statement",
+    "catch_clause", "while_statement", "switch_section", "switch_expression_arm",
 }
 
 
@@ -714,7 +661,9 @@ def _track_csharp_return_type(
 
     When ``var client = factory.GetClient()`` resolves to ``Factory.GetClient``
     with signature ``() ServiceClient``, this sets ``var_types["client"] = "ServiceClient"``
-    so that subsequent ``client.Fetch()`` resolves via type inference.
+    so that subsequent ``client.Fetch()`` resolves via type inference. Only
+    for ``var``: a declaration that writes its type is typed by it
+    (:func:`_local_declarations`), not by what it is assigned.
 
     The callee is always a declaration of the caller's own file (the only
     calls this analyzer binds), so the return type is written in the caller's
@@ -722,29 +671,23 @@ def _track_csharp_return_type(
     variable whose method this file does not hold carries the type to the
     linker as ``receiver_type_hint``.
 
-    The invocation_expression AST in C# has the parent chain:
-    ``equals_value_clause > variable_declarator > identifier``.
+    The invocation_expression is the declarator's value:
+    ``variable_declaration (type: implicit_type) > variable_declarator``.
     """
     if resolved_sym.kind != "method":
         return  # pragma: no cover - callers resolve to methods
     ret_name = _extract_csharp_return_type_name(resolved_sym.signature)
     if not ret_name:
         return
-    parent = node.parent
-    if not parent:
-        return  # pragma: no cover - AST nodes always have parents
-    # Direct child of variable_declarator
-    if parent.type == "variable_declarator":
-        name_node = find_child_by_type(parent, "identifier")
-        if name_node:
+    declarator = node.parent
+    declaration = declarator.parent if declarator is not None else None
+    written = declaration.child_by_field_name("type") if declaration is not None else None
+    if declarator is not None and declarator.type == "variable_declarator" and (
+        written is not None and written.type == "implicit_type"
+    ):
+        name_node = declarator.child_by_field_name("name")
+        if name_node is not None:
             var_types[node_text(name_node, source)] = ret_name
-    # Inside equals_value_clause -> variable_declarator
-    elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
-        grandparent = parent.parent
-        if grandparent and grandparent.type == "variable_declarator":
-            name_node = find_child_by_type(grandparent, "identifier")
-            if name_node:
-                var_types[node_text(name_node, source)] = ret_name
 
 
 def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -977,14 +920,42 @@ def _written_type(text: str) -> str:
     return f"{_strip_type_arguments(text[:cut])}.{text[cut + 1:]}"
 
 
-def _element_type(text: str) -> str:
-    """``T[]``, ``T?``, ``T[,][]?`` -> ``T``: the trailing array ranks and
-    nullable marks of a parameter's type cut off, the type arguments left
-    (``List<int[]>[]`` -> ``List<int[]>``)."""
-    text = text.strip()
-    while text.endswith(("?", "]")):
-        text = (text[:-1] if text.endswith("?") else text[:text.rfind("[")]).rstrip()
-    return text
+#: A declared type that gives a variable no type a hint can carry: ``var``
+#: (implicit; :func:`_initializer_type` reads the forms that write it) and
+#: ``dynamic`` (bound at run time).
+_CSHARP_UNTYPED_DECLARATIONS = frozenset({"var", "dynamic"})
+
+
+def _declared_type(text: str) -> Optional[str]:
+    """THE RULE for a variable's type: the type its declaration writes, in
+    the spelling a hint carries (:func:`_written_type`: type arguments of the
+    named type kept, ``global::`` and whitespace dropped), a ``ref`` /
+    ``ref readonly`` and trailing ``?`` removed (``Foo?`` is a ``Foo``). None
+    for ``var`` and ``dynamic``, an array (``Foo[]``: its methods are not
+    ``Foo``'s), a tuple, a pointer or a function pointer: none of them is a
+    type whose methods a repository declares.
+
+    A predefined type (``int``, ``string``, ``object``) IS kept: nothing in a
+    repository declares one, but a repository declares extension methods on
+    them (``static void M(this string s)``), and the receiver-type-dispatch
+    linker matches the receiver's spelling; the shared pass finds no
+    declaration for it and leaves the call alone.
+
+    Every declaration site reads its type through this one function: a local
+    (:func:`_local_declarations`), a parameter, a field, a cast or ``as``, a
+    ``new``.
+    """
+    words = text.split()
+    while len(words) > 1 and words[0] in ("ref", "readonly", "scoped"):
+        words.pop(0)
+    text = "".join(words).rstrip("?")
+    if (
+        text in _CSHARP_UNTYPED_DECLARATIONS
+        or text.startswith(("(", "delegate*"))
+        or text.endswith(("]", "*"))
+    ):
+        return None
+    return _written_type(text) or None
 
 
 def _add_using(scope: ImportScope, target: str, alias: Optional[str]) -> None:
@@ -2011,36 +1982,74 @@ def _csharp_unresolved_module(
     return "external"
 
 
-#: A declaration of a local name inside a function, by the field that names
-#: it (a ``variable_declarator`` and a lambda's ``implicit_parameter`` are
-#: read apart): what makes ``x`` in ``x.M()`` a variable and not a type.
+#: A declaration of a variable, by the field that names it (a
+#: ``variable_declarator`` and a lambda's ``implicit_parameter`` are read
+#: apart): what makes ``x`` in ``x.M()`` a variable and not a type. Each of
+#: these names its type in its ``type`` field. A ``params`` parameter is no
+#: ``parameter`` node: its type and name are fields of the parameter list.
 _CSHARP_LOCAL_NAME_FIELDS: dict[str, str] = {
-    "parameter": "name", "foreach_statement": "left",
+    "parameter": "name", "parameter_list": "name", "foreach_statement": "left",
     "catch_declaration": "name", "declaration_pattern": "name",
-    "declaration_expression": "name",
+    "declaration_expression": "name", "recursive_pattern": "name",
+}
+
+#: ``var x = e`` where ``e`` writes the type it has, by the field of ``e``
+#: that writes it: ``new Foo<int>(...)``, ``(Foo)y``, ``y as Foo``.
+_CSHARP_TYPE_WRITING_EXPRESSIONS: dict[str, str] = {
+    "object_creation_expression": "type", "cast_expression": "type",
+    "as_expression": "right",
 }
 
 
-def _declared_local_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The local names ``node`` declares: a variable (``var x``, ``Foo x``,
-    ``var (a, b)``), a parameter (of a member, a local function or a lambda),
-    a ``foreach`` / ``catch`` / pattern / ``out var`` variable. Empty for any
-    other node. Each is a declaration by the grammar, so a name found here IS
-    a variable; a variable this misses is only not known to be one."""
+def _initializer_type(declarator: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The type of ``var x = e`` when ``e`` writes it (a ``new``, a cast, an
+    ``as``), else None. A call's result is typed apart, when this file binds
+    the call (:func:`_track_csharp_return_type`)."""
+    children = declarator.children
+    equals = next((i for i, c in enumerate(children) if c.type == "="), len(children))
+    value = children[equals + 1] if equals + 1 < len(children) else None
+    field = _CSHARP_TYPE_WRITING_EXPRESSIONS.get(value.type) if value is not None else None
+    written = value.child_by_field_name(field) if value is not None and field is not None else None
+    return _declared_type(node_text(written, source)) if written is not None else None
+
+
+def _local_declarations(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[tuple[str, Optional[str]]]:
+    """The variables ``node`` declares, each with its type by THE RULE
+    (:func:`_declared_type`, None when the declaration gives none): a local
+    (``Foo x = e;``, ``Foo x;``, ``Foo x = new();``, several declarators,
+    ``using Foo x = e;``, ``using (Foo x = e)``, ``for (Foo x = e; ...)``),
+    ``var x = e`` typed by ``e`` when ``e`` writes its type
+    (:func:`_initializer_type`), ``var (a, b)`` (untyped), a parameter (of a
+    member, a local function or a lambda, explicitly typed or not), a
+    ``foreach (Foo x in e)``, ``catch (Foo ex)``, a pattern (``e is Foo x``,
+    ``case Foo x:``, ``Foo { } x``) and ``out Foo x``. A field declares its
+    variables the same way (a ``variable_declarator``). Empty for any other
+    node. Each is a declaration by the grammar, so a name found here IS a
+    variable; a variable this misses is only not known to be one."""
     if node.type == "implicit_parameter":
-        return [node_text(node, source)]
+        return [(node_text(node, source), None)]
     if node.type == "variable_declarator":
         tuple_pattern = find_child_by_type(node, "tuple_pattern")
-        names = (
-            [c for c in tuple_pattern.children if c.type == "identifier"]
-            if tuple_pattern is not None
-            else _find_children_by_type(node, "identifier")[:1]
-        )
-        return [node_text(n, source) for n in names]
+        if tuple_pattern is not None:
+            return [(node_text(c, source), None) for c in tuple_pattern.children
+                    if c.type == "identifier"]
+        declaration = node.parent
+        written = declaration.child_by_field_name("type") if declaration is not None else None
+        if written is None:
+            typed = None  # pragma: no cover - a declarator is in a declaration that writes a type
+        elif written.type == "implicit_type":
+            typed = _initializer_type(node, source)
+        else:
+            typed = _declared_type(node_text(written, source))
+        return [(node_text(n, source), typed) for n in _find_children_by_type(node, "identifier")[:1]]
     field = _CSHARP_LOCAL_NAME_FIELDS.get(node.type)
     named = node.child_by_field_name(field) if field is not None else None
     if named is not None and named.type == "identifier":
-        return [node_text(named, source)]
+        written = node.child_by_field_name("type")
+        typed = _declared_type(node_text(written, source)) if written is not None else None
+        return [(node_text(named, source), typed)]
     return []
 
 
@@ -2193,11 +2202,12 @@ def _extract_edges_from_file(
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
-    Type inference tracks types from:
-    - Constructor calls: var db = new Database() -> db has type Database
-    - Method/constructor parameters: void Process(Database db) -> db has type Database
-    - Fields, and a call this file resolves whose declared return type is a
-      type name: var db = GetDb() -> db has the type GetDb returns
+    A variable's type is the type its declaration writes
+    (:func:`_local_declarations`, :func:`_declared_type`): a local
+    (``Database db = ...``, ``using``, ``foreach``, ``catch``, a pattern,
+    ``out Database db``), a parameter, a field; ``var db = new Database()``,
+    ``var db = (Database)o`` and ``o as Database``; and ``var db = GetDb()``
+    when this file binds the call: the type GetDb's declaration returns.
 
     A CALL IS BOUND HERE ONLY ON EVIDENCE C# ITSELF USES (ADR-0064): the
     enclosing type's own method in this file (``own_type``), and a method of
@@ -2252,12 +2262,13 @@ def _extract_edges_from_file(
     file_id = make_file_id("csharp", str(file_path))
     file_anchor = file_anchor_symbol("csharp", str(file_path), PASS_ID, run.execution_id)
     current_function: Optional[Symbol]
-    # Variable types for type inference: var_name -> class_name. A local or a
-    # parameter closes with the member, local function or lambda that binds it
-    # (``ScopedVarTypes``, INV-zabud); a field is bound for the file.
+    # Variable types for type inference: var_name -> type as written ("" for
+    # a local of no type, which hides an outer one). A local or a parameter
+    # closes with the block, statement, member, local function or lambda that
+    # binds it (``ScopedVarTypes``, INV-zabud); a field is bound for the file.
     var_types = ScopedVarTypes()
     # Every local name declared so far in the open functions, typed or not
-    # (``_declared_local_names``): a receiver or a bare callee of that name is
+    # (``_local_declarations``): a receiver or a bare callee of that name is
     # a variable, never a type or a member.
     declared_locals = ScopedVarTypes()
 
@@ -2337,12 +2348,12 @@ def _extract_edges_from_file(
         ``new T(...)``, or a call this file resolves whose declared return
         type is a type name (``GetDb().Execute()``)."""
         if receiver.type == "identifier":
-            return var_types.get(node_text(receiver, source))
+            return var_types.get(node_text(receiver, source)) or None
         if receiver.type == "member_access_expression":
             owner = receiver.child_by_field_name("expression")
             name = receiver.child_by_field_name("name")
             if owner is not None and owner.type == "this" and name is not None:
-                return var_types.get(node_text(name, source))
+                return var_types.get(node_text(name, source)) or None
             return None
         if receiver.type == "object_creation_expression":
             created = receiver.child_by_field_name("type")
@@ -2359,9 +2370,19 @@ def _extract_edges_from_file(
         if node.type in _CSHARP_VARIABLE_SCOPE_NODES:
             var_types.open_scope(node)
             declared_locals.open_scope(node)
-        if declared_locals.scope_end is not None:
-            for local_name in _declared_local_names(node, source):
+        # A declaration: its type by THE RULE (``_declared_type``). A local or
+        # a parameter, typed or not, hides an outer variable of its name (a
+        # field's type does not reach a local that shadows it). Outside every
+        # scope only a field (or a top-level statement's local) is bound, for
+        # the file; a delegate's or a record's parameter list declares nothing
+        # a body reads here.
+        in_scope = declared_locals.scope_end is not None
+        for local_name, local_type in _local_declarations(node, source):
+            if in_scope:
                 declared_locals[local_name] = ""
+                var_types[local_name] = local_type or ""
+            elif local_type and node.type == "variable_declarator":
+                var_types[local_name] = local_type
         # Using directive
         if node.type == "using_directive":
             # Get the namespace being imported
@@ -2379,39 +2400,6 @@ def _extract_edges_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                 ))
-
-        # Member declarations - extract parameter types for type inference
-        # (a method's, a constructor's, an operator's or an indexer's)
-        elif node.type in _CSHARP_MEMBER_BODY_NODES:
-            param_types = _extract_param_types(node, source)
-            # Parameter types, for method call resolution inside the member.
-            for param_name, param_type in param_types.items():
-                var_types[param_name] = param_type
-
-        # Field declarations - track field types: private readonly IService _svc;
-        elif node.type == "field_declaration":
-            var_decl = find_child_by_type(node, "variable_declaration")
-            if var_decl:
-                # Type can be identifier (simple) or generic_name (generic,
-                # kept as written: ``Policy<TResult>``)
-                type_name = None
-                type_id = find_child_by_type(var_decl, "identifier")
-                if type_id:
-                    type_name = node_text(type_id, source)
-                else:
-                    gen_name = find_child_by_type(var_decl, "generic_name")
-                    if gen_name:
-                        type_name = node_text(gen_name, source)
-                var_declarator = find_child_by_type(
-                    var_decl, "variable_declarator"
-                )
-                if type_name and var_declarator:
-                    name_node = find_child_by_type(
-                        var_declarator, "identifier"
-                    )
-                    if name_node:
-                        field_name = node_text(name_node, source)
-                        var_types[field_name] = type_name
 
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
@@ -2622,26 +2610,6 @@ def _extract_edges_from_file(
                             meta={"call_construct": "constructor"},
                             resolved_by=lookup_result.resolved_by,
                         ))
-
-            # Track variable type for type inference
-            # C#: var db = new Database() or Database db = new Database()
-            if type_name and node.parent:
-                parent = node.parent
-                # Check for variable_declarator (var x = new Class())
-                if parent.type == "variable_declarator":
-                    var_name_node = find_child_by_type(parent, "identifier")
-                    if var_name_node:
-                        var_name = node_text(var_name_node, source)
-                        var_types[var_name] = type_name
-                # Check for equals_value_clause in a variable_declaration
-                # (alternative AST pattern - defensive code)
-                elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
-                    grandparent = parent.parent
-                    if grandparent and grandparent.type == "variable_declarator":
-                        var_name_node = find_child_by_type(grandparent, "identifier")
-                        if var_name_node:
-                            var_name = node_text(var_name_node, source)
-                            var_types[var_name] = type_name
 
         # Method group references: bare identifier in argument or assignment
         # that resolves to a function/method symbol.
