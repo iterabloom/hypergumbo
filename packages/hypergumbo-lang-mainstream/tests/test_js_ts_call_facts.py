@@ -126,6 +126,94 @@ def test_a_component_s_script_blocks_share_one_table(tmp_path: Path) -> None:
     assert scope.named("helper").module == "src/util.ts"
 
 
+def _reexports(scope: Any) -> dict[str, tuple[str, str]]:
+    return {k: (v.module, v.name) for k, v in scope._reexports.items()}
+
+
+def test_a_barrel_file_records_what_it_passes_on(tmp_path: Path) -> None:
+    result = analyze_javascript(_write(tmp_path, {
+        "src/lib/index.ts": (
+            "export * from './impl';\n"
+            "export { helper as aid, Conn } from './impl';\n"
+            "export { default as Store } from './def';\n"
+            "export * as ns from './impl';\n"
+            "export { chunk } from 'lodash';\n"
+            "export * from 'rxjs';\n"
+            "export { default as Anon } from './anon';\n"
+            "function local() {}\n"
+            "export { local as named, local };\n"
+        ),
+        "src/lib/impl.ts": "export function helper() {}\nexport class Conn {}\n",
+        "src/lib/def.ts": "export default class Store {}\n",
+        "src/lib/anon.ts": "export default () => 1;\n",
+        "src/lib/again.ts": "export { default } from './def';\n",
+        "src/lib/conn.ts": "export { Conn as default } from './impl';\n",
+        "src/main.ts": "import D from './lib/again';\nimport C from './lib/conn';\n",
+    }))
+    scope = result.import_scopes["src/lib/index.ts"]
+    assert _reexports(scope) == {
+        "aid": ("src/lib/impl.ts", "helper"),
+        "Conn": ("src/lib/impl.ts", "Conn"),
+        # A re-exported default names the declaration the default import names.
+        "Store": ("src/lib/def.ts", "Store"),
+        # A local binding exported under another name.
+        "named": ("src/lib/index.ts", "local"),
+    }
+    # ``export *`` of a repository file; a library's is left out, and so is
+    # ``export * as ns`` (the table has no form for it) and an anonymous default.
+    assert scope.passed_on_modules == ("src/lib/impl.ts",)
+    assert _reexports(result.import_scopes["src/lib/again.ts"]) == {
+        "default": ("src/lib/def.ts", "Store"),
+    }
+    assert _reexports(result.import_scopes["src/lib/conn.ts"]) == {
+        "default": ("src/lib/impl.ts", "Conn"),
+    }
+    # A default import of a file whose default is re-exported binds ``default``,
+    # which that file's own table follows.
+    main = result.import_scopes["src/main.ts"]
+    assert {k: (main.named(k).module, main.named(k).name) for k in ("D", "C")} == {
+        "D": ("src/lib/again.ts", "default"), "C": ("src/lib/conn.ts", "default"),
+    }
+
+
+def test_commonjs_exports_in_the_table(tmp_path: Path) -> None:
+    result = analyze_javascript(_write(tmp_path, {
+        "src/client.js": "class Client { run() {} }\nmodule.exports = Client;\n",
+        "src/make.js": "function make() {}\nexports = module.exports = make;\n",
+        "src/obj.js": "const obj = { run() {} };\nmodule.exports = obj;\n",
+        "src/helpers.js": (
+            "function helper() {}\nfunction other() {}\n"
+            "exports.b = helper;\nmodule.exports.c = other;\nexports.other = other;\n"
+        ),
+        "src/table.js": "function helper() {}\nmodule.exports = { n: helper, helper, m() {} };\n",
+        "src/esm.js": "export default class Esm {}\n",
+        "src/main.js": (
+            "const Client = require('./client');\n"
+            "const make = require('./make');\n"
+            "const obj = require('./obj');\n"
+            "const esm = require('./esm');\n"
+            "const { n } = require('./table');\n"
+            "import C2 from './client';\n"
+        ),
+    }))
+    scope = result.import_scopes["src/main.js"]
+    named = {k: (v.module, v.name) for k, v in scope._named.items()}
+    assert named == {
+        # ``module.exports = <a declared class or function>``: the value is it.
+        "Client": ("src/client.js", "Client"),
+        "make": ("src/make.js", "make"),
+        "n": ("src/table.js", "n"),
+        # An ES default import of a CommonJS module receives module.exports.
+        "C2": ("src/client.js", "Client"),
+    }
+    # A variable assigned whole, and an ES module, are module objects.
+    assert (scope.namespace("obj"), scope.namespace("esm")) == ("src/obj.js", "src/esm.js")
+    assert _reexports(result.import_scopes["src/helpers.js"]) == {
+        "b": ("src/helpers.js", "helper"), "c": ("src/helpers.js", "other"),
+    }
+    assert _reexports(result.import_scopes["src/table.js"]) == {"n": ("src/table.js", "helper")}
+
+
 # ------------------------------------------------------ what the analyzer emits
 
 
@@ -381,3 +469,52 @@ def test_end_to_end_a_class_qualifier_and_a_default_import(tmp_path: Path) -> No
     })
     assert _resolved(data, "run", "help") == [("src/util.ts", "Util.help", "qualified")]
     assert _resolved(data, "run", "format") == [("src/fmt.ts", "format", "import")]
+
+
+_BARREL = {
+    "src/lib/impl.ts": "export function helper() {}\nexport class Conn { open() {} }\n",
+    "src/lib/index.ts": "export * from './impl';\nexport { helper as aid } from './impl';\n",
+    # Namesakes a bind by name would reach, or tie with.
+    "legacy/impl.ts": (
+        "export function helper() {}\nexport function aid() {}\n"
+        "export class Conn { open() {} }\n"
+    ),
+}
+
+
+def test_end_to_end_names_imported_through_a_barrel_reach_their_declarations(
+    tmp_path: Path,
+) -> None:
+    data = _map(tmp_path, {**_BARREL, "src/main.ts": (
+        "import { helper, aid, Conn } from './lib';\n"
+        "export function viaStar(c: Conn) { helper(); c.open(); new Conn(); }\n"
+        "export function viaAlias() { aid(); }\n"
+    )})
+    assert _resolved(data, "viaStar", "helper") == [("src/lib/impl.ts", "helper", "import")]
+    assert _resolved(data, "viaStar", "open") == [("src/lib/impl.ts", "Conn.open", "receiver_type")]
+    assert _resolved(data, "viaAlias", "helper") == [("src/lib/impl.ts", "helper", "import")]
+    assert _resolved(data, "viaAlias", "aid") == []
+    nodes = {n["id"]: n for n in data["nodes"]}
+    made = [
+        (nodes[e["dst"]]["path"], e["meta"]["resolved_by"]) for e in data["edges"]
+        if e["type"] == "instantiates" and nodes.get(e["src"], {}).get("name") == "viaStar"
+    ]
+    assert made == [("src/lib/impl.ts", "import")]
+
+
+def test_end_to_end_a_commonjs_class_through_require(tmp_path: Path) -> None:
+    data = _map(tmp_path, {
+        "lib/client.js": "class Client { run() {} static make() {} }\nmodule.exports = Client;\n",
+        "lib/other.js": "class Client { run() {} static make() {} }\nmodule.exports = Client;\n",
+        "lib/helpers.js": "function helper() {}\nmodule.exports = { aid: helper };\n",
+        "lib/more.js": "function aid() {}\nfunction helper() {}\nmodule.exports = { aid, helper };\n",
+        "lib/main.js": (
+            "const Client = require('./client');\n"
+            "const { aid } = require('./helpers');\n"
+            "function go() { const c = new Client(); c.run(); Client.make(); }\n"
+            "function help() { aid(); }\n"
+        ),
+    })
+    assert _resolved(data, "go", "run") == [("lib/client.js", "Client.run", "receiver_type")]
+    assert _resolved(data, "go", "make") == [("lib/client.js", "Client.make", "qualified")]
+    assert _resolved(data, "help", "helper") == [("lib/helpers.js", "helper", "import")]

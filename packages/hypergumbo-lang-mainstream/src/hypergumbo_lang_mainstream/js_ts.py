@@ -144,9 +144,14 @@ it sits in, or by a file's table of short names: those were the guesses.
   named or destructured import is ``add_named``; ``import * as m`` and
   ``const m = require(..)`` (the module object) are ``add_namespace``; a
   default import is ``add_named`` of the declaration the file's
-  ``export default`` names. A binding to a library, a Node core module, a
-  path that does not exist or a file no JS/TS parse produced is left out.
-  Returned in ``AnalysisResult.import_scopes``.
+  ``export default`` names, and ``const X = require(..)`` of a file whose
+  ``module.exports`` is a class or function it declares is ``add_named`` of
+  that declaration. What a file passes on (``export {a as b} from``,
+  ``export * from``, a local binding exported under another name) goes in
+  ITS table as a re-export, which the shared lookup follows. A binding to a
+  library, a Node core module, a path that does not exist or a file no
+  JS/TS parse produced is left out. Returned in
+  ``AnalysisResult.import_scopes``.
 - **Bare identifiers** (``helper()``): ``_ScopeBinder`` walks the scopes
   enclosing the identifier (parameters, ``catch`` and loop bindings, each
   block's declarations with ``var`` hoisted, then the file's module scope and
@@ -182,8 +187,9 @@ it sits in, or by a file's table of short names: those were the guesses.
   ``<computed>`` (WI-vipos).
 - **``new``** (``instantiates``; the shared pass reads no ``instantiates``
   stub, so the analyzer binds these): a class the call site sees in scope
-  (``lexical_scope``), else the class the table's binding names in its file
-  (``import``), else the run-wide class table by name, as before.
+  (``lexical_scope``), else the class the table's binding names in its file,
+  a barrel file followed to the declaring one (``import``), else the
+  run-wide class table by name, as before.
 - **Enclosing function**: ``_get_enclosing_function`` finds the caller by
   ``symbol_by_position`` (path, line, column), so duplicate names across
   files do not collide. The function-declaration and method branches still
@@ -341,6 +347,7 @@ from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.import_scope import MODULES_ARE_FILES, ImportScope
+from hypergumbo_core.type_visibility import declaring_files
 from hypergumbo_core.linkers.js_module import SpecifierResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -585,8 +592,7 @@ class _ParsedFile:
     # WI-halol: the name this file's ``export default`` declaration binds
     # (``export default function cDefault``, ``export default class X``,
     # ``export default x``), or None. In memory only; read by
-    # ``_InTreeDefaultExports`` to resolve a default import of a workspace
-    # sibling to the entry's default export, whatever the local name.
+    # ``_file_defaults`` for the table's default-import bindings.
     default_export: str | None = None
     # WI-halol: the namespace_imports aliases that ARE the module object
     # (``import * as m``, ``const m = require(...)``); see
@@ -865,6 +871,22 @@ def _extract_namespace_imports(
     # calls (``fs.readFileSync()``) route through the same namespace resolution
     # (Case 2 / WI-vurop) in _extract_edges; without it CommonJS Node I/O is
     # invisible to the io-boundaries layer.
+    for alias, module in _require_bindings(tree, source).items():
+        namespace_imports[alias] = module
+        if module_objects is not None:
+            module_objects.add(alias)
+
+    return namespace_imports
+
+
+def _require_bindings(tree: "tree_sitter.Tree", source: bytes) -> dict[str, str]:
+    """``alias -> module`` of each ``const alias = require('module')``.
+
+    Destructuring (``const { x } = require(...)``) is a *named* import,
+    handled by ``_extract_named_imports``; only a plain identifier name binds
+    what ``require`` returns.
+    """
+    bound: dict[str, str] = {}
     for node in iter_tree(tree.root_node):
         if node.type != "variable_declarator":
             continue
@@ -878,17 +900,9 @@ def _extract_namespace_imports(
         if value_node is None:
             continue
         module = _require_module_string(value_node, source)
-        if module is None:
-            continue
-        # Destructuring (``const { x } = require(...)``) is a *named* import,
-        # handled by _extract_named_imports; only a plain identifier name binds
-        # the whole module as a namespace alias.
-        if name_node is not None and name_node.type == "identifier":
-            namespace_imports[_node_text(name_node, source)] = module
-            if module_objects is not None:
-                module_objects.add(_node_text(name_node, source))
-
-    return namespace_imports
+        if module is not None and name_node is not None and name_node.type == "identifier":
+            bound[_node_text(name_node, source)] = module
+    return bound
 
 
 def _extract_named_imports(
@@ -1210,8 +1224,124 @@ def _retarget_in_tree_module_attrs(
         )
 
 
+def _declared_callables(symbols: "list[Symbol]", repo_root: Path) -> dict[str, set[str]]:
+    """Per file (repo-relative path), the names of its class and function
+    symbols: what ``module.exports = X`` may name (``_file_defaults``)."""
+    declared: dict[str, set[str]] = {}
+    for sym in symbols:
+        if sym.kind in ("class", "function"):
+            path = Path(sym.path)
+            rel = str(path.relative_to(repo_root)) if path.is_absolute() else sym.path
+            declared.setdefault(rel, set()).add(sym.name)
+    return declared
+
+
+@dataclass
+class _ExportForms:
+    """What a file's top-level statements pass on to its importers, beyond
+    the declarations it exports by their own names (``_export_forms``).
+
+    ``passed_on``: ``(specifier, name, exported_as)`` per ``export {name as
+    exported_as} from 'specifier'`` (``name`` may be ``default``).
+    ``passed_on_all``: the specifiers of ``export * from``. ``renamed``:
+    ``(local, exported_as)`` per export of a local binding under another name
+    (``export {x as y}``, ``exports.y = x``, ``module.exports = {y: x}``).
+    ``commonjs_whole``: the identifier ``module.exports = X`` assigns.
+    ``namespace_from``: how many ``export * as ns from`` the file holds.
+    """
+
+    passed_on: list[tuple[str, str, str]]
+    passed_on_all: list[str]
+    renamed: list[tuple[str, str]]
+    commonjs_whole: str | None = None
+    namespace_from: int = 0
+
+
+def _commonjs_target(stmt: "tree_sitter.Node", source: bytes) -> "tuple[str, str | None, tree_sitter.Node] | None":
+    """``("whole", None, value)`` for ``module.exports = value`` and
+    ``("named", key, value)`` for ``exports.key = value`` /
+    ``module.exports.key = value``, through a chain
+    (``exports = module.exports = value``); else None."""
+    expr = stmt.child(0)
+    found: tuple[str, str | None] | None = None
+    while expr is not None and expr.type == "assignment_expression":
+        left = expr.child_by_field_name("left")
+        if left is not None and _is_module_exports(left, source):
+            found = ("whole", None)
+        elif left is not None and left.type == "member_expression":
+            obj = left.child_by_field_name("object")
+            prop = left.child_by_field_name("property")
+            if obj is not None and prop is not None and (
+                (obj.type == "identifier" and _node_text(obj, source) == "exports")
+                or _is_module_exports(obj, source)
+            ):
+                found = ("named", _node_text(prop, source))
+        expr = expr.child_by_field_name("right")
+    return (found[0], found[1], expr) if found is not None and expr is not None else None
+
+
+def _export_forms(tree: "tree_sitter.Tree", source: bytes) -> _ExportForms:
+    """The file's re-exports and renamed exports (``_ExportForms``), read off
+    its top-level statements the way ``_collect_exported_names`` reads the
+    names it exports."""
+    forms = _ExportForms(passed_on=[], passed_on_all=[], renamed=[])
+
+    def _renamed(local: str, exported_as: str) -> None:
+        if local != exported_as:
+            forms.renamed.append((local, exported_as))
+
+    for stmt in tree.root_node.children:
+        if stmt.type == "expression_statement":
+            target = _commonjs_target(stmt, source)
+            if target is None:
+                continue
+            how, key, value = target
+            if how == "whole" and value.type == "identifier":
+                forms.commonjs_whole = _node_text(value, source)
+            elif how == "whole" and value.type == "object":
+                for prop in value.children:
+                    pair_key = prop.child_by_field_name("key") if prop.type == "pair" else None
+                    pair_value = prop.child_by_field_name("value") if prop.type == "pair" else None
+                    if (
+                        pair_key is not None and pair_value is not None
+                        and pair_key.type == "property_identifier"
+                        and pair_value.type == "identifier"
+                    ):
+                        _renamed(_node_text(pair_value, source), _node_text(pair_key, source))
+            elif how == "named" and key is not None and value.type == "identifier":
+                _renamed(_node_text(value, source), key)
+            continue
+        if stmt.type != "export_statement":
+            continue
+        specifier_node = stmt.child_by_field_name("source")
+        specifier = (
+            _node_text(specifier_node, source).strip("'\"") if specifier_node is not None else None
+        )
+        for child in stmt.children:
+            if child.type == "namespace_export":
+                forms.namespace_from += 1
+            elif child.type == "*" and specifier is not None:
+                forms.passed_on_all.append(specifier)
+            elif child.type == "export_clause":
+                for spec in child.children:
+                    if spec.type != "export_specifier":
+                        continue
+                    name_node = spec.child_by_field_name("name")
+                    alias_node = spec.child_by_field_name("alias")
+                    if name_node is None:  # pragma: no cover - the grammar requires a name
+                        continue
+                    name = _node_text(name_node, source)
+                    exported_as = _node_text(alias_node, source) if alias_node is not None else name
+                    if specifier is not None:
+                        forms.passed_on.append((specifier, name, exported_as))
+                    else:
+                        _renamed(name, exported_as)
+    return forms
+
+
 def _import_scopes(
     parsed_files: "list[_ParsedFile]", repo_root: Path,
+    declarations: "dict[str, set[str]] | None" = None,
 ) -> "tuple[dict[str, ImportScope], dict[str, str]]":
     """What each file's imports bind: the table the shared call-resolution
     pass reads (ADR-0064, piece b), keyed by the file's repo-relative path;
@@ -1233,11 +1363,26 @@ def _import_scopes(
     - ``import * as m from './m'``, ``const m = require('./m')``: the module
       object, ``add_namespace(m, "m")``.
     - ``import d from './m'``: the default export's VALUE, which is the
-      declaration ``m``'s ``export default`` names (``export default
-      function f``, ``export default C``): ``add_named(m, "f", alias="d")``.
-      An anonymous default export names no declaration and is left out.
-    A binding whose file does not declare the name (a re-export) is recorded
-    as written; the lookup finds nothing there. Every file read gets a
+      declaration ``m``'s default names (``_file_defaults``):
+      ``add_named(m, "f", alias="d")``. An anonymous default export names no
+      declaration and is left out.
+    - ``const X = require('./m')`` where ``m`` assigns ``module.exports = X``
+      a class or function it declares (``declarations``: each file's class
+      and function names): the value is that declaration,
+      ``add_named(m, "X", alias="X")``, as a default import's is. Any other
+      ``require`` of a file is its module object.
+    - What a file passes on (``_export_forms``), in ITS table:
+      ``export {a as b} from './m'`` is ``add_reexport(m, "a",
+      exported_as="b")``; ``export {default as b} from './m'`` names m's
+      default declaration the same way; ``export * from './m'`` is
+      ``add_reexport_all(m)``; a local binding exported under another name
+      (``export {x as y}``, ``exports.y = x``, ``module.exports = {y: x}``) is
+      ``add_reexport(<the file itself>, "x", exported_as="y")``. ``export * as
+      ns from './m'`` is not recorded: the table has no form for a name that
+      stands for another file's module object.
+    A binding whose file does not declare the name is recorded as written;
+    the shared lookup follows the file's re-exports from there
+    (``type_visibility.declaring_files``). Every file read gets a
     table, an empty one too: its presence tells the linkers this analyzer
     hands its calls over. A Svelte / Vue component's ``<script>`` blocks
     share their file's table.
@@ -1251,6 +1396,7 @@ def _import_scopes(
     scopes: dict[str, ImportScope] = {}
     absolute: dict[str, str] = {}
     by_resolved: dict[Path, str] = {}
+    forms: list[tuple[_ParsedFile, str, _ExportForms]] = []
     for pf in parsed_files:
         rel = relative(pf.path)
         scopes.setdefault(rel, ImportScope(
@@ -1260,9 +1406,7 @@ def _import_scopes(
         ))
         absolute[rel] = str(pf.path)
         by_resolved[pf.path.resolve()] = rel
-    default_by_file = {
-        relative(pf.path): pf.default_export for pf in parsed_files if pf.default_export
-    }
+        forms.append((pf, rel, _export_forms(pf.tree, pf.source)))
     specifiers = SpecifierResolver(repo_root)
     files: dict[tuple[Path, str], str | None] = {}
 
@@ -1273,8 +1417,9 @@ def _import_scopes(
             files[key] = by_resolved.get(resolved) if resolved is not None else None
         return files[key]
 
-    for pf in parsed_files:
-        scope = scopes[relative(pf.path)]
+    commonjs_by_file, default_by_file = _file_defaults(forms, declarations or {})
+    for pf, rel, exported in forms:
+        scope = scopes[rel]
         originals = pf.named_import_originals or {}
         for local, specifier in (pf.named_imports or {}).items():
             module = file_of(pf.path, specifier)
@@ -1286,15 +1431,63 @@ def _import_scopes(
             found: set[str] = set()
             _extract_namespace_imports(pf.tree, pf.source, found)
             module_objects = frozenset(found)
+        required = _require_bindings(pf.tree, pf.source)
         for alias, specifier in (pf.namespace_imports or {}).items():
             module = file_of(pf.path, specifier)
             if module is None:
                 continue
-            if alias in module_objects:
+            if alias in required and module in commonjs_by_file:
+                scope.add_named(module, commonjs_by_file[module], alias=alias)
+            elif alias in module_objects:
                 scope.add_namespace(module, alias)
             elif module in default_by_file:
                 scope.add_named(module, default_by_file[module], alias=alias)
+        for specifier, name, exported_as in exported.passed_on:
+            module = file_of(pf.path, specifier)
+            original = default_by_file.get(module or "") if name == "default" else name
+            if module is not None and original is not None:
+                scope.add_reexport(module, original, exported_as=exported_as)
+        for specifier in exported.passed_on_all:
+            module = file_of(pf.path, specifier)
+            if module is not None:
+                scope.add_reexport_all(module)
+        for local, exported_as in exported.renamed:
+            scope.add_reexport(rel, local, exported_as=exported_as)
     return scopes, absolute
+
+
+def _file_defaults(
+    forms: "list[tuple[_ParsedFile, str, _ExportForms]]",
+    declarations: dict[str, set[str]],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Per file (repo-relative path): the declaration ``module.exports = X``
+    assigns (a class or function the file declares), and the name its
+    default export stands for in its own table.
+
+    The default, in order: the declaration ``export default`` names
+    (``_ParsedFile.default_export``); a local binding exported ``as
+    default``; a re-exported default (``export {default} from``, ``export
+    {x as default} from``), which is the name ``default`` itself, recorded in
+    the file's table as a re-export (``_import_scopes``); the CommonJS
+    whole export, which is what an ES default import of a CommonJS module
+    receives.
+    """
+    commonjs: dict[str, str] = {}
+    defaults: dict[str, str] = {}
+    for pf, rel, exported in forms:
+        whole = exported.commonjs_whole
+        if whole is not None and whole in declarations.get(rel, ()):
+            commonjs[rel] = whole
+        own = pf.default_export or next(
+            (local for local, as_name in exported.renamed if as_name == "default"), None,
+        )
+        if own is None and any(as_name == "default" for _s, _n, as_name in exported.passed_on):
+            own = "default"
+        if own is not None:
+            defaults.setdefault(rel, own)
+    for rel, whole in commonjs.items():
+        defaults.setdefault(rel, whole)
+    return commonjs, defaults
 
 
 @functools.lru_cache(maxsize=4096)
@@ -7136,6 +7329,7 @@ def _extract_edges(
     registration_contexts: list[UsageContext] | None = None,
     import_scope: ImportScope | None = None,
     files_by_rel: dict[str, str] | None = None,
+    import_scopes: dict[str, ImportScope] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -7147,7 +7341,9 @@ def _extract_edges(
     call unresolved with the facts the shared pass reads (ADR-0064; the
     module docstring's Call-Site Resolution). ``import_scope`` is the file's
     table (``_import_scopes``); ``files_by_rel`` maps a table module to the
-    path this analyzer's symbols carry, for ``new`` through an import.
+    path this analyzer's symbols carry, for ``new`` through an import, and
+    ``import_scopes`` is every file's table, for ``new`` of a class a barrel
+    file passes on.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     Uses symbol_by_position to attribute calls inside callback arrow functions.
 
@@ -7216,6 +7412,13 @@ def _extract_edges(
         import_scope if import_scope is not None
         else ImportScope(module_kind=MODULES_ARE_FILES)
     )
+
+    def _declares_class(file: str, name: str) -> bool:
+        """Whether the table's module ``file`` declares a class ``name``."""
+        path = (files_by_rel or {}).get(file)
+        return any(
+            s.kind == "class" and s.path == path for s in (symbols_by_name or {}).get(name, ())
+        )
 
     def _file_classes(name: str) -> list[Symbol]:
         return [s for s in _file_symbols_by_name.get(name, ()) if s.kind == "class"]
@@ -8364,12 +8567,18 @@ def _extract_edges(
                     _module, _declared = (
                         (_bound.module, _bound.name) if _bound is not None else (None, "")
                     )
-                _file = (files_by_rel or {}).get(_module or "")
+                # A file that passes the name on (a barrel ``index.ts``) is
+                # followed to the one that declares it, by the shared rule.
                 _classes = [
-                    s for s in (symbols_by_name or {}).get(_declared, ())
-                    if s.kind == "class" and s.path == _file
+                    s
+                    for _f, _n in (
+                        declaring_files(_module, _declared, _declares_class, import_scopes or {})
+                        if _module is not None else ()
+                    )
+                    for s in (symbols_by_name or {}).get(_n, ())
+                    if s.kind == "class" and s.path == (files_by_rel or {}).get(_f)
                 ]
-                if _file is not None and len(_classes) == 1:
+                if len(_classes) == 1:
                     target_sym = _classes[0]
                     _by = resolved_by.IMPORT
             # Otherwise resolve via class_resolver, using the import path as a hint
@@ -8970,7 +9179,9 @@ def _analyze_javascript_impl(
     # Pass 2: Extract edges using global symbol registry
     resolver = NameResolver(global_symbols)
     class_resolver = NameResolver(global_classes)
-    import_scopes, files_by_rel = _import_scopes(parsed_files, repo_root)
+    import_scopes, files_by_rel = _import_scopes(
+        parsed_files, repo_root, _declared_callables(all_symbols, repo_root),
+    )
     package_index = _JsPackageIndex([pf.path for pf in parsed_files])
     all_edges: list[Edge] = []
     # Registration usage contexts, recorded while the edges are resolved
@@ -8999,6 +9210,7 @@ def _analyze_javascript_impl(
             module_objects=pf.module_objects,
             import_scope=import_scopes[pf_name],
             files_by_rel=files_by_rel,
+            import_scopes=import_scopes,
             package_index=package_index,
             registration_contexts=registration_contexts,
         )
