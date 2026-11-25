@@ -1,0 +1,21 @@
+- op: create  # b9ae
+  at: '2026-11-25T14:35:08Z'  # b9ae
+  by: agent  # b9ae
+  actor: jgstern_agent  # b9ae
+  clock: 1  # b9ae
+  nonce: b9ae  # b9ae
+  data:  # b9ae
+    kind: work_item  # b9ae
+    title: "The inheritance linker should read the file's import table instead of visible_namespaces / base_class_imports"  # b9ae
+    status: todo_hard  # b9ae
+    priority: 3  # b9ae
+    parent:  # b9ae
+    tags:  # b9ae
+    - analysis_quality  # b9ae
+    - shared_call_resolution  # b9ae
+    isbefore: []  # b9ae
+    duplicate_of: []  # b9ae
+    not_duplicate_of: []  # b9ae
+    pr_ref:  # b9ae
+    description: "STATEMENT: which declaration a base-class name means is decided by the same lookup as a receiver type (type_visibility.visible_types over ImportScope), not by two per-symbol meta keys the C# and PHP analyzers stamp for this linker alone. OBSERVED: linkers/inheritance.py has its own _namespace_fit / _qualifier_fit; ADR-0064 piece (a) says one rule in one place. TypeScript: a call typed by an interface now names the interface member, not its one implementation (44 edges on workadventure): whether type_hierarchy should add the implementation edge is the owner's call.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # b9ae
+    fields: {}  # b9ae
