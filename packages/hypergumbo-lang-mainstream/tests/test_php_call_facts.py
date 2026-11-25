@@ -587,3 +587,37 @@ def test_a_bare_call_means_the_namespaces_function_then_the_global_one(tmp_path:
         ("App\\Http\\run", 6, "create_user", "same_module"),
         ("App\\Http\\run", 8, "App\\Util\\helper", "qualified"),
     }
+
+
+def test_a_leading_backslash_names_from_the_global_namespace(tmp_path: Path) -> None:
+    r"""``\Util\helper()`` and ``new \Lib\Conn`` are full names: the caller's
+    namespace, which declares namesakes under itself, does not reinterpret
+    them; the same names without the backslash are relative to it."""
+    nodes, edges = _map(tmp_path, {
+        "Util/helpers.php": "<?php\nnamespace Util;\nfunction helper() {}\n",
+        "App/Util/helpers.php": "<?php\nnamespace App\\Util;\nfunction helper() {}\n",
+        "Lib/Conn.php": _CONN.format(ns="Lib"),
+        "App/Lib/Conn.php": _CONN.format(ns="App\\Lib"),
+        "App/main.php": "<?php\nnamespace App;\nfunction run() {\n    \\Util\\helper();\n"
+                        "    Util\\helper();\n    \\Lib\\Conn::open();\n    Lib\\Conn::open();\n}\n",
+    })
+    assert _resolved(nodes, edges) == {
+        ("App\\run", 4, "Util\\helper", "qualified"),
+        ("App\\run", 5, "App\\Util\\helper", "qualified"),
+        ("App\\run", 6, "Lib\\Conn::open", "qualified"),
+        ("App\\run", 7, "App\\Lib\\Conn::open", "qualified"),
+    }
+
+
+def test_a_script_calls_its_own_function_not_another_scripts_namesake(tmp_path: Path) -> None:
+    """Two scripts each define ``check`` and are never loaded together: each
+    one's call is to its own."""
+    script = "<?php\nfunction check($s) {}\nfunction main() {\n    check(1);\n}\n"
+    nodes, edges = _map(tmp_path, {"interop/client.php": script, "qps/client.php": script})
+    own = {
+        (nodes[e["src"]]["path"], nodes[e["dst"]]["path"])
+        for e in edges if e["type"] == "calls" and e.get("is_resolved")
+    }
+    assert {(Path(a).parent.name, Path(b).parent.name) for a, b in own} == {
+        ("interop", "interop"), ("qps", "qps"),
+    }

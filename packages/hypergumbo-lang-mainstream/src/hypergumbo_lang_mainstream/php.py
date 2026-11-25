@@ -111,6 +111,9 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
+    enclosing_declared_symbol,
+    symbol_declared_by,
+    symbols_at,
     iter_tree,
     make_file_id,
     make_file_stable_id,
@@ -1591,17 +1594,6 @@ _PHP_VARIABLE_SCOPES = frozenset({
 _PHP_NO_CLASS_TYPES = frozenset({"parent", "mixed", "iterable", "object", "callable"})
 
 
-def _span_key(node_or_span: object) -> tuple[int, int, int, int]:
-    """A declaration's position, from its node or its symbol's span: what
-    ties a ``function_definition`` / ``method_declaration`` to its symbol."""
-    if isinstance(node_or_span, Span):
-        return (node_or_span.start_line, node_or_span.start_col,
-                node_or_span.end_line, node_or_span.end_col)
-    node = node_or_span
-    return (node.start_point[0] + 1, node.start_point[1],  # type: ignore[attr-defined]
-            node.end_point[0] + 1, node.end_point[1])  # type: ignore[attr-defined]
-
-
 def _enclosing_container(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
     """The type declaration (class / interface / trait / enum, or an anonymous
     ``new class``) ``node`` is written in, found by position, or None. An
@@ -1890,21 +1882,9 @@ def _on_the_enclosing_object(expr: "tree_sitter.Node", source: bytes) -> bool:
     return owner is not None and owner.type == "relative_scope" and text.lower() in ("self", "static")
 
 
-def _enclosing_declaration(
-    node: "tree_sitter.Node", declared_at: dict[tuple[int, int, int, int], Symbol],
-) -> Optional[Symbol]:
-    """The function or method ``node`` is written in, found by position: the
-    innermost ``function_definition`` / ``method_declaration`` holding it that
-    has a symbol of this file. A closure is no caller of its own: a call in
-    one is the enclosing function's."""
-    current = node.parent
-    while current is not None:
-        if current.type in ("function_definition", "method_declaration"):
-            symbol = declared_at.get(_span_key(current))
-            if symbol is not None:
-                return symbol
-        current = current.parent
-    return None
+#: The declarations a PHP call's caller can be: a closure is no caller of its
+#: own, a call in one is the enclosing function's.
+_PHP_CALLER_NODES = frozenset({"function_definition", "method_declaration"})
 
 
 def _extract_edges(
@@ -1940,12 +1920,9 @@ def _extract_edges(
     Every stub of a call on a receiver or an owner is ``call_construct=
     "method"``, which keeps the linker from reading its name as a function's.
     The caller is the function or method found by position
-    (:func:`_enclosing_declaration`); a bare call outside any is the file's.
+    (``enclosing_declared_symbol``); a bare call outside any is the file's.
     """
-    declared_at = {
-        _span_key(s.span): s for s in file_symbols
-        if s.kind in ("function", "method") and s.span is not None
-    }
+    declared_at = symbols_at([s for s in file_symbols if s.kind in ("function", "method")])
     module_symbol = next((s for s in file_symbols if s.kind == "file"), None)
     types = _PhpTypes(tree, source)
     edges: list[Edge] = []
@@ -1991,7 +1968,7 @@ def _extract_edges(
         enclosing type's own ``m`` of this file, else a stub for the hierarchy
         walk."""
         declared = _own_method(container, method, source)
-        target = declared_at.get(_span_key(declared)) if declared is not None else None
+        target = symbol_declared_by(declared, declared_at) if declared is not None else None
         if target is not None:
             edges.append(Edge.create(
                 src=caller.id, dst=target.id, edge_type="calls",
@@ -2016,7 +1993,7 @@ def _extract_edges(
     for node in iter_tree(tree.root_node):
         if node.type == "function_call_expression":
             function = node.child_by_field_name("function")
-            caller = _enclosing_declaration(node, declared_at) or module_symbol
+            caller = enclosing_declared_symbol(node, declared_at, _PHP_CALLER_NODES) or module_symbol
             if function is None or function.type not in ("name", "qualified_name") or caller is None:
                 continue
             callee = node_text(function, source)
@@ -2025,7 +2002,7 @@ def _extract_edges(
                    dst_ref=ExternalRef(lang="php", module_path=module, name=callee) if module else None)
 
         elif node.type in ("member_call_expression", "nullsafe_member_call_expression"):
-            caller = _enclosing_declaration(node, declared_at)
+            caller = enclosing_declared_symbol(node, declared_at, _PHP_CALLER_NODES)
             name_node = node.child_by_field_name("name")
             receiver = node.child_by_field_name("object")
             if caller is None or name_node is None or receiver is None:
@@ -2040,7 +2017,7 @@ def _extract_edges(
                 on_a_value(caller, node, receiver, method)
 
         elif node.type == "scoped_call_expression":
-            caller = _enclosing_declaration(node, declared_at)
+            caller = enclosing_declared_symbol(node, declared_at, _PHP_CALLER_NODES)
             scope_node = node.child_by_field_name("scope")
             name_node = node.child_by_field_name("name")
             if caller is None or scope_node is None or name_node is None:
@@ -2060,7 +2037,7 @@ def _extract_edges(
                 on_a_value(caller, node, scope_node, method)
 
         elif node.type == "object_creation_expression":
-            caller = _enclosing_declaration(node, declared_at)
+            caller = enclosing_declared_symbol(node, declared_at, _PHP_CALLER_NODES)
             written_type = _new_type_written(node, source)
             if caller is not None and written_type and written_type.lower() not in ("self", "static", "parent"):
                 report(caller, node, written_type, instantiates=True)
