@@ -1,0 +1,22 @@
+- op: create  # bfb7
+  at: '2026-11-25T07:12:29Z'  # bfb7
+  by: agent  # bfb7
+  actor: jgstern_agent  # bfb7
+  clock: 1  # bfb7
+  nonce: bfb7  # bfb7
+  data:  # bfb7
+    kind: work_item  # bfb7
+    title: "java: super.m() takes the same path as this.m() and binds the calling class's own override"  # bfb7
+    status: todo_hard  # bfb7
+    priority: 2  # bfb7
+    parent:  # bfb7
+    tags:  # bfb7
+    - call_graph  # bfb7
+    - analysis_quality  # bfb7
+    - call_matrix  # bfb7
+    isbefore: []  # bfb7
+    duplicate_of: []  # bfb7
+    not_duplicate_of: []  # bfb7
+    pr_ref:  # bfb7
+    description: "STATEMENT\nA Java `super.m()` call binds the method an ancestor declares, never the calling class's own override of m.\n\nOBSERVED (read in the code 2026-11-25, mark PR head; not yet reproduced on a fixture)\njava.py ~3196 (Case 1): `super.m()` takes the same `own_members[current_class.m]` path as `this.m()`. When the class overrides m and calls `super.m()` inside it (the common shape), the edge is the method calling itself. The mark on that edge is own_type.\n\nBEFORE FIXING: write the fixture (class B { m() }, class C extends B { m() { super.m(); } }) and read the edge; count `super.` call edges whose source and destination are the same symbol on jedis and one more Java tree.\n\nANALOGUES NOT CHECKED: objc `[super m]` (objc.py:1089 keeps the lookup's value; whether it binds the own class's m was not checked), kotlin, scala, csharp `base.M()`, swift `super.m()`, php `parent::m()`, python `super().m()`, ruby `super`.\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/mainB/FINAL_REPORT.md, guess-prone 1; mainA/RESULTS.md 16."  # bfb7
+    fields: {}  # bfb7
