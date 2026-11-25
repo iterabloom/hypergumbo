@@ -15,16 +15,16 @@ for focused LLM context.
 
 Counts from the source tree, and from `hypergumbo survey packages/ --first-party-only` (tests included; `scripts/` not analysed):
 
-- **395** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 138 other core modules (10 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
-- **66457** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 14994, of which 8551 are functions, methods or classes
-- **267980** edges, test code included, by type:
-  - calls: 150129
-  - contains: 61872
-  - imports: 23854
-  - instantiates: 13769
-  - references: 13592
-  - module_attr_ref: 2762
-  - other: 2002
+- **396** Python modules: 143 in the language packages, of which 119 register an analyzer; 63 linkers (Protocol 11, Bridge 11, Framework 32, Infrastructure 9); 138 other core modules (11 of them analyzer infrastructure under `analyze/`), 4 CLI, 37 tracker
+- **66512** graph nodes, every kind, test code included. Outside test files, and leaving out placeholders for library targets (`external_symbol`): 15008, of which 8562 are functions, methods or classes
+- **268216** edges, test code included, by type:
+  - calls: 150233
+  - contains: 61922
+  - imports: 23873
+  - instantiates: 13791
+  - references: 13630
+  - module_attr_ref: 2763
+  - other: 2004
 
 ## Package Architecture
 
@@ -766,6 +766,7 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 - **`hypergumbo_core.analyze.file_records`**: One file pseudo-symbol per path, whoever names the file.
 - **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become o...
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
+- **`hypergumbo_core.analyze.var_scope`**: Variable types that close with the function that binds them (INV-za...
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.c`**: C analysis pass using tree-sitter-c.
 - **`hypergumbo_lang_mainstream.c_def_use`**: C def/use extractor for intraprocedural dataflow (ADR-0017 §1c, WI-...
@@ -1027,8 +1028,8 @@ def link_ipc(ctx: LinkerContext) -> LinkerResult:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 84e211f2a84d
-  commit_count: 9905
+  commit: 106a233784d7
+  commit_count: 9920
   hypergumbo: 10.0.0
   python: 3.12.3
 -->
