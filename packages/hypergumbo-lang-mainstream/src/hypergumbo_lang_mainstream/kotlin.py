@@ -2786,11 +2786,11 @@ def _extract_edges_from_file(
             else:
                 # Simple function call: ``helper()``, or a construction
                 # ``Foo()``. Bound here: a member of the enclosing type, found
-                # by position (the language's implicit receiver); a member of
-                # an object or companion the file imports by name (``import
-                # okhttp3.Headers.Companion.headersOf``), at the path the
-                # import names. Anything else is reported: a function or a type
-                # the file's package or imports make visible, or a member the
+                # by position (the language's implicit receiver). Anything else
+                # is reported: a function or a type the file's package or
+                # imports make visible, a member of an object or companion the
+                # file imports by name (``import
+                # okhttp3.Headers.Companion.headersOf``), or a member the
                 # enclosing type inherits, is the linkers' to find (ADR-0064),
                 # with the enclosing type for the inherited-calls walk.
                 callee_node = find_child_by_type(node, "identifier")
@@ -2805,17 +2805,14 @@ def _extract_edges_from_file(
                     )
                     if imported_member is not None and imported_member.kind not in _OWN_MEMBER_KINDS:
                         imported_member = None
-                    bound = own or imported_member
-                    if bound is not None:
+                    if own is not None:
                         edges.append(Edge.create(
-                            src=current_function.id, dst=bound.id,
+                            src=current_function.id, dst=own.id,
                             edge_type="calls", line=line,
                             evidence_type="ast_call",
                             origin=PASS_ID, origin_run_id=run.execution_id,
                             meta={"call_construct": "function"},
-                            resolved_by=(
-                                resolved_by.OWN_TYPE if own is not None else resolved_by.IMPORT
-                            ),
+                            resolved_by=resolved_by.OWN_TYPE,
                         ))
                     else:
                         _report(
@@ -2825,9 +2822,11 @@ def _extract_edges_from_file(
                             on_receiver=False,
                         )
                     # ``val db = getDb()``: ``db`` is typed by the declared
-                    # return of the member bound above, else of the top-level
-                    # function the name means here.
-                    resolved_simple_sym = bound or _visible_declaration(
+                    # return of the own member bound above, else of the member
+                    # the file imports by that name (read at the import's
+                    # path, binding nothing), else of the top-level function
+                    # the name means here.
+                    resolved_simple_sym = own or imported_member or _visible_declaration(
                         callee_name, frozenset({"function"}),
                     )
                     if resolved_simple_sym is not None and resolved_simple_sym.kind in ("function", "method"):
