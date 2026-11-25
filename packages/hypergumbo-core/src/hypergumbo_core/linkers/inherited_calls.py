@@ -141,6 +141,7 @@ from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..import_scope import ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import dotted, visible_types, written_arity
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
@@ -949,15 +950,18 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         ctx.edges, edge_types=_INHERITED_CALL_EDGE_TYPES,
     )
 
-    # Class/struct/module name → [class_id] map and class_id → Symbol map.
-    # The method index treats these uniformly; the walker looks up methods
-    # by class_id.
+    # Type name → [class_id] map and class_id → Symbol map. The method index
+    # treats these uniformly; the walker looks up methods by class_id.
+    # What counts as a type is the symbol-kind registry's answer (a record, an
+    # enum, an actor and a contract hold methods like a class does), plus the
+    # Ruby ``module``, which is a mixin and not type-like in the registry's
+    # sense but is a method owner here. The linker's own list had left
+    # ``record`` out.
+    type_kinds = type_like_kind_names() | {"module"}
     class_ids_by_name: dict[str, list[str]] = {}
     class_symbols: dict[str, Symbol] = {}
     for s in ctx.symbols:
-        # ``object`` (WI-kipol): a Scala / Kotlin singleton is a type a call
-        # names directly (``Factory.make()``), and inherits like any class.
-        if s.kind in ("class", "struct", "module", "interface", "trait", "protocol", "object"):
+        if s.kind in type_kinds:
             class_ids_by_name.setdefault(s.name, []).append(s.id)
             class_symbols[s.id] = s
     # C3 needs left-to-right base order, but a qualified in-tree base's
