@@ -626,8 +626,11 @@ def _resolve_alias(
 def _build_workspace_package_index(repo_root: Path) -> dict[str, Path]:
     """Map each package name a ``package.json`` in the tree declares to its
     directory (WI-rilof). ``node_modules`` is skipped: an installed copy is
-    the third-party package, not source in the tree. The first declaration of
-    a name wins, in path order, so the result does not depend on scan order.
+    the third-party package, not source in the tree. A name two manifests
+    declare names NEITHER: which of the two an import means cannot be told
+    from the name, and keeping the first in path order was a guess (the
+    JS/TS analyzer's own resolver, which this one replaced under ADR-0064,
+    refused the tie; a guard test of that analyzer pins it).
     """
     from hypergumbo_core.discovery import get_file_index
     file_index = get_file_index()
@@ -636,6 +639,7 @@ def _build_workspace_package_index(repo_root: Path) -> dict[str, Path]:
     else:
         manifests = list(repo_root.rglob("package.json"))
     index: dict[str, Path] = {}
+    declared_twice: set[str] = set()
     for manifest in sorted(manifests):
         if "node_modules" in manifest.parts:
             continue
@@ -643,9 +647,12 @@ def _build_workspace_package_index(repo_root: Path) -> dict[str, Path]:
         # readers, so the read is logged here (WI-finij).
         note_source_read(manifest)
         name = own_package_name(manifest)
-        if name is not None and name not in index:
-            index[name] = manifest.parent.resolve()
-    return index
+        if name is None:
+            continue
+        if name in index:
+            declared_twice.add(name)
+        index[name] = manifest.parent.resolve()
+    return {name: root for name, root in index.items() if name not in declared_twice}
 
 
 def _resolve_workspace_import(

@@ -254,11 +254,6 @@ class TestTheGuardsAgainstAGuess:
         calls = _calls_from(data, "packages/a/src/esm.ts")
         assert "typescript:packages/c/src/index.ts:1-1:shout:function" not in calls.get("e7", []), calls
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "ADR-0064 pilot: the file a specifier names is now the js-module linker's "
-        "SpecifierResolver's answer, whose workspace index keeps the FIRST of two "
-        "packages declaring one name (path order); the analyzer's own resolver, "
-        "deleted, refused the tie. A core change, reported, not made here."))
     def test_a_package_name_two_roots_declare_names_nothing(self, tmp_path: Path) -> None:
         data = _survey(tmp_path / "repo", {
             **_ROOT, **_C, **_A_PKG,

@@ -182,6 +182,9 @@ def test_a_name_reached_through_a_namespace_binding() -> None:
     # An unknown qualifier, and a path deeper than one member, name nothing here.
     assert visible_types("other.Conn", None, scope, conns, caller_path="src/main.ts") == []
     assert visible_types("db.inner.Conn", None, scope, conns, caller_path="src/main.ts") == []
+    # A binding keyed by a path of several segments, as the file writes it.
+    scope.add_namespace("legacy/db.ts", "crate.legacy.db")
+    assert _paths(visible_types("crate::legacy::db::Conn", None, scope, conns, caller_path="src/main.ts")) == ["legacy/db.ts"]
 
 
 def test_a_name_no_import_binds_is_not_a_type_of_the_repository_here() -> None:

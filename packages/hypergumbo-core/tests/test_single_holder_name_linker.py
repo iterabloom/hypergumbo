@@ -109,6 +109,10 @@ def test_a_qualifier_binds_by_name_only_when_the_files_imports_bind_it_to_the_re
     namespace.add_namespace("src/index.ts", "store")
     (edge,) = _link([holder, caller], [_member_call(caller, "drain", qualifier="store.inner")], namespace)
     assert edge.dst == holder.id
+    rooted = _files()
+    rooted.add_namespace("src/store.ts", "crate.store")
+    (edge,) = _link([holder, caller], [_member_call(caller, "drain", qualifier="crate::store")], rooted)
+    assert edge.dst == holder.id
 
 
 def test_a_qualifier_in_a_language_of_declared_names_never_binds_by_name() -> None:

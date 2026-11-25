@@ -29,14 +29,18 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 def test_index_maps_declared_names_and_skips_node_modules(tmp_path: Path) -> None:
+    """A name two manifests declare names neither package: which one an
+    import means cannot be told from the name (the first in path order was
+    kept before ADR-0064, a guess)."""
     _write(tmp_path, {
+        "packages/a/package.json": '{"name": "@ws/a"}',
         "packages/b/package.json": '{"name": "@ws/b"}',
         "packages/c/package.json": '{"version": "1.0.0"}',
         "node_modules/lodash/package.json": '{"name": "lodash"}',
         "packages/dup/package.json": '{"name": "@ws/b"}',
     })
     index = _build_workspace_package_index(tmp_path)
-    assert index == {"@ws/b": (tmp_path / "packages/b").resolve()}
+    assert index == {"@ws/a": (tmp_path / "packages/a").resolve()}
 
 
 def test_entry_prefers_exports_then_module_then_main(tmp_path: Path) -> None:
