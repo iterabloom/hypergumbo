@@ -2854,7 +2854,8 @@ class TestCSharpInterfaceInheritance:
         assert by_name["IChild"].meta["base_classes"] == ["IBase", "IDisposable"]
         # WI-pivap: plus the namespaces a bare base may come from (global here).
         assert by_name["IChild"].meta["visible_namespaces"] == [""]
-        assert by_name["ILeaf"].meta is None
+        # No bases: none recorded. (Every type symbol says its arity.)
+        assert by_name["ILeaf"].meta == {"type_arity": 0}
 
 
 class TestCSharpRecords:

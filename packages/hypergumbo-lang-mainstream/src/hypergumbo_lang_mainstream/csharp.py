@@ -28,6 +28,12 @@ This analyzer uses tree-sitter to parse C# files and extract:
   ``interface IChild : IBase`` gets its edge (WI-ruzid).
   The emitted ``qualified_name`` carries every enclosing namespace, the
   file-scoped one included (``A.B.C.Go``, ``N.M.K``).
+- Every type symbol (class, record, interface, struct, enum) records
+  ``meta["type_arity"]``, the number of type parameters its declaration
+  takes, ``0`` for a non-generic one and never omitted: ``Policy`` and
+  ``Policy<TResult>`` share ``name`` and ``qualified_name`` and are two types,
+  which the ``inherited_calls`` linker tells apart by this count and the type
+  arguments a hint carries (ADR-0064). Not hashed: no id moves.
 - Indexers (``subscript``, named ``Type.this[]``), operators and conversion
   operators (``method``, ``Type.operator+`` / ``Type.operator int``),
   destructors (``method``, ``Type.~Type``) and events declared with
@@ -137,6 +143,7 @@ from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
+    declared_type_parameters,
     find_matching_paren,
     record_partial_parse,
     AnalysisResult,
@@ -1335,17 +1342,20 @@ def _extract_parsed_symbols(
                 # Extract base classes/interfaces (META-001)
                 base_classes = _extract_base_list(node, source)
 
-                meta: dict[str, object] | None = None
-                if annotations or base_classes:
-                    meta = {}
-                    if annotations:
-                        meta["annotations"] = annotations
-                    if base_classes:
-                        meta["base_classes"] = base_classes
+                # How many type parameters it takes (ADR-0064): ``Policy`` and
+                # ``Policy<TResult>`` share a name and a qualified name and are
+                # two types. Written on every type symbol, 0 included.
+                meta: dict[str, object] = {
+                    "type_arity": len(declared_type_parameters(node, source)[0]),
+                }
+                if annotations:
+                    meta["annotations"] = annotations
+                if base_classes:
+                    meta["base_classes"] = base_classes
 
                 class_modifiers = _extract_modifiers(node)
                 ns_name = _get_csharp_enclosing_namespace(node, source)
-                if meta is not None and base_classes:
+                if base_classes:
                     meta.update(_csharp_base_hints(
                         base_classes, ns_name, using_namespaces, using_type_aliases,
                     ))
@@ -1418,11 +1428,14 @@ def _extract_parsed_symbols(
                     ),
                     modifiers=iface_modifiers,
                     meta={
-                        "base_classes": iface_bases,
-                        **_csharp_base_hints(
-                            iface_bases, ns_name, using_namespaces, using_type_aliases,
-                        ),
-                    } if iface_bases else None,
+                        "type_arity": len(declared_type_parameters(node, source)[0]),
+                        **({
+                            "base_classes": iface_bases,
+                            **_csharp_base_hints(
+                                iface_bases, ns_name, using_namespaces, using_type_aliases,
+                            ),
+                        } if iface_bases else {}),
+                    },
                     line_span=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
@@ -1461,6 +1474,7 @@ def _extract_parsed_symbols(
                         kind="struct", lang="csharp", path=rel_path, name=name,
                         scope=_csharp_scope(node, source),
                     ),
+                    meta={"type_arity": len(declared_type_parameters(node, source)[0])},
                     modifiers=struct_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in struct_modifiers,
@@ -1500,6 +1514,8 @@ def _extract_parsed_symbols(
                         kind="enum", lang="csharp", path=rel_path, name=name,
                         scope=_csharp_scope(node, source),
                     ),
+                    # An enum takes no type parameters (C# has no generic enum).
+                    meta={"type_arity": 0},
                     modifiers=enum_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in enum_modifiers,
