@@ -602,21 +602,44 @@ namespace App
 
 
 # ---------------------------------------------------------------- go
-def go(R, D, B, S, dl):
+def go(R, D, B, S, dl, split=False, third=False):
+    # No ``via_qual``: ``via_import`` is already the qualified form (``util.Helper()``,
+    # through the module's own package ``example.com/fx/util``), and Go has no
+    # second one. An alias (``u.Helper()``) is the same package qualifier renamed.
     def cls(n, m, v):
         return f"type {n} struct{{}}\n\nfunc (r *{n}) {m}() int {{ return {v} }}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"\ntype Child struct {{\n\t{B}\n}}\n", cls(S, "ping", 2))
-    main = f"""package main
+    child = f"\ntype Child struct {{\n\t{B}\n}}\n"
+    spare = "\ntype Spare struct{}\n\nfunc (r *Spare) execute() int { return 2 }\n\nfunc (r *Spare) ping() int { return 2 }\n"
+    side = "z" if dl else "a"
+    files = {"go.mod": "module example.com/fx\n\ngo 1.21\n",
+             "util/util.go": "package util\n\nfunc Helper() int { return 1 }\n",
+             f"{side}decoy/util.go": "package util\n\nfunc Helper() int { return 2 }\n"}
+    if third:
+        files[f"{side}spare/util.go"] = "package util\n\nfunc Helper() int { return 2 }\n"
+    if split:
+        # One type per file of package main: every file of a package sees the
+        # others with no import. The decoys' files sort after (``z_``) or before
+        # (``a_``) every other file.
+        def unit(text):
+            return "package main\n\n" + text.lstrip("\n")
+        files |= {"store.go": unit(cls(R, "execute", 1)), f"{side}_store.go": unit(cls(D, "execute", 2)),
+                  "base.go": unit(cls(B, "ping", 1)), "child.go": unit(child),
+                  f"{side}_stray.go": unit(cls(S, "ping", 2))}
+        if third:
+            files[f"{side}_spare.go"] = unit(spare)
+        classes = ""
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes = f"{ex}\n{pg}\n"
+    files["main.go"] = f"""package main
 
 import (
 	"example.com/fx/util"
 	"github.com/ext/extlib"
 )
 
-{ex}
-{pg}
-func get_db() *{R} {{
+{classes}func get_db() *{R} {{
 	return &{R}{{}}
 }}
 
@@ -651,11 +674,7 @@ func via_import() {{
 
 func main() {{}}
 """
-    dec = ("zdecoy" if dl else "adecoy")
-    return {"go.mod": "module example.com/fx\n\ngo 1.21\n",
-            "main.go": main,
-            "util/util.go": "package util\n\nfunc Helper() int { return 1 }\n",
-            f"{dec}/util.go": "package util\n\nfunc Helper() int { return 2 }\n"}
+    return files
 
 
 # ---------------------------------------------------------------- rust
