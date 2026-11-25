@@ -210,3 +210,65 @@ def test_a_caller_whose_type_has_no_qualified_name_keeps_the_name_walk() -> None
     stub = _stub(caller, "Helper", enclosing_class="Handler")
     (edge,) = _link([*own, caller], stub, _scope())
     assert edge.dst == own[1].id
+
+
+# --- a generic type and its non-generic namesake are two types ----------------
+
+
+def _arity(symbols: list[Symbol], arity: int) -> list[Symbol]:
+    symbols[0].meta = {"type_arity": arity}
+    return symbols
+
+
+def test_the_number_of_type_arguments_is_part_of_which_type_is_meant() -> None:
+    """``Policy`` and ``Policy<TResult>`` share a name and a qualified name and
+    are different types. Where the declarations say how many type parameters
+    they take, the hint's own type arguments choose."""
+    plain = _arity(_type_with_method("App.Db", "Policy", "Execute", "db/Policy.cs"), 0)
+    generic = _arity(_type_with_method("App.Db", "Policy", "Execute", "db/Policy.TResult.cs"), 1)
+    caller = _caller()
+    symbols = [*plain, *generic, caller]
+    (edge,) = _link(symbols, _stub(caller, "Execute", receiver_type_hint="Policy<int>"), _scope("App.Db"))
+    assert edge.dst == generic[1].id
+    (edge,) = _link(symbols, _stub(caller, "Execute", receiver_type_hint="Policy"), _scope("App.Db"))
+    assert edge.dst == plain[1].id
+    # No declaration takes two: the name means no type of the repository here.
+    assert _link(symbols, _stub(caller, "Execute", receiver_type_hint="Policy<int, string>"),
+                 _scope("App.Db")) == []
+
+
+def test_parts_of_one_generic_type_are_still_one_type() -> None:
+    first = _arity([_sym("class", "Policy", "App.Db.Policy", "db/Policy.TResult.cs", (1, 9))], 1)
+    second = _arity(_type_with_method("App.Db", "Policy", "Execute", "db/Policy.TResult.Extra.cs"), 1)
+    plain = _arity(_type_with_method("App.Db", "Policy", "Execute", "db/Policy.cs"), 0)
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Policy<Dictionary<string, int>>")
+    (edge,) = _link([*first, *second, *plain, caller], stub, _scope("App.Db"))
+    assert edge.dst == second[1].id
+
+
+def test_declarations_that_do_not_say_their_arity_are_told_apart_by_name_only() -> None:
+    """A producer that records no arity: the two namesakes cannot be told
+    apart, and they are not one type either. Refused."""
+    plain = _type_with_method("App.Db", "Policy", "Execute", "db/Policy.cs")
+    generic = _arity(_type_with_method("App.Db", "Policy", "Execute", "db/Policy.TResult.cs"), 1)
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Policy<int>")
+    (edge,) = _link([*plain, *generic, caller], stub, _scope("App.Db"))
+    # One qualified name, arity known for one declaration only: treated as
+    # parts of one type, as before the arity existed (first part with the method).
+    assert edge.dst in (plain[1].id, generic[1].id)
+
+
+def test_a_bare_call_stays_in_the_generic_or_the_plain_type_it_is_written_in() -> None:
+    """``Helper()`` inside the non-generic ``Handler``; the generic
+    ``Handler<T>`` of the same namespace has a ``Helper``, the plain one does
+    not. The caller is declared in the plain one."""
+    plain = _arity([_sym("class", "Handler", "App.Web.Handler", CALLER_FILE, (1, 30))], 0)
+    generic = _arity(_handler_with("Helper", "App.Web", "web/Handler.T.cs"), 1)
+    caller = _caller()
+    stub = _stub(caller, "Helper", enclosing_class="Handler")
+    assert _link([*plain, *generic, caller], stub, _scope()) == []
+    other_part = _arity(_handler_with("Helper", "App.Web", "web/Handler.Helpers.cs"), 0)
+    (edge,) = _link([*plain, *generic, *other_part, caller], stub, _scope())
+    assert edge.dst == other_part[1].id

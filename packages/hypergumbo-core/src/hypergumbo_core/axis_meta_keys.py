@@ -1168,6 +1168,17 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 discipline_note="Written once per module by the elixir "
                 "analyzer's behaviour pass, after every directive of the "
                 "module's file is read."),
+    MetaKeySpec("type_arity", AXIS_SYMBOL_META,
+                "Type Symbols (class, struct, interface, record): how many "
+                "type parameters the declaration takes, 0 for a non-generic "
+                "one. A generic type and a non-generic one of the same name "
+                "(``Policy`` and ``Policy<TResult>``) share ``name`` and "
+                "``qualified_name`` and are different types; with this key "
+                "the inherited-calls linker tells them apart and still "
+                "treats the several declarations of one partial type as one "
+                "(ADR-0064). Written as 0, never omitted, by a producer that "
+                "writes it at all: an absent key means the producer does not "
+                "say, and the declarations are then told apart by name only."),
     MetaKeySpec("base_class_imports", AXIS_SYMBOL_META,
                 "Class Symbols (php, groovy, scala, csharp alias usings): for "
                 "each BARE base in ``base_classes`` bound by a single-type "
