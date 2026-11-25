@@ -144,7 +144,7 @@ generic namesake by ``meta["type_arity"]``). None, or two: the call stays
 unresolved, whatever namesakes the repository holds. A file with no table is
 untouched by any of this.
 
-Four more things ride on the same loop, each read only for a file with a
+Five more things ride on the same loop, each read only for a file with a
 table unless said otherwise:
 
 * ``meta["qualifier"]`` (``Util.Helper()``: the call names its owner) goes
@@ -160,6 +160,16 @@ table unless said otherwise:
   supplies. A file that only passes the name on (a barrel file, ``pub use``)
   is followed to the one that declares it. Marked ``import``. This is not one of the three Sites: there is
   no type in it.
+
+* A declaration named by a bare call or a ``new``, in a language of declared
+  names (``_declaration_named``): once the enclosing type's own members have
+  been tried, a bare ``helper()`` means the function of that name visible
+  from the caller's file (its own package, an import, a wildcard), and
+  ``new Conn()`` (an unresolved ``instantiates`` stub) the type of that name;
+  in a language that writes a construction as a call (Kotlin ``Request(url)``)
+  a bare call may name a type too. The mark is the rule that scoped it
+  (``type_visibility.visible_declarations``): ``same_module``, ``import`` or
+  ``qualified``. Not visible, or two candidates: unresolved.
 
 The name of this module is narrower than what it now does; it stays until the
 pilot of ADR-0064 has settled what belongs here.
@@ -177,10 +187,10 @@ from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import (
-    call_language, declaring_files, dotted, visible_types,
+    call_language, declaring_files, dotted, visible_declarations, visible_types,
     without_type_arguments, written_arity,
 )
-from .method_call_recovery import parse_unresolved_name
+from .method_call_recovery import parse_unresolved_name, short_name
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -1036,11 +1046,64 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             if s.kind == "function":
                 functions_in_file.setdefault((s.path, s.name), []).append(s)
 
+    # Functions by short name, and the constructions already bound, for a
+    # declaration named by a bare call or a ``new`` (``_declaration_named``).
+    # Built only when some file's table names namespaces.
+    functions_by_name: dict[str, list[Symbol]] = {}
+    existing_constructions: set[tuple[str, str]] = set()
+    if any(s.module_kind != MODULES_ARE_FILES for s in ctx.import_scopes.values()):
+        for s in ctx.symbols:
+            if s.kind == "function":
+                functions_by_name.setdefault(short_name(s.name), []).append(s)
+        existing_constructions = {
+            (e.src, e.dst) for e in ctx.edges
+            if e.edge_type == "instantiates" and e.is_resolved
+        }
+
+    def named_declaration_edge(stub: Edge, caller: Symbol, table: ImportScope) -> Edge | None:
+        """The stub bound to the declaration its bare name means from the
+        caller's file, or ``None`` (``_declaration_named``)."""
+        constructs = stub.edge_type == "instantiates"
+        language = caller.language or ""
+        answer = _declaration_named(
+            str((stub.meta or {}).get("callee_name") or parse_unresolved_name(stub.dst) or ""),
+            caller, table, ctx.import_scopes, functions_by_name,
+            class_ids_by_name, class_symbols,
+            functions=not constructs,
+            types=constructs or language in _BARE_CALL_MAY_NAME_A_TYPE,
+        )
+        if answer is None:
+            return None
+        target, scoped = answer
+        pairs = existing_constructions if constructs else existing_call_pairs
+        if (stub.src, target.id) in pairs:
+            return None
+        pairs.add((stub.src, target.id))
+        return Edge.create(
+            src=stub.src, dst=target.id, edge_type=stub.edge_type,
+            line=stub.line, origin=PASS_ID, origin_run_id=run.execution_id,
+            evidence_type="ast_new" if constructs else "ast_call",
+            is_resolved=True, derived_from=[stub.id, target.id],
+            resolved_by=scoped,
+        )
+
     new_edges: list[Edge] = []
     for edge in ctx.edges:
-        if edge.edge_type != "calls" or edge.is_resolved:
+        if edge.is_resolved or edge.edge_type not in ("calls", "instantiates"):
             continue
         meta = edge.meta or {}
+        if edge.edge_type == "instantiates":
+            # ``new T()``: the one thing this linker does with a construction
+            # is to say which type the written name means (ADR-0064).
+            constructor = symbol_by_id.get(edge.src)
+            table = ctx.import_scopes.get(constructor.path) if constructor else None
+            if constructor is not None and table is not None and (
+                table.module_kind != MODULES_ARE_FILES
+            ):
+                bound = named_declaration_edge(edge, constructor, table)
+                if bound is not None:
+                    new_edges.append(bound)
+            continue
 
         # Dispatch by hint kind, in specificity order:
         # 1. Site 3 (inherited-field-receiver + enclosing_class) — most
@@ -1097,10 +1160,23 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
                     existing_call_pairs.add((edge.src, imported.id))
                 continue
 
+        # A bare call in a language of declared names: once the enclosing
+        # type's own members have been tried (Site 1, below), the name means
+        # a function or a type visible from the caller's file.
+        bare_name = (
+            scope is not None and scope.module_kind != MODULES_ARE_FILES
+            and not (receiver_type_hint or inherited_field_receiver or qualifier)
+            and meta.get("call_construct") != "method"
+            and not meta.get("super_receiver")
+        )
         if not (
             receiver_type_hint or inherited_field_receiver
             or enclosing_class or qualifier
         ):
+            if bare_name and scope is not None:
+                bound = named_declaration_edge(edge, src_sym, scope)
+                if bound is not None:
+                    new_edges.append(bound)
             continue
 
         # WHICH type the name means (ADR-0064). The hint is a name, and a name
@@ -1158,6 +1234,11 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             super_receiver=bool(meta.get("super_receiver")),
             member_index=member_index,
         )
+        if emitted is None and bare_name and scope is not None:
+            emitted = named_declaration_edge(edge, src_sym, scope)
+            if emitted is not None:
+                new_edges.append(emitted)
+            continue
         if emitted is not None:
             new_edges.append(emitted)
             existing_call_pairs.add((emitted.src, emitted.dst))
@@ -1169,6 +1250,67 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 # Per-Site resolvers.
 # ---------------------------------------------------------------------------
+
+
+#: Languages that write a construction as a call (``Request(url)``): a bare
+#: call there may name a TYPE. Elsewhere a type is constructed with ``new``,
+#: reported as an ``instantiates`` stub, and a bare call names a function only.
+_BARE_CALL_MAY_NAME_A_TYPE = frozenset({"kotlin"})
+
+
+def _declaration_named(
+    written: str,
+    caller: Symbol,
+    scope: ImportScope,
+    scopes: dict[str, ImportScope],
+    functions_by_name: dict[str, list[Symbol]],
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+    *,
+    functions: bool,
+    types: bool,
+) -> tuple[Symbol, str] | None:
+    """The function or type a bare name means from the caller's file, in a
+    language of declared names, and the rule that scoped it (the edge's
+    ``resolved_by``): ``type_visibility.visible_declarations`` over the
+    functions and / or the types of that name in the caller's language.
+
+    ONE declaration, or ``None``: nothing of that name is visible (a
+    library's), two packages supply it, or a function and a type share the
+    name in the scope that answers. Several declarations with one qualified
+    name and one kind of thing are one: the overloads of a function (the
+    first in its file is bound; overload selection is not made, WI-tosut) and
+    the parts of a type.
+    """
+    language = caller.language or ""
+
+    def candidates(short: str) -> list[Symbol]:
+        found: list[Symbol] = []
+        if functions:
+            found += [
+                f for f in functions_by_name.get(short, ())
+                if call_language(f.language or "") == call_language(language)
+            ]
+        if types:
+            found += [
+                class_symbols[class_id] for class_id in _same_language_class_ids(
+                    short, language, class_ids_by_name, class_symbols,
+                )
+            ]
+        return found
+
+    seen, scoped = visible_declarations(
+        written, caller.qualified_name, scope, candidates,
+        caller_path=caller.path, scopes=scopes,
+    )
+    if not seen or scoped is None:
+        return None
+    one_name = {dotted(s.qualified_name or "") for s in seen}
+    one_kind = {s.kind == "function" for s in seen}
+    if len(one_name) != 1 or len(one_kind) != 1:
+        return None
+    first = min(seen, key=lambda s: (s.path, s.span.start_line if s.span else 0, s.id))
+    return first, scoped
 
 
 def _imported_function(

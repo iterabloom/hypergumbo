@@ -1212,6 +1212,7 @@ def make_unresolved_edge(
     qualifier: Optional[str] = None,
     super_receiver: bool = False,
     stdlib_member_name: bool = False,
+    instantiates: bool = False,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -1280,6 +1281,12 @@ def make_unresolved_edge(
             ``"stdlib_member_name"`` (only when true). The single-holder
             name linker then does not bind the call to the repository's one
             declaration of that name: the library is a second holder.
+        instantiates: The site constructs a type (``new Conn()``): the stub
+            is an unresolved ``instantiates`` edge (evidence ``ast_new``)
+            whose callee is the TYPE as written. The inherited-calls linker
+            binds it to the type that name means from the caller's file,
+            through the file's import table (ADR-0064); with no table it
+            stays as it is.
     """
     # Both slots through the factory (ADR-0036 Ruling 1): the name slot folds
     # ':' to '.', so a selector, a Rust/C++ path or a PowerShell argument such
@@ -1332,11 +1339,11 @@ def make_unresolved_edge(
     return Edge.create(
         src=src_id,
         dst=dst_id,
-        edge_type="calls",
+        edge_type="instantiates" if instantiates else "calls",
         line=line,
         origin=pass_id,
         origin_run_id=run_id,
-        evidence_type="ast_call_direct",
+        evidence_type="ast_new" if instantiates else "ast_call_direct",
         is_resolved=False,
         dst_ref=dst_ref,
         meta=hint_meta or None,
