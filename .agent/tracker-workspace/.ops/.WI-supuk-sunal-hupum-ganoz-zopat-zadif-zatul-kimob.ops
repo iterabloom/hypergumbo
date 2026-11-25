@@ -1,0 +1,21 @@
+- op: create  # a121
+  at: '2026-11-25T14:34:14Z'  # a121
+  by: agent  # a121
+  actor: jgstern_agent  # a121
+  clock: 1  # a121
+  nonce: a121  # a121
+  data:  # a121
+    kind: work_item  # a121
+    title: "A call the linker deduplicates stays an unresolved edge: unresolved counts overstate what is unknown"  # a121
+    status: todo_hard  # a121
+    priority: 3  # a121
+    parent:  # a121
+    tags:  # a121
+    - analysis_quality  # a121
+    - shared_call_resolution  # a121
+    isbefore: []  # a121
+    duplicate_of: []  # a121
+    not_duplicate_of: []  # a121
+    pr_ref:  # a121
+    description: "STATEMENT: a second call from one caller to one target is not reported as an unresolved call. OBSERVED: inherited_calls, receiver_type_dispatch and single_holder_name keep one edge per (caller, target) and leave the later stubs open (call_lines are collapsed on the first). Consumers that count unresolved edges, and the pilot's own lost lists, read them as unknown (JS/TS L3 of the second round; 3 Rust artifacts). The name step had to re-derive 'answered' from the imports for this reason (e948d2ae3).\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # a121
+    fields: {}  # a121
