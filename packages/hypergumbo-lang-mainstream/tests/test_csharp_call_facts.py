@@ -88,9 +88,126 @@ def test_every_file_hands_over_its_using_table(tmp_path: Path) -> None:
         "Ints": ("System.Collections.Generic", "List"), "Root": ("Acme", "Root"),
         "Pair": ("", "(int,int)"),
     }
-    # A file with no ``using`` still hands over a table: an empty one.
-    empty = result.import_scopes[paths["B"]]
-    assert empty.wildcard_modules == () and empty.named("B") is None
+    # A file with no ``using`` still hands over a table. B is, like A, in no
+    # project, so A's ``global using`` is in scope in it, and nothing else.
+    other = result.import_scopes[paths["B"]]
+    assert other.wildcard_modules == ("Acme.Text",) and other.named("Svc") is None
+
+
+# ------------------------------------- the usings in scope in a file
+
+def _scopes(tmp_path: Path, files: dict[str, str]) -> tuple[dict[str, Any], list[str]]:
+    """Each file's table, by its path relative to the tree, and the run's warnings."""
+    result = analyze_csharp(_write(tmp_path, files))
+    return ({str(Path(k).relative_to(tmp_path)): v for k, v in result.import_scopes.items()},
+            result.run.warnings)
+
+
+def test_a_global_using_reaches_every_file_of_its_project_and_no_other(tmp_path: Path) -> None:
+    scopes, _ = _scopes(tmp_path, {
+        "App/App.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+        "App/GlobalUsings.cs": "global using App.Rendering;\nglobal using R = App.Rendering.Renderer;\n",
+        "App/Parsing/Token.cs": "using System;\nnamespace App.Parsing { class Token {} }\n",
+        "Lib/Lib.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+        "Lib/Thing.cs": "namespace Lib { class Thing {} }\n",
+    })
+    token = scopes["App/Parsing/Token.cs"]
+    # The file's own usings first, then its project's.
+    assert token.wildcard_modules == ("System", "App.Rendering")
+    assert (token.named("R").module, token.named("R").name) == ("App.Rendering", "Renderer")
+    other = scopes["Lib/Thing.cs"]
+    assert other.wildcard_modules == () and other.named("R") is None
+
+
+def test_a_file_belongs_to_the_nearest_project_above_it(tmp_path: Path) -> None:
+    scopes, _ = _scopes(tmp_path, {
+        "Outer/Outer.csproj": "<Project><ItemGroup><Using Include=\"Outer.Ns\" /></ItemGroup></Project>\n",
+        "Outer/O.cs": "global using OuterGlobal;\nclass O {}\n",
+        "Outer/Inner/Inner.csproj": "<Project><ItemGroup><Using Include=\"Inner.Ns\" /></ItemGroup></Project>\n",
+        "Outer/Inner/Deep/I.cs": "class I {}\n",
+    })
+    assert scopes["Outer/Inner/Deep/I.cs"].wildcard_modules == ("Inner.Ns",)
+    assert scopes["Outer/O.cs"].wildcard_modules == ("OuterGlobal", "Outer.Ns")
+
+
+def test_files_in_no_project_share_their_global_usings(tmp_path: Path) -> None:
+    scopes, _ = _scopes(tmp_path, {
+        "Assets/Scripts/A.cs": "global using Game.Core;\nclass A {}\n",
+        "Assets/Other/B.cs": "class B {}\n",
+        "Tool/Tool.csproj": "<Project />\n",
+        "Tool/T.cs": "class T {}\n",
+    })
+    assert scopes["Assets/Other/B.cs"].wildcard_modules == ("Game.Core",)
+    assert scopes["Tool/T.cs"].wildcard_modules == ()
+
+
+def test_msbuild_usings_of_the_project_file_and_every_directory_build_file_above(tmp_path: Path) -> None:
+    scopes, _ = _scopes(tmp_path, {
+        # Two directories above the project: read, its Remove too.
+        "Directory.Build.props": (
+            "<Project><ItemGroup>\n"
+            "  <Using Include=\"Far.Props\" />\n  <Using Include=\"Dropped.ByProject\" />\n"
+            "</ItemGroup></Project>\n"
+        ),
+        "src/Directory.Build.targets": (
+            "<Project><ItemGroup Condition=\"'$(IncludeMore)' == 'true'\">\n"
+            "  <Using Include=\"Late.Targets\" />\n  <Using Remove=\"Dropped.ByTargets\" />\n"
+            "</ItemGroup></Project>\n"
+        ),
+        "src/Proj/Proj.csproj": (
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n"
+            "  <PropertyGroup><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>\n"
+            "  <ItemGroup>\n"
+            "    <Using Include=\"Proj.Utils;Proj.Extra\" />\n"
+            "    <Using Include=\"Proj.Data.Store\" Alias=\"Db\" />\n"
+            "    <Using Include=\"Proj.Math.Helpers\" Static=\"true\" />\n"
+            "    <Using Include=\"$(RootNamespace).Hidden\" />\n"
+            "    <Using Include=\"Dropped.ByTargets\" />\n"
+            "    <Using Remove=\"Dropped.ByProject\" />\n"
+            "  </ItemGroup>\n"
+            "</Project>\n"
+        ),
+        "src/Proj/Code/C.cs": "class C {}\n",
+    })
+    scope = scopes["src/Proj/Code/C.cs"]
+    # props, then the project file, then targets; a Condition is not
+    # evaluated (the using is in scope in some build); a static using, an
+    # MSBuild property and the SDK's implicit System usings are not recorded.
+    assert scope.wildcard_modules == ("Far.Props", "Proj.Utils", "Proj.Extra", "Late.Targets")
+    assert (scope.named("Db").module, scope.named("Db").name) == ("Proj.Data", "Store")
+
+
+def test_an_old_style_project_file_in_the_msbuild_namespace_is_read(tmp_path: Path) -> None:
+    scopes, _ = _scopes(tmp_path, {
+        "P/P.csproj": (
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+            "<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n"
+            "  <ItemGroup><Using Include=\"Old.Style\" /></ItemGroup>\n</Project>\n"
+        ),
+        "P/C.cs": "class C {}\n",
+    })
+    assert scopes["P/C.cs"].wildcard_modules == ("Old.Style",)
+
+
+def test_two_project_files_in_one_directory_are_one_project(tmp_path: Path) -> None:
+    scopes, _ = _scopes(tmp_path, {
+        "P/A.csproj": "<Project><ItemGroup><Using Include=\"From.A\" /></ItemGroup></Project>\n",
+        "P/B.csproj": "<Project><ItemGroup><Using Include=\"From.B\" /></ItemGroup></Project>\n",
+        "P/C.cs": "class C {}\n",
+    })
+    assert scopes["P/C.cs"].wildcard_modules == ("From.A", "From.B")
+
+
+def test_a_project_file_that_is_not_xml_is_skipped_and_named(tmp_path: Path) -> None:
+    scopes, warnings = _scopes(tmp_path, {
+        "Directory.Build.props": "<Project><ItemGroup><Using Include=\"Still.Read\" /></ItemGroup></Project>\n",
+        "P/P.csproj": "<Project><ItemGroup><Using Include=\"Never.Read\"",
+        "P/C.cs": "class C {}\n",
+    })
+    assert scopes["P/C.cs"].wildcard_modules == ("Still.Read",)
+    assert warnings == [
+        "csharp: 1 MSBuild file(s) are not XML; their <Using> items were not read: P/P.csproj"
+    ]
 
 
 # --------------------------------------------------- explicit receivers
@@ -361,3 +478,102 @@ def test_end_to_end_an_untyped_local_stays_unresolved(tmp_path: Path) -> None:
         ),
     })
     assert _resolved(data, "Main.Run", "Execute") == []
+
+
+def test_end_to_end_a_global_using_in_another_file_of_the_project(tmp_path: Path) -> None:
+    """Serilog's shape: ``global using Serilog.Rendering;`` in GlobalUsings.cs,
+    the call in ``Serilog.Parsing`` with no using of its own. The namesake is
+    in a namespace that another project's global using brings in: it is not
+    in scope here, and a bind by name would reach it."""
+    data = _map(tmp_path, {
+        "src/Serilog/Serilog.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+        "src/Serilog/GlobalUsings.cs": "global using Serilog.Rendering;\n",
+        "src/Serilog/Rendering/MessageTemplateRenderer.cs": (
+            "namespace Serilog.Rendering;\n"
+            "static class MessageTemplateRenderer { public static void RenderTextToken(object t) {} }\n"
+            "class Casing { public void Format(object v) {} }\n"
+        ),
+        "src/Serilog/Parsing/TextToken.cs": (
+            "namespace Serilog.Parsing;\n"
+            "class TextToken {\n"
+            "    public void Render(Casing casing) {\n"
+            "        MessageTemplateRenderer.RenderTextToken(this);\n"
+            "        casing.Format(this);\n"
+            "    }\n"
+            "    public void Made() {\n"
+            "        var casing = new Casing();\n"
+            "        casing.Format(this);\n"
+            "    }\n"
+            "}\n"
+        ),
+        "test/Other/Other.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+        "test/Other/GlobalUsings.cs": "global using Decoy.Rendering;\n",
+        "test/Other/Decoy.cs": (
+            "namespace Decoy.Rendering;\n"
+            "static class MessageTemplateRenderer { public static void RenderTextToken(object t) {} }\n"
+            "class Casing { public void Format(object v) {} }\n"
+        ),
+    })
+    assert _resolved(data, "TextToken.Render", "RenderTextToken") == [
+        ("Serilog.Rendering.MessageTemplateRenderer.RenderTextToken", "qualified")]
+    assert _resolved(data, "TextToken.Render", "Format") == [
+        ("Serilog.Rendering.Casing.Format", "receiver_type")]
+    # The receiver made by ``new Casing()``: the shared pass binds the type in
+    # scope. The second edge is WRONG, and pinned here so that it is seen:
+    # ``new T()`` found by name alone (R12) binds the namesake class, and the
+    # method-call-recovery linker takes that class as the receiver's (its
+    # name agrees with the receiver_type_hint, so its step 3a keeps it).
+    assert _resolved(data, "TextToken.Made", "Format") == [
+        ("Decoy.Rendering.Casing.Format", "class_hint"),
+        ("Serilog.Rendering.Casing.Format", "receiver_type"),
+    ]
+
+
+def test_end_to_end_an_msbuild_using_of_the_project_and_of_a_conditional_targets_file(
+    tmp_path: Path,
+) -> None:
+    """Polly's shapes: ``<Using Include="Polly.Utils" />`` in Polly.Core.csproj,
+    and ``<Using Include="Polly.Timeout" />`` in a Directory.Build.targets two
+    directories up, inside a conditional ItemGroup. Each callee has a namesake
+    in a namespace no using of the caller's project names."""
+    data = _map(tmp_path, {
+        "Directory.Build.targets": (
+            "<Project>\n"
+            "  <ItemGroup Condition=\"'$(IncludePollyUsings)' == 'true'\">\n"
+            "    <Using Include=\"Polly.Timeout\" />\n"
+            "  </ItemGroup>\n"
+            "</Project>\n"
+        ),
+        "src/Polly.Core/Polly.Core.csproj": (
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n"
+            "  <ItemGroup><Using Include=\"Polly.Utils\" /></ItemGroup>\n"
+            "</Project>\n"
+        ),
+        "src/Polly.Core/Utils/Guard.cs": (
+            "namespace Polly.Utils;\n"
+            "static class Guard { public static void NotNull(object v) {} }\n"
+        ),
+        "src/Polly.Core/Timeout/TimeoutValidator.cs": (
+            "namespace Polly.Timeout;\n"
+            "static class TimeoutValidator { public static void ValidateSecondsTimeout(int s) {} }\n"
+        ),
+        "src/Polly.Core/Outcome.cs": (
+            "namespace Polly;\n"
+            "class Outcome {\n"
+            "    public void Check(object e) {\n"
+            "        Guard.NotNull(e);\n"
+            "        TimeoutValidator.ValidateSecondsTimeout(1);\n"
+            "    }\n"
+            "}\n"
+        ),
+        "src/Polly.Testing/Polly.Testing.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+        "src/Polly.Testing/Decoys.cs": (
+            "namespace Polly.Testing.Utils {\n"
+            "    static class Guard { public static void NotNull(object v) {} }\n"
+            "    static class TimeoutValidator { public static void ValidateSecondsTimeout(int s) {} }\n"
+            "}\n"
+        ),
+    })
+    assert _resolved(data, "Outcome.Check", "NotNull") == [("Polly.Utils.Guard.NotNull", "qualified")]
+    assert _resolved(data, "Outcome.Check", "ValidateSecondsTimeout") == [
+        ("Polly.Timeout.TimeoutValidator.ValidateSecondsTimeout", "qualified")]
