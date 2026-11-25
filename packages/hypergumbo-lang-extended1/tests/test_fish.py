@@ -276,3 +276,23 @@ class TestSourceEdgeEndpoints:
             (here, "fish:gone.fish:0-0:module:module", False),
             (here, "fish:$HOME/y.fish:0-0:module:module", False),
         ]
+
+
+class TestFishResolvedBy:
+    """``meta["resolved_by"]`` takes the resolver's own value (audit 0030)."""
+
+    def test_function_found_by_name_is_name(self, temp_repo: Path) -> None:
+        (temp_repo / "init.fish").write_text('''
+function setup
+    greet
+end
+
+function greet
+    echo "Hello"
+end
+''')
+        result = analyze_fish(temp_repo)
+        calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+        assert len(calls) == 1
+        assert "greet" in calls[0].dst
+        assert calls[0].meta["resolved_by"] == "name"

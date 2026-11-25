@@ -456,3 +456,24 @@ def test_a_gleam_calls_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
     assert edges
     assert [e.src for e in edges if e.src not in ids] == []
     assert any(e.dst in ids for e in edges)
+
+
+class TestGleamResolvedBy:
+    """``meta["resolved_by"]`` on a resolved call (audit 0030)."""
+
+    def test_bare_call_found_in_run_registry_is_name(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.gleam").write_text('''pub fn main() {
+  helper()
+}
+
+fn helper() {
+  1
+}
+''')
+        result = analyze_gleam(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+        assert len(calls) == 1
+        assert "helper" in calls[0].dst
+        assert calls[0].meta["resolved_by"] == "name"

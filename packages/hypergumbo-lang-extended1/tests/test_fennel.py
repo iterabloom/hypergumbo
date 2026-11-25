@@ -296,3 +296,16 @@ def test_a_fennel_calls_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None
     assert edges
     assert [e.src for e in edges if e.src not in ids] == []
     assert any(e.dst in ids for e in edges)
+
+
+class TestFennelResolvedBy:
+    """``meta["resolved_by"]`` on a resolved call (audit 0030)."""
+
+    def test_call_found_in_run_registry_is_name(self, tmp_path: Path) -> None:
+        (tmp_path / "util.fnl").write_text("(fn helper [x]\n  (+ x 1))\n")
+        (tmp_path / "main.fnl").write_text("(fn main []\n  (helper 2))\n")
+        result = analyze_fennel(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+        assert len(calls) == 1
+        assert "helper" in calls[0].dst
+        assert calls[0].meta["resolved_by"] == "name"

@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_php_file, find_files
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -372,32 +373,39 @@ _CALLER_NODE_TYPES = frozenset({"method_declaration", "function_declaration"})
 def _resolve_call(
     call_name: str, symbol_registry: dict[str, str],
     current_class: Optional[str], current_namespace: Optional[str],
-) -> Optional[str]:
-    """Resolve a call name to a symbol ID."""
+) -> tuple[Optional[str], Optional[str]]:
+    """Resolve a call name to a symbol ID and what scoped the choice
+    (a ``resolved_by`` value); ``(None, None)`` when nothing matches."""
     if call_name in symbol_registry:
-        return symbol_registry[call_name]
+        # The name as written: ``Foo::bar`` / ``ns\\f`` name their owner, a bare
+        # ``f`` is the global namespace's, found by its name.
+        written = "::" in call_name or "\\" in call_name
+        return symbol_registry[call_name], (
+            resolved_by.QUALIFIED if written else resolved_by.NAME
+        )
 
     if call_name.startswith("$this->"):
         method_name = call_name.split("->")[-1]
         if current_class:
             qualified = f"{current_class}::{method_name}"
             if qualified in symbol_registry:
-                return symbol_registry[qualified]
+                return symbol_registry[qualified], resolved_by.OWN_TYPE
 
     if "::" in call_name:
         if current_namespace:
             qualified = f"{current_namespace}\\{call_name}"
             if qualified in symbol_registry:
-                return symbol_registry[qualified]
+                return symbol_registry[qualified], resolved_by.QUALIFIED
         if call_name in symbol_registry:  # pragma: no cover
-            return symbol_registry[call_name]  # pragma: no cover
+            return symbol_registry[call_name], resolved_by.QUALIFIED  # pragma: no cover
 
     if current_namespace and "\\" not in call_name:
         qualified = f"{current_namespace}\\{call_name}"
         if qualified in symbol_registry:
-            return symbol_registry[qualified]
+            # Hack resolves an unqualified name in the current namespace.
+            return symbol_registry[qualified], resolved_by.SAME_MODULE
 
-    return None
+    return None, None
 
 
 def _extract_edges_recursive(
@@ -448,7 +456,9 @@ def _extract_edges_recursive(
                 break
 
         if call_name and not _is_builtin(call_name):
-            callee_id = _resolve_call(call_name, symbol_registry, current_class, current_namespace)
+            callee_id, _by = _resolve_call(
+                call_name, symbol_registry, current_class, current_namespace,
+            )
 
             dst_ref: Optional[ExternalRef] = None
             if callee_id:
@@ -484,6 +494,7 @@ def _extract_edges_recursive(
                 evidence_lang="hack",
                 is_resolved=callee_id is not None,
                 dst_ref=dst_ref,
+                resolved_by=_by,
             )
             edges.append(edge)
 
