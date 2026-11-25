@@ -182,6 +182,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.edge_target import in_tree_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -3169,7 +3170,7 @@ def _try_job_enqueue(
 def _extract_ruby_var_types(
     tree: "tree_sitter.Tree",
     source: bytes,
-) -> dict[str, str]:
+) -> ScopedVarTypes:
     """Extract variable-to-class-name mappings from assignment patterns.
 
     Scans for single-assignment statements where a variable is assigned
@@ -3181,14 +3182,19 @@ def _extract_ruby_var_types(
         var = ClassName.where(...)     → var has type ClassName (AR query)
 
     More generally, ``var = Constant.method(...)`` where the receiver starts
-    with an uppercase letter maps *var* → *Constant*.  Only the first
-    assignment to a variable wins (single-assignment SSA assumption
-    within a method body).
+    with an uppercase letter maps *var* → *Constant*.
 
-    Returns a dict mapping variable names to inferred class names.
+    SCOPE (INV-zabud). A binding belongs to the method (``def``, ``def
+    self.``) that makes it; the first assignment to a name IN THAT METHOD
+    wins. An assignment outside every method is seen by all of them. Ask the
+    result for the bindings a call sees: ``var_types.at(call_node)``.
     """
-    var_types: dict[str, str] = {}
+    var_types = ScopedVarTypes(remember=True)
     for node in iter_tree(tree.root_node):
+        var_types.close_scopes_before(node)
+        if node.type in ("method", "singleton_method"):
+            var_types.open_scope(node)
+            continue
         if node.type != "assignment":
             continue
         # LHS must be a simple identifier
@@ -3196,8 +3202,8 @@ def _extract_ruby_var_types(
         if lhs is None or lhs.type != "identifier":
             continue
         var_name = node_text(lhs, source)
-        if var_name in var_types:
-            continue  # first-assignment wins
+        if var_types.bound_here(var_name):
+            continue  # first assignment in this method wins
         # RHS must be a call node with a constant receiver
         rhs = node.child_by_field_name("right")
         if rhs is None or rhs.type != "call":
@@ -3446,7 +3452,7 @@ def _extract_edges_from_file(
                             # from ClassName.new / ClassName.find, resolve
                             # var.method → ClassName#method.
                             receiver_text = node_text(receiver_node, source)
-                            inferred_class = var_types.get(receiver_text)
+                            inferred_class = var_types.at(receiver_node).get(receiver_text)
                             if inferred_class is not None:
                                 # The class the variable was assigned from,
                                 # resolved as a constant written here is.
