@@ -204,19 +204,37 @@ def via_qual():
 
 
 # ---------------------------------------------------------------- javascript / typescript
-def _jsts(R, D, B, S, dl, ts):
+def _jsts(R, D, B, S, dl, ts, split=False, third=False):
     t = (lambda s: s) if ts else (lambda s: "")
     def cls(n, m, v, ext=""):
         return f"class {n}{ext} {{\n  {m}(){t(': number')} {{ return {v}; }}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
+    def helper(v):
+        return f"export function helper(){t(': number')} {{ return {v}; }}\n"
+    spare = f"class Spare {{\n  execute(){t(': number')} {{ return 2; }}\n\n  ping(){t(': number')} {{ return 2; }}\n}}\n"
     e = "ts" if ts else "js"
-    imp = "./util" if ts else "./util.js"
-    main = f"""import * as extlib from 'extlib';
-import {{ helper }} from '{imp}';
-
-{ex}
-{pg}
+    x = "" if ts else ".js"
+    side = "z" if dl else "a"
+    files = {f"util.{e}": helper(1), f"{side}_decoy.{e}": helper(2)}
+    if third:
+        files[f"{side}_spare_util.{e}"] = helper(2)
+    if split:
+        # One class per file, named by role; the decoys' files sort after
+        # (``z_``) or before (``a_``) every right file. main imports R and Child.
+        files |= {f"store.{e}": "export " + cls(R, "execute", 1), f"{side}_store.{e}": "export " + cls(D, "execute", 2),
+                  f"base.{e}": "export " + cls(B, "ping", 1),
+                  f"child.{e}": f"import {{ {B} }} from './base{x}';\n\nexport class Child extends {B} {{}}\n",
+                  f"{side}_stray.{e}": "export " + cls(S, "ping", 2)}
+        if third:
+            files[f"{side}_spare.{e}"] = "export " + spare
+        classes = f"import {{ {R} }} from './store{x}';\nimport {{ Child }} from './child{x}';\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files[f"main.{e}"] = f"""import * as extlib from 'extlib';
+import {{ helper }} from './util{x}';
+import * as util from './util{x}';
+{classes}
 function get_db(){t(': ' + R)} {{
   return new {R}();
 }}
@@ -253,19 +271,20 @@ function via_amb_param(x{t(': any')}){t(': void')} {{
 function via_import(){t(': void')} {{
   helper();
 }}
+
+function via_qual(){t(': void')} {{
+  util.helper();
+}}
 """
-    dec = ("z" if dl else "a") + f"_decoy.{e}"
-    return {f"main.{e}": main,
-            f"util.{e}": f"export function helper(){t(': number')} {{ return 1; }}\n",
-            dec: f"export function helper(){t(': number')} {{ return 2; }}\n"}
+    return files
 
 
-def js(R, D, B, S, dl):
-    return _jsts(R, D, B, S, dl, False)
+def js(R, D, B, S, dl, split=False, third=False):
+    return _jsts(R, D, B, S, dl, False, split, third)
 
 
-def ts(R, D, B, S, dl):
-    return _jsts(R, D, B, S, dl, True)
+def ts(R, D, B, S, dl, split=False, third=False):
+    return _jsts(R, D, B, S, dl, True, split, third)
 
 
 # ---------------------------------------------------------------- java
