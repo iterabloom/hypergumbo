@@ -131,7 +131,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Final, List, Literal, NewType, Optional
 
 from . import __version__
-from .axis_meta_keys import per_call_site_keys
+from .axis_meta_keys import call_family_edge_types, per_call_site_keys
 from .identity_schemes import STABLE_ID_PREFIX
 
 StableId = NewType("StableId", str)
@@ -1233,6 +1233,7 @@ class Edge:
         access_mode: Optional[str] = None,
         data_direction: Optional[str] = None,
         channel: Optional[str] = None,
+        resolved_by: Optional[str] = None,
     ) -> "Edge":
         """Create an Edge with auto-generated ID and edge_key.
 
@@ -1255,7 +1256,25 @@ class Edge:
         ``confidence``, with
         ``is_resolved=False``, or on a pathway with no seeded base raises
         ``ValueError``.
+
+        ``resolved_by`` says what scoped the choice of a call-family edge's
+        (``calls``, ``instantiates``) in-repository target, as a value
+        declared in :mod:`hypergumbo_core.resolved_by` (audit 0030); it is
+        stored in ``meta``. Every site that creates a resolved call-family
+        edge passes it. An undeclared value, another edge type, or
+        ``is_resolved=False`` raises ``ValueError``: an edge that leaves the
+        repository chose no in-repository target.
         """
+        if resolved_by is not None:
+            from hypergumbo_core.resolved_by import (
+                RESOLVED_BY_KEY, require_declared,
+            )
+            if edge_type not in call_family_edge_types() or not is_resolved:
+                raise ValueError(
+                    "resolved_by marks a resolved call-family edge; got "
+                    f"edge_type={edge_type!r}, is_resolved={is_resolved!r}"
+                )
+            meta = {**(meta or {}), RESOLVED_BY_KEY: require_declared(resolved_by)}
         if access_mode is not None and access_mode not in VALID_ACCESS_MODES:
             raise ValueError(
                 f"access_mode={access_mode!r} not in {sorted(VALID_ACCESS_MODES)}"

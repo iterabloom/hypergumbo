@@ -518,6 +518,27 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "CLASS of a field_chain receiver, which one value cannot "
                 "carry (WI-daruz). Disambiguates ``ast_call`` + "
                 "``call_construct=method`` edges."),
+    MetaKeySpec("resolved_by", AXIS_EDGE_META,
+                "What scoped the choice of a call-family edge's in-repository "
+                "target: why this declaration and not another of the same "
+                "name ('receiver_type', 'import', 'same_file', 'name', ...). "
+                "The values and the rule for choosing one are DECLARED in "
+                "``hypergumbo_core.resolved_by``; ``Edge.create`` refuses any "
+                "other. Present on a call-family edge if and only if "
+                "``Edge.is_resolved`` is true: every creation site passes it "
+                "and finalize's edge-resolution verdict removes it from an "
+                "edge that leaves the repository. It is not a grade "
+                "(``confidence``), not a candidate count (derivable from the "
+                "nodes) and not the receiver's shape (``receiver``). PER CALL "
+                "SITE: two calls from one function to one target can be bound "
+                "on different evidence. Nothing reads it to decide anything "
+                "yet; it is counted (audit-findings 0030). The older partial "
+                "spellings of the same fact -- receiver-flavoured "
+                "``evidence_type`` values, ``resolution_quality``, the outcome "
+                "half of ``receiver``, ``disambiguation_fallback`` -- are "
+                "still written and fold into this key language by language.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                per_call_site=True),
     MetaKeySpec("resolution_quality", AXIS_EDGE_META,
                 "Pathway-quality label on ``ast_call`` edges "
                 "(e.g. 'recovery', 'ambiguous'), ORTHOGONAL to "

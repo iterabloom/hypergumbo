@@ -250,7 +250,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=357,
+        line=358,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "scala", "swift", "objc"),
@@ -267,7 +267,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "parameter_arity": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py",
-        line=1255,
+        line=1276,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
         populated_by=("34 analyzers, including py.py, cpp, elixir, go and nim",),
@@ -292,7 +292,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=319,
+        line=320,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp", "go", "rust", "swift"),
@@ -322,7 +322,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=687,
+        line=689,
         anchor="_extract_csharp_return_type_name(resolved_sym.signature)",
         fact="return_type",
         note="Resolves a class from the parsed return type.",
@@ -332,7 +332,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=2277,
+        line=2297,
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
