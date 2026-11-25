@@ -272,3 +272,24 @@ def test_a_bare_call_stays_in_the_generic_or_the_plain_type_it_is_written_in() -
     other_part = _arity(_handler_with("Helper", "App.Web", "web/Handler.Helpers.cs"), 0)
     (edge,) = _link([*plain, *generic, *other_part, caller], stub, _scope())
     assert edge.dst == other_part[1].id
+
+
+# --- what counts as a type ------------------------------------------------------
+
+
+def test_every_type_like_kind_can_be_a_receivers_type() -> None:
+    """A record, an enum, an actor: a method declared on one is a method on a
+    type. The linker reads the kinds from the symbol-kind registry (plus the
+    Ruby ``module`` it always had), not from a list of its own, which had
+    left ``record`` out: a C# ``Point.Origin()`` on a record was refused."""
+    from hypergumbo_core.symbol_kinds import type_like_kind_names
+
+    caller = _caller()
+    for kind in sorted(type_like_kind_names() | {"module"}):
+        holder = [
+            _sym(kind, "Point", "App.Geo.Point", "geo/Point.cs", (1, 9)),
+            _sym("method", "Point.Origin", "App.Geo.Point.Origin", "geo/Point.cs", (3, 5)),
+        ]
+        stub = _stub(caller, "Origin", qualifier="Point")
+        edges = _link([*holder, caller], stub, _scope("App.Geo"))
+        assert [e.dst for e in edges] == [holder[1].id], kind
