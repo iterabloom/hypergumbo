@@ -30,9 +30,10 @@ with it:
   its only reachable effect is a short-name mis-bind.
 * The NEAREST binder of a name decides. A typed ``val`` outside a lambda does
   not type the lambda's same-named parameter. When the nearest binder's type
-  cannot be said, the file-wide declared map answers (see
-  ``_ScalaReceiverTyper``): the stricter reading, which refuses the map there,
-  drops many hints that are right by naming convention.
+  cannot be said, the declared map answers with what is in scope there (see
+  ``_ScalaReceiverTyper``): the enclosing functions' parameters and ``val``s,
+  class parameters, template ``val``s. A name declared only in another
+  function is not an answer (INV-zabud).
 """
 
 from __future__ import annotations
@@ -276,15 +277,15 @@ class TestDeliberatelyNotInferred:
         e = _edge(edges, 's => s.write("lambdaShadow")', "write")
         assert _hint(e) is None and _slot(e) == "external"
 
-    def test_an_untyped_binder_defers_to_the_file_wide_map(self, edges: list) -> None:
-        """PINNED: ``leaky`` here is an inferred val whose type cannot be said,
-        so the file-wide map answers from ``leakSource``'s annotated val
-        (ADR-0006 "Scope Handling"). The return-type registry neither widens
-        nor narrows that map."""
+    def test_an_untyped_val_is_not_typed_by_another_function(self, edges: list) -> None:
+        """``leaky`` in ``leakTarget`` is an inferred val whose type cannot be
+        said. ``leakSource`` annotates a ``leaky`` of its own, and that types
+        ``leakSource``'s call only (INV-zabud). Before, the file-wide map
+        answered for both."""
         control = _edge(edges, "leaky.flush()", "flush")
         assert _hint(control) == "FileWriter"
         e = _edge(edges, 'leaky.write("leakTarget")', "write")
-        assert _hint(e) == "FileWriter"
+        assert _hint(e) is None and _slot(e) == "external"
 
 
 class TestNestedTypeReference:
@@ -937,8 +938,8 @@ def _edge_case(edges: list, needle: str, callee: str):
 class TestRuleBoundaries:
     """Each rule's boundary, both sides. TYPED: the rule applies. UNTYPED: a
     pattern compares rather than binds, an annotation is authoritative, or the
-    expression names no single type. No name in this fixture is in the file-wide
-    declared map at a site asserted UNTYPED, so each such assertion tests the
+    expression names no single type. No name in this fixture is in the declared
+    map at a site asserted UNTYPED, so each such assertion tests the
     rule and not the map's fallback."""
 
     @pytest.mark.parametrize("needle,callee", [

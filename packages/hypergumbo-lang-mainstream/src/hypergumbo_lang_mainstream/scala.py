@@ -56,8 +56,8 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      ``ast_name_read`` for a field (its value).
      The explicit ``f _`` has its own emitter; both are anchored as calls are.
    - A method call's receiver is typed by :class:`_ScalaReceiverTyper`: the
-     nearest lexical binder when its type can be said, else the file-wide
-     declared map; an inferred ``val``, a call result, a chained
+     nearest lexical binder when its type can be said, else the declared
+     map of what is in scope (``ScopedVarTypes``); an inferred ``val``, a call result, a chained
      receiver, a parameterless member, ``this`` and ``asInstanceOf[T]`` are
      typed through the registry, and a ``for`` generator, a one-parameter
      lambda / ``case`` / ``_`` of an element-passing call and a ``.get`` /
@@ -209,6 +209,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     JAVA_LANG_SYSTEM_FIELDS,
@@ -2153,7 +2154,7 @@ def _element_passing_receiver(
 class _ScalaReceiverTyper:
     """The type of a receiver EXPRESSION, for one file of Pass 2 (WI-gokop).
 
-    The file-wide ``var_types`` map is filled by DECLARATIONS only, which leaves
+    The ``var_types`` map is filled by DECLARATIONS only, which leaves
     every inferred binding untyped: ``val x = mk()``, ``mk().foo()``,
     ``a.b.foo()``, ``this.foo()``, ``for (y <- ys)``, ``xs.map(z => z.foo())``.
     This class types those.
@@ -2164,17 +2165,18 @@ class _ScalaReceiverTyper:
        a name (:class:`_Binder`): a lambda parameter, a ``case`` pattern, a
        ``for`` enumerator, a parameter, a class parameter, or a ``val`` /
        ``var`` of an enclosing block or template. When that binder's type can
-       be said, it is the answer, and it beats the file-wide map. The walk
+       be said, it is the answer, and it beats the map. The walk
        stops at the nearest binder either way, so a typed ``val`` OUTSIDE a
        lambda never types the lambda's same-named parameter.
-    2. Otherwise the file-wide map answers. That is a deliberate choice, not
-       an oversight: letting an untyped binder SHADOW the map (the stricter
-       reading) drops hundreds of hints on sbt and lila that, sampled against
-       the source, are mostly right by naming convention:
-       ``{ s => s.get(k) }`` where every ``s`` in sbt is a ``State``,
-       ``threads.forEach { thread => .. }``. The map's file-wide leak (ADR-0006
-       "Scope Handling") is neither widened nor narrowed here: an INFERRED
-       binding is never written to it.
+    2. Otherwise the ``var_types`` map answers, with what is in scope where
+       the walk stands: the enclosing functions' declared parameters and
+       ``val``s, class parameters, and template ``val``s
+       (``ScopedVarTypes``, INV-zabud). An untyped binder does not hide those:
+       ``{ s => s.get(k) }`` inside ``def run(s: State)`` reads ``s`` as a
+       ``State``. A name typed only in ANOTHER function is no longer an
+       answer; before INV-zabud it was, which read every ``s`` in a file as
+       whatever one function declared its own ``s`` to be. An INFERRED binding
+       is never written to the map.
 
     TYPES. An INFERRED binding takes the type of its right-hand side, through the
     return-type registry the base analyzer aggregates from every file's
@@ -2731,7 +2733,11 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
     file_anchor = file_anchor_symbol("scala", str(file_path), PASS_ID, run_id)
-    var_types: dict[str, str] = {}
+    # Filled by declarations as the walk reaches them. A local or a parameter
+    # closes with the function that declares it (``ScopedVarTypes``,
+    # INV-zabud); a class parameter and a ``val`` of a template are bound for
+    # the file.
+    var_types = ScopedVarTypes()
     _scoped_imports = _block_scoped_imports(tree.root_node, source)
     typer = _ScalaReceiverTyper(
         source, method_return_type_registry or {}, element_registry or {}, var_types,
@@ -2851,6 +2857,7 @@ def _extract_edges_from_file(
         return target
 
     for node in iter_tree(tree.root_node):
+        var_types.close_scopes_before(node)
         if node.type == "import_declaration":
             identifiers = [child for child in node.children if child.type == "identifier"]
             if identifiers:
@@ -2867,6 +2874,7 @@ def _extract_edges_from_file(
 
         # Track param types from function definitions
         elif node.type in ("function_definition", "function_declaration"):
+            var_types.open_scope(node)
             param_types = _extract_param_types_scala(node, source)
             for pname, ptype in param_types.items():
                 var_types[pname] = ptype
@@ -2900,7 +2908,7 @@ def _extract_edges_from_file(
             pname_node = find_child_by_type(node, "identifier")
             ptype_name = _declared_type_name(node, source)
             if pname_node is not None and ptype_name is not None:
-                var_types[node_text(pname_node, source)] = ptype_name
+                var_types.bind_outer(node_text(pname_node, source), ptype_name)
 
         elif node.type == "call_expression":
             # INV-bamij: a call in no function is anchored on the template that
