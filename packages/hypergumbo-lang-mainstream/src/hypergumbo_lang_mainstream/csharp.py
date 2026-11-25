@@ -639,6 +639,19 @@ def _extract_csharp_return_type_name(signature: str | None) -> str | None:
     return returned
 
 
+def _declared_return_type(method: "Symbol") -> str | None:
+    """The type ``method``'s declaration returns, as a receiver's type.
+
+    THE ONE PLACE this analyzer reads a return type out of a rendered
+    signature (ADR-0058: the fact's home is ``Symbol.meta["return_type"]``,
+    which this analyzer does not write yet; the read is declared in
+    ``signature_axis.LEGACY_VALUE_PARSERS``). Both readers, the ``var x =
+    M()`` tracker and the receiver of a chained call ``M().N()``, go through
+    it, so the migration has one site to move.
+    """
+    return _extract_csharp_return_type_name(method.signature)
+
+
 def _track_csharp_return_type(
     resolved_sym: "Symbol",
     node: "tree_sitter.Node",
@@ -664,7 +677,7 @@ def _track_csharp_return_type(
     """
     if resolved_sym.kind != "method":
         return  # pragma: no cover - callers resolve to methods
-    ret_name = _extract_csharp_return_type_name(resolved_sym.signature)
+    ret_name = _declared_return_type(resolved_sym)
     if not ret_name:
         return
     declarator = node.parent
@@ -2349,7 +2362,7 @@ def _extract_edges_from_file(
         if receiver.type == "invocation_expression":
             called = file_target(receiver)
             if called is not None and called.kind == "method":
-                return _extract_csharp_return_type_name(called.signature)
+                return _declared_return_type(called)
         return None
 
     for node in iter_tree(tree.root_node):
