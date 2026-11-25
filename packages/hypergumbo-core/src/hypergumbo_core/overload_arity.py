@@ -179,6 +179,7 @@ def parameter_entry(
     default: bool = False,
     variadic: bool = False,
     declarator: str = "",
+    receiver: bool = False,
 ) -> dict[str, Any]:
     """One element of ``meta["parameters"]``, in the shape every producer shares.
 
@@ -188,11 +189,16 @@ def parameter_entry(
     declarator adds to ``type`` (``*``, ``&``, ``[3]``, ``(*)(int)``), its name
     removed (``analyze.c_family.c_family_parameter_declarator``); it is kept
     beside ``type``, which readers take as a type NAME, and written only when
-    there is one.
+    there is one. ``receiver`` (written only when true) marks the parameter
+    that is bound to the receiver when the callable is called on one: the
+    ``this`` parameter of a C# extension method, which ``x.F(1)`` does not
+    write among its arguments and ``Ext.F(x, 1)`` does.
     """
     entry: dict[str, Any] = {"name": name, "type": type_, "default": default}
     if variadic:
         entry["variadic"] = True
+    if receiver:
+        entry["receiver"] = True
     if declarator:
         entry["declarator"] = declarator
     return entry
@@ -215,14 +221,20 @@ class ArityBounds:
         return self.maximum is None or arg_count <= self.maximum
 
 
-def bounds_of_entries(entries: Sequence[Any]) -> Optional[ArityBounds]:
-    """Arity bounds of a ``meta["parameters"]`` list; None if it is malformed."""
+def bounds_of_entries(
+    entries: Sequence[Any], *, on_receiver: bool = False,
+) -> Optional[ArityBounds]:
+    """Arity bounds of a ``meta["parameters"]`` list; None if it is malformed.
+    ``on_receiver``: the call is written on a receiver, which supplies the
+    parameter marked ``receiver`` (``parameter_entry``): it is not counted."""
     required = 0
     total = 0
     unbounded = False
     for entry in entries:
         if not isinstance(entry, dict):
             return None
+        if on_receiver and entry.get("receiver"):
+            continue
         name = entry.get("name")
         if entry.get("variadic") or (
             isinstance(name, str) and name.startswith("*")
@@ -235,7 +247,7 @@ def bounds_of_entries(entries: Sequence[Any]) -> Optional[ArityBounds]:
     return ArityBounds(required=required, maximum=None if unbounded else total)
 
 
-def arity_bounds(symbol: "Symbol") -> Optional[ArityBounds]:
+def arity_bounds(symbol: "Symbol", *, on_receiver: bool = False) -> Optional[ArityBounds]:
     """The arity bounds a symbol declares, or None when it declares none.
 
     None is UNKNOWN, never zero: a symbol whose producer wrote no
@@ -245,22 +257,23 @@ def arity_bounds(symbol: "Symbol") -> Optional[ArityBounds]:
     entries = (symbol.meta or {}).get(PARAMETERS_KEY)
     if not isinstance(entries, list):
         return None
-    return bounds_of_entries(entries)
+    return bounds_of_entries(entries, on_receiver=on_receiver)
 
 
 def narrow_by_arity(
-    candidates: Sequence["Symbol"], arg_count: Optional[int],
+    candidates: Sequence["Symbol"], arg_count: Optional[int], *, on_receiver: bool = False,
 ) -> list["Symbol"]:
     """The candidates a call with ``arg_count`` arguments can bind to.
 
     A candidate of unknown arity is kept (it cannot be excluded), and an
-    unknown ``arg_count`` keeps every candidate.
+    unknown ``arg_count`` keeps every candidate. ``on_receiver``: the call is
+    written on a receiver (``bounds_of_entries``).
     """
     if arg_count is None:
         return list(candidates)
     kept: list["Symbol"] = []
     for cand in candidates:
-        bounds = arity_bounds(cand)
+        bounds = arity_bounds(cand, on_receiver=on_receiver)
         if bounds is None or bounds.admits(arg_count):
             kept.append(cand)
     return kept

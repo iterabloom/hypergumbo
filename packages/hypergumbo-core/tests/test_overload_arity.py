@@ -480,3 +480,16 @@ def test_node_helper_passes_the_result_type_through() -> None:
         arity=declared_arity(meta), decorators="deco", containing_stable_id=anchor,
         result_type="R",
     )
+
+
+def test_a_receiver_parameter_is_not_counted_for_a_call_on_a_receiver() -> None:
+    """A C# extension ``static void F(this T x, int a)``: ``x.F(1)`` writes one
+    argument, ``Ext.F(x, 1)`` two."""
+    entries = [parameter_entry("x", "T", receiver=True), parameter_entry("a", "int")]
+    assert entries[0]["receiver"] is True and "receiver" not in entries[1]
+    assert bounds_of_entries(entries) == ArityBounds(2, 2)
+    assert bounds_of_entries(entries, on_receiver=True) == ArityBounds(1, 1)
+    ext = _sym("F", 1, entries)
+    assert narrow_by_arity([ext], 1) == []
+    assert narrow_by_arity([ext], 1, on_receiver=True) == [ext]
+    assert narrow_by_arity([ext], 2) == [ext]
