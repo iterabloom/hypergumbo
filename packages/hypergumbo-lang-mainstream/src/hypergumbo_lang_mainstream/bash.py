@@ -90,6 +90,7 @@ from hypergumbo_core.ir import (
     Symbol,
     make_pass_id,
 )
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -1426,6 +1427,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "function"},
+                                        resolved_by=resolved_by.SAME_FILE,
                                     ))
                                 else:
                                     # Check global symbols via resolver
@@ -1441,6 +1443,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_locality": "cross_file"},
+                                            resolved_by=lookup_result.resolved_by,
                                         ))
                                     elif (
                                         cmd_name not in SHELL_BUILTINS

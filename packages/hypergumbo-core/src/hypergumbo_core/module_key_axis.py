@@ -180,7 +180,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/bash.py"
                 ),
-                line=1588,
+                line=1591,
                 anchor='module_path="redirect"',
                 note=(
                     "The SHELL'S OWN NAMESPACE for its redirection operators "
