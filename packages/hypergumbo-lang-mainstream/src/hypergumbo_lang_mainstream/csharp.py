@@ -122,6 +122,7 @@ from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, ge
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
@@ -132,6 +133,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
@@ -2011,6 +2013,7 @@ def _extract_edges_from_file(
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_construct": "method", "receiver": "field_chain"},
+                                            resolved_by=resolved_by.RECEIVER_TYPE,
                                         ))
                                         _track_csharp_return_type(
                                             local_symbols[qname], node, source,
@@ -2029,6 +2032,7 @@ def _extract_edges_from_file(
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_construct": "method", "receiver": "field_chain"},
+                                            resolved_by=resolved_by.RECEIVER_TYPE,
                                         ))
                                         _track_csharp_return_type(
                                             lookup.symbol, node, source,
@@ -2076,6 +2080,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                                    resolved_by=resolved_by.RECEIVER_TYPE,
                                 ))
                                 _track_csharp_return_type(
                                     callee, node, source, var_types, local_symbols
@@ -2096,6 +2101,7 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                                        resolved_by=resolved_by.RECEIVER_TYPE,
                                     ))
                                     _track_csharp_return_type(
                                         lookup_result.symbol, node, source,
@@ -2139,12 +2145,21 @@ def _extract_edges_from_file(
                         local_symbols.get(f"{_local_scope}.{callee_name}")
                         if _local_scope else None
                     )
+                    # ``Helper.Process()`` names its owner; a bare call found
+                    # under the enclosing type is the implicit receiver.
+                    _by = resolved_by.QUALIFIED if receiver_name else resolved_by.OWN_TYPE
                     if local_callee is None and callee_name in local_symbols:
                         _short = local_symbols[callee_name]
                         if receiver_name or not defer_bare_method_call(
                             _short.kind, _short.name, "suffix", _local_scope,
                         ):
                             local_callee = _short
+                            # The file's bare-name table, last declaration
+                            # winning: nothing but the file scoped it.
+                            _by = resolved_by_for_bare_call(
+                                _short.kind, _short.name,
+                                resolved_by.SAME_FILE, _local_scope,
+                            )
                     if local_callee is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -2155,6 +2170,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "method"},
+                            resolved_by=_by,
                         ))
                         _track_csharp_return_type(
                             local_callee, node, source, var_types, local_symbols
@@ -2213,6 +2229,10 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method"},
+                                    resolved_by=resolved_by_for_bare_call(
+                                        _sym.kind, _sym.name,
+                                        lookup_result.resolved_by, _scope_type,
+                                    ),
                                 ))
                                 _track_csharp_return_type(
                                     _sym, node, source,
