@@ -3273,10 +3273,48 @@ def _rust_use_bindings(
                 yield _MOD_DECLARED, name, f"self::{name}", tuple(_get_rust_mod_path(node, source))
 
 
+def _rust_passed_on_from_a_library(
+    file: str,
+    name: str,
+    crates: "_InTreeCrates",
+    bindings_of: "Callable[[str], list[tuple[str, str, str, tuple[str, ...]]]]",
+    declares: "Callable[[str, str], bool]",
+) -> bool:
+    """Whether ``name``, imported from ``file``, is a library's: the file
+    does not declare it but binds it with a ``use`` of a path outside the
+    tree (lib.rs's ``pub use url::Url;``), directly or through further
+    ``use`` declarations of the tree (each followed to the file it reaches,
+    as ``_rust_import_scope`` follows its own). A name the file declares
+    (also when a ``#[cfg]`` alternative of it is a library's), or gets
+    through a wildcard, is not a library's here.
+    """
+    for _ in range(8):  # a longer chain of re-exports is not code a person wrote
+        if declares(file, name):
+            return False
+        passing_on = [
+            (path, mods) for kind, local, path, mods in bindings_of(file)
+            if kind == _USE_NAME and local == name
+        ]
+        if len(passing_on) != 1:
+            return False
+        path, mods = passing_on[0]
+        located = crates.locate(file, path, len(mods))
+        if located is None:
+            head = path.lstrip(":").split("::", 1)[0]
+            return head not in ("crate", "self", "super") and head not in crates.by_name
+        file, rest, _ = located
+        if not rest:
+            return False
+        name = rest[-1]
+    return False
+
+
 def _rust_import_scope(
     bindings: "list[tuple[str, str, str, tuple[str, ...]]]",
     rel: str,
     crates: "_InTreeCrates",
+    bindings_of: "Callable[[str], list[tuple[str, str, str, tuple[str, ...]]]]",
+    declares: "Callable[[str, str], bool]",
 ) -> ImportScope:
     """What a file's imports bind, as the table the shared call-resolution
     pass reads (ADR-0064, piece b): its modules are repo-relative FILES.
@@ -3304,7 +3342,11 @@ def _rust_import_scope(
     to two different things (``mod a { use x::f; } mod b { use y::f; }``:
     the table is per file, and a guess between them is not made). A binding
     to a file that only re-exports the name (``pub use``) is recorded as
-    written: the lookup finds no declaration there.
+    written: the lookup finds no declaration there, and follows it. One
+    that the named file passes on from a LIBRARY (``use crate::Url;`` where
+    lib.rs has ``pub use url::Url;``: ``_rust_passed_on_from_a_library``,
+    which reads that file's ``use`` declarations, ``bindings_of``, and its
+    declarations, ``declares``) is a library's name and is not recorded.
     """
     # Library names are screened: no stub is made for a
     # SUPPRESSED_METHOD_NAMES name on an untyped receiver.
@@ -3326,7 +3368,9 @@ def _rust_import_scope(
         if bound.setdefault(local, binding) != binding:
             conflicted.add(local)
     for local, (file, name) in bound.items():
-        if local in conflicted:
+        if local in conflicted or (
+            name and _rust_passed_on_from_a_library(file, name, crates, bindings_of, declares)
+        ):
             continue
         if name:
             scope.add_named(file, name, alias=local)
@@ -5223,6 +5267,9 @@ class RustAnalyzer(TreeSitterAnalyzer):
     # to the linkers in ``AnalysisResult.import_scopes``; reset with
     # ``_seen_files``.
     _import_scopes: "dict[str, ImportScope] | None" = None
+    # Every file's ``use`` / ``mod`` bindings (``_rust_use_bindings``), read
+    # in the symbol pass: a file's table asks what another file passes on.
+    _use_bindings: "dict[str, list[tuple[str, str, str, tuple[str, ...]]]] | None" = None
 
     def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
         """The base two-pass analysis, with every file's import table
@@ -5244,12 +5291,15 @@ class RustAnalyzer(TreeSitterAnalyzer):
             self._method_owner = {}
             self._free_fn_return = {}
             self._import_scopes = {}
+            self._use_bindings = {}
         self._seen_files[1][rel_path] = file_path
         owners = self._method_owner if self._method_owner is not None else {}
         self._method_owner = owners
         returns = self._free_fn_return if self._free_fn_return is not None else {}
         self._free_fn_return = returns
         analysis = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        if self._use_bindings is not None:
+            self._use_bindings[rel_path] = list(_rust_use_bindings(tree.root_node, source))
         # A free function's declared return type, read from its home (the
         # file's ``method_return_types``, keyed by bare name) and kept by
         # symbol id. Two functions of one name in a file share the key, so
@@ -5405,8 +5455,15 @@ class RustAnalyzer(TreeSitterAnalyzer):
 
         # This file's import table, kept for the run's result (``analyze``),
         # and the wildcards that open a module of this same file.
-        use_bindings = list(_rust_use_bindings(tree.root_node, source))
-        import_scope = _rust_import_scope(use_bindings, rel_path, self.in_tree_crates())
+        seen_bindings = self._use_bindings or {}
+        use_bindings = seen_bindings.get(rel_path) or list(
+            _rust_use_bindings(tree.root_node, source),
+        )
+        import_scope = _rust_import_scope(
+            use_bindings, rel_path, self.in_tree_crates(),
+            lambda file: seen_bindings.get(file, []),
+            lambda file, name: any(s.path == file for s in kind_index.get(name, ())),
+        )
         if self._import_scopes is not None:
             self._import_scopes[rel_path] = import_scope
         return _extract_edges_from_file(
