@@ -376,3 +376,29 @@ def test_a_haxe_calls_edge_starts_and_ends_on_a_symbol(tmp_path: Path) -> None:
     assert edges
     assert [e.src for e in edges if e.src not in ids] == []
     assert any(e.dst in ids for e in edges)
+
+
+class TestHaxeResolvedBy:
+    """``meta["resolved_by"]`` per route of the call lookup (audit 0030)."""
+
+    def test_enclosing_class_and_name(self, tmp_path: Path) -> None:
+        make_haxe_file(tmp_path, "Main.hx", """
+class Main {
+    static function main() {
+        helper();
+        free();
+    }
+    static function helper() {
+    }
+}
+""")
+        make_haxe_file(tmp_path, "Free.hx", "function free() {}\n")
+        result = analyze_haxe(tmp_path)
+        marks = {
+            e.dst.split(":")[-2]: e.meta["resolved_by"]
+            for e in result.edges if e.edge_type == "calls" and e.is_resolved
+        }
+        # The key ``Main.helper`` is built from the enclosing class.
+        assert marks["Main.helper"] == "own_type"
+        # ``free`` is no member of Main: found by its name in the run.
+        assert marks["free"] == "name"

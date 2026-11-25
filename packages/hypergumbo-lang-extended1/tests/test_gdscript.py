@@ -381,3 +381,22 @@ class TestPreloadEdgeEndpoints:
             make_file_id("gdscript", "scripts/b.gd"),
             True,
         )]
+
+
+class TestGDScriptResolvedBy:
+    """``meta["resolved_by"]`` takes the resolver's own value (audit 0030)."""
+
+    def test_function_found_by_name_is_name(self, temp_repo: Path) -> None:
+        (temp_repo / "player.gd").write_text('''extends Node
+
+func _ready():
+    setup()
+
+func setup():
+    pass
+''')
+        result = analyze_gdscript(temp_repo)
+        calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+        assert len(calls) == 1
+        assert "setup" in calls[0].dst
+        assert calls[0].meta["resolved_by"] == "name"

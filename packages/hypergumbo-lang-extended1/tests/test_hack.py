@@ -581,3 +581,56 @@ class Greeter {
     assert kinds == ["class", "function", "method", "namespace"], kinds
     wrong = [(s.id, s.kind) for s in result.symbols if s.id.rsplit(":", 1)[1] != s.kind]
     assert wrong == []
+
+
+class TestHackResolvedBy:
+    """``meta["resolved_by"]`` per route of ``_resolve_call`` (audit 0030)."""
+
+    def test_each_route_carries_its_value(self, tmp_path: Path) -> None:
+        make_hack_file(tmp_path, "app.hack", r"""<?hh
+namespace App;
+
+class Svc {
+  public function run(): void {
+    $this->go();
+    helper();
+    Svc::make();
+    glob();
+    missing();
+  }
+  public function go(): void {}
+  public static function make(): void {}
+}
+
+function helper(): int {
+  return 42;
+}
+""")
+        make_hack_file(tmp_path, "g.hack", r"""<?hh
+function glob(): void {}
+class Top {
+  public static function st(): void {}
+}
+function user(): void {
+  Top::st();
+  App\helper();
+}
+""")
+        result = analyze_hack(tmp_path)
+        marks = {
+            (e.src.split(":")[-2], e.dst.split(":")[-2]): (e.meta or {}).get("resolved_by")
+            for e in result.edges if e.edge_type == "calls"
+        }
+        # $this->go(): the key is built from the enclosing class.
+        assert marks[("App\\Svc..run", "App\\Svc..go")] == "own_type"
+        # helper(): Hack reads an unqualified name in the current namespace.
+        assert marks[("App\\Svc..run", "App\\helper")] == "same_module"
+        # Svc::make() in namespace App: the call names its owner.
+        assert marks[("App\\Svc..run", "App\\Svc..make")] == "qualified"
+        # glob(): the global namespace's function, found by its name.
+        assert marks[("App\\Svc..run", "glob")] == "name"
+        # Top::st() and App\helper() as written are registry keys.
+        assert marks[("user", "Top..st")] == "qualified"
+        assert marks[("user", "App\\helper")] == "qualified"
+        # No target, no mark.
+        assert marks[("App\\Svc..run", "missing")] is None

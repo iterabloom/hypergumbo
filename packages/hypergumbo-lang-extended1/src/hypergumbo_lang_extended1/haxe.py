@@ -35,6 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -368,6 +369,9 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                     )
                     if caller_id:
                         callee_id = None
+                        # A hit on ``Class.name``: the key is built from the
+                        # enclosing class (the receiver, if any, is not read).
+                        _by = resolved_by.OWN_TYPE
                         if enclosing_class:
                             qualified_name = f"{enclosing_class}.{call_name}"
                             callee_sym = global_symbols.get(qualified_name)
@@ -376,6 +380,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                         if callee_id is None:
                             callee_sym = global_symbols.get(call_name)
                             callee_id = callee_sym.id if callee_sym else None
+                            _by = resolved_by.NAME
 
                         if callee_id is not None:
                             edge = Edge.create(
@@ -387,6 +392,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
                                 evidence_lang="haxe",
+                                resolved_by=_by,
                             )
                         else:
                             edge = make_unresolved_edge(

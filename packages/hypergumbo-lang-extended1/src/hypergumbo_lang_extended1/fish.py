@@ -346,6 +346,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
                             resolution_score=result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            resolved_by=result.resolved_by,
                         )
                     )
                 else:
