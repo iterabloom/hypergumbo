@@ -2,11 +2,11 @@
   "schema": 1,
   "workflow": "full-suite",
   "leg": null,
-  "commit": "5db33d7f6b88ff11a03905271f2580e17e99a9cf",
-  "pipeline": 6925,
-  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6925",
-  "finished_at": "2026-11-25T01:25:55Z",
-  "status": "failed",
+  "commit": "66038a57af8641d9647d3adab66b5a17e47917ac",
+  "pipeline": 6951,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/6951",
+  "finished_at": "2026-11-25T09:25:35Z",
+  "status": "passed",
   "steps": [
     {
       "name": "prepare-git",
@@ -38,12 +38,12 @@
     },
     {
       "name": "test-agent-infra",
-      "result": "not_passed"
+      "result": "passed"
     }
   ],
   "coverage": {
     "percent": 100.0,
-    "statements": 107960,
+    "statements": 108378,
     "missing": 0,
     "uncovered": {},
     "uncovered_truncated": false
