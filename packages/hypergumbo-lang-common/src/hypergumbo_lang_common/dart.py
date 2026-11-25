@@ -148,6 +148,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, Iterable, Iterator, Optional
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     LABEL_SEPARATOR,
     AnalysisResult,
@@ -156,6 +157,7 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     layout_free,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
@@ -1464,6 +1466,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                                resolved_by=resolved_by.RECEIVER_TYPE,
                             )
                             edges.append(edge)
                     elif not method_name:
@@ -1513,6 +1516,10 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "function"},
+                                    resolved_by=resolved_by_for_bare_call(
+                                        callee.kind, callee.name,
+                                        lookup_result.resolved_by, enclosing_type,
+                                    ),
                                 )
                                 edges.append(edge)
                         elif defer_unresolved_tie(lookup_result):
@@ -1577,6 +1584,10 @@ def _extract_edges_from_file(
                                             evidence_type="ast_call",
                                             resolution_score=lookup_result.confidence,
                                             meta={"call_construct": "method"},
+                                            resolved_by=resolved_by_for_bare_call(
+                                                callee.kind, callee.name,
+                                                lookup_result.resolved_by, enclosing_type,
+                                            ),
                                         )
                                         edges.append(edge)
                                 elif defer_unresolved_tie(lookup_result):
@@ -1611,6 +1622,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "constructor"},
+                                resolved_by=lookup_result.resolved_by,
                             )
                             edges.append(edge)
 
@@ -1651,6 +1663,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call",
                                     resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "constructor"},
+                                    resolved_by=lookup_result.resolved_by,
                                 )
                                 edges.append(edge)
                     break
