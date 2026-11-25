@@ -44,10 +44,13 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
   had the backstop's bare-name table key)
 - A per-file ``kind="file"`` pseudo-node that anchors file-level edges
 - Laravel route definitions (Route::get, Route::post, etc.)
-- Function call relationships (edges)
-- Method call relationships (edges)
-- Static method call relationships (edges)
-- Object instantiation relationships (edges)
+- Call and instantiation edges (``_extract_edges``): bound here only on
+  PHP's own evidence (``$this->m()`` / ``self::m()`` / ``static::m()`` on the
+  enclosing type's own method, found by position); every other call is an
+  unresolved stub carrying the facts its site has, which the shared linkers
+  resolve through the file's import table (ADR-0064)
+- One import table per file (``_php_uses``), handed over in
+  ``AnalysisResult.import_scopes``
 - Import relationships (edges): one ``imports`` edge per ungrouped ``use``
   clause that names a qualified path (``use A\\B, C\\D;`` gives two),
   carrying the full namespace so framework detection can match it; grouped
@@ -65,17 +68,20 @@ How It Works
    count: every .php file except those ``classify_dot_php_file`` reads as
    Hack (a ``<?hh`` header), which the Hack analyzer takes instead
 4. Three-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry, then
-     apply the ADR-0015 automatic dataflow annotation to the edges
+   - Pass 1: Parse all files, read each file's ``use`` declarations once,
+     extract its symbols
+   - Pass 2: Detect each file's calls against its own declarations (the
+     caller and the enclosing type's members, by position) and the types its
+     declarations write (``_PhpTypes``), then apply the ADR-0015 automatic
+     dataflow annotation to the edges
    - Pass 3: Extract usage contexts and emit Laravel route Symbols
-5. Detect function calls, method calls, static calls, and instantiation
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - PHP support is separate from JS/TS to keep modules focused
-- Multi-pass allows cross-file call resolution
+- Multi-pass: every symbol exists before any call is read; a call to
+  another file's declaration is resolved by the shared linkers, not here
 - Same pattern as JS/TS analyzer for consistency
 
 Population of ``is_exported`` follows PHP's default-public rule: top-level
@@ -90,24 +96,21 @@ from __future__ import annotations
 
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_php_file, find_files
+from hypergumbo_core.import_scope import ImportScope
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
-from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     find_matching_paren,
     record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
-    defer_bare_method_call,
-    resolved_by_for_bare_call,
-    defer_unresolved_tie,
     iter_tree,
     make_file_id,
     make_file_stable_id,
@@ -184,12 +187,50 @@ def _extract_use_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
 ) -> dict[str, str]:
-    r"""Extract use statements for disambiguation.
+    r"""The file's ``use`` aliases: short name to full path
+    (:func:`_php_uses`)."""
+    return _php_uses(tree, source).aliases
 
-    In PHP:
-        use Namespace\ClassName; -> ClassName maps to Namespace\ClassName
-        use Namespace\ClassName as Alias; -> Alias maps to Namespace\ClassName
-        use Namespace\{A, B as C, Sub\D}; -> A, C and D, each under the prefix
+
+@dataclass
+class _PhpUses:
+    r"""What one file's ``use`` declarations say, read in one walk.
+
+    ``aliases``: local short name to the full path as written, every kind
+    together (``use A\B;``, ``use A\B as C;``, ``use function A\f;``, ``use
+    const A\K;``, grouped forms). It is what the symbol pass reads for a base
+    class's import (``meta["base_class_imports"]``) and what an unresolved
+    bare call names as its module (the external identity a catalogue row
+    matches). A bare ``use Foo;`` is not in it.
+
+    ``scope``: the file's import table for the shared call resolution
+    (ADR-0064), in the declared-name form (``ImportScope``, namespaces): a
+    class import and a function import are ``add_named(module, name,
+    alias)``, ``use Foo;`` is ``add_named("", "Foo")``. A ``use const`` is
+    left out: nothing calls a constant. PHP's own global functions and
+    classes are not recorded: nothing in a repository is declared there.
+    The file's own namespace needs no record: the caller's qualified name
+    carries it.
+
+    ``library_names_screened`` stays False, so the single-holder name linker
+    does not run for PHP, although this analyzer marks a call whose name PHP's
+    own classes define (:data:`_PHP_LIBRARY_METHOD_NAMES`). Measured with it
+    True on two trees (grpc's PHP, koel), read in the source: of 15 calls the
+    name step bound that nothing bound before, 2 were right; of 15 it bound to
+    the target the old by-name lookup had chosen, 9. The wrong ones are calls
+    on a value a LIBRARY call returned (Laravel's ``$table->foreign('x')
+    ->references('id')->on('users')``, ``Storage::disk('s3')->put(..)``,
+    ``$response->json()``), bound to the repository's one ``on`` / ``put`` /
+    ``json``: no list of PHP's own names holds a framework's, and no stub fact
+    says that a receiver is the result of a call.
+    """
+
+    aliases: dict[str, str]
+    scope: ImportScope
+
+
+def _php_uses(tree: "tree_sitter.Tree", source: bytes) -> _PhpUses:
+    r"""Read every ``namespace_use_declaration`` of the file (:class:`_PhpUses`).
 
     THE GROUPED FORM (PHP 7.0+) IS ITS OWN SHAPE, and it registered nothing
     until INV-nuvug. tree-sitter puts the shared prefix on the declaration as a
@@ -201,12 +242,11 @@ def _extract_use_aliases(
     while the single-import spelling of the same call resolved. INV-zuvib's
     shape in rust.py.
 
-    An ungrouped clause still needs a ``qualified_name``: ``use Foo;`` names a
-    global class by itself and registers nothing, as before.
-
-    Returns a dict mapping short names to full qualified names.
+    The kind (``function``, ``const``) is the clause's ``type`` field, or the
+    declaration's for a group written ``use function A\{f, g};``.
     """
     aliases: dict[str, str] = {}
+    scope = ImportScope()
 
     for node in iter_tree(tree.root_node):
         if node.type != "namespace_use_declaration":
@@ -219,19 +259,27 @@ def _extract_use_aliases(
                 prefix = node_text(child, source)
             elif child.type == "namespace_use_group":
                 group = child
+        declared_kind = node.child_by_field_name("type")
 
         clauses = group.children if group is not None else node.children
         for clause in clauses:
             if clause.type != "namespace_use_clause":
                 continue
+            kind = clause.child_by_field_name("type") or declared_kind
             path, alias_name = _use_clause_path(clause, source, grouped=group is not None)
             if path is None:
+                bare = clause.named_children[0] if clause.named_children else None
+                if bare is not None and bare.type == "name" and kind is None:
+                    scope.add_named(module="", name=node_text(bare, source), alias=alias_name)
                 continue
             full_path = f"{prefix}\\{path}" if prefix else path
-            short_name = alias_name or full_path.rsplit("\\", 1)[-1]
+            module, _, name = full_path.rpartition("\\")
+            short_name = alias_name or name
             aliases[short_name] = full_path
+            if kind is None or kind.type == "function":
+                scope.add_named(module=module, name=name, alias=alias_name)
 
-    return aliases
+    return _PhpUses(aliases=aliases, scope=scope)
 
 
 def _use_clause_path(
@@ -488,38 +536,6 @@ def _make_php_qualified_name(
         return ns_sep.join(parts) + "::" + name
     parts.append(name)
     return ns_sep.join(parts)
-
-
-def _get_enclosing_function_php(
-    node: "tree_sitter.Node",
-    source: bytes,
-    file_path: Path,
-    global_symbols: dict[str, Symbol],
-) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method for PHP."""
-    current = node.parent
-
-    while current is not None:
-        if current.type == "function_definition":
-            name = _find_name_in_children(current, source)
-            if name and name in global_symbols:
-                sym = global_symbols[name]
-                if sym.path == str(file_path):
-                    return sym
-
-        if current.type == "method_declaration":
-            name = _find_name_in_children(current, source)
-            if name:
-                # Find enclosing class by walking up further
-                class_name = _enclosing_type_name(current, source)
-                if class_name:
-                    full_name = f"{class_name}.{name}"
-                    if full_name in global_symbols:
-                        sym = global_symbols[full_name]
-                        if sym.path == str(file_path):
-                            return sym
-        current = current.parent
-    return None  # pragma: no cover - defensive
 
 
 # The node kinds of a PHP parameter (``formal_parameters`` children). A
@@ -1171,12 +1187,15 @@ def _get_php_parser() -> Optional["tree_sitter.Parser"]:
 
 @dataclass
 class _ParsedFile:
-    """Holds parsed file data for two-pass analysis."""
+    """Holds parsed file data for two-pass analysis: the file's ``use``
+    declarations (read once) and its own symbols (the callers and the
+    members a call is bound to by position)."""
 
     path: Path
     tree: "tree_sitter.Tree"
     source: bytes
-    use_aliases: dict[str, str] = field(default_factory=dict)
+    uses: _PhpUses
+    symbols: list[Symbol]
 
 
 def _extract_modifiers_php(node: "tree_sitter.Node") -> list[str]:
@@ -1228,8 +1247,12 @@ def _extract_symbols(
     file_path: Path,
     run: AnalysisRun,
     repo_root: Optional[Path] = None,
+    use_aliases: Optional[dict[str, str]] = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed PHP tree (pass 1).
+
+    ``use_aliases``: the file's ``use`` aliases when the caller has read them
+    (:func:`_php_uses`); read here otherwise.
 
     When ``repo_root`` is provided, the file pseudo-node Symbol's ``name``
     is the repo-relative path (mirror of INV-vaguj's name-normalisation
@@ -1276,7 +1299,8 @@ def _extract_symbols(
         line_span=end_line - 1 + 1,
     )
     symbols.append(module_symbol)
-    use_aliases = _extract_use_aliases(tree, source)
+    if use_aliases is None:
+        use_aliases = _extract_use_aliases(tree, source)
 
     for node in iter_tree(tree.root_node):
         # Function declarations
@@ -1501,37 +1525,430 @@ def _extract_symbols(
     return symbols
 
 
+#: Method names PHP's own classes and interfaces define, lowercased (PHP method
+#: names are case-insensitive). A call ``$x->m()`` on a receiver of unknown
+#: type whose name is here goes out marked ``stdlib_member_name``: the library
+#: is then a second holder of the name, and the single-holder name linker does
+#: not bind it to the repository's one ``m`` (ADR-0064; that linker does not
+#: run for PHP yet, :class:`_PhpUses` says why). Sourced from the PHP
+#: manual's class references (php.net/manual/en/book.*.php), not from any
+#: repository; the groups are the manual's pages:
+_PHP_LIBRARY_METHOD_NAMES: frozenset[str] = frozenset(name.lower() for name in (
+    # Throwable, Exception, Error (language.exceptions; class.throwable)
+    "getMessage", "getCode", "getFile", "getLine", "getTrace", "getTraceAsString",
+    "getPrevious", "__toString",
+    # DateTimeInterface, DateTime, DateTimeImmutable (book.datetime)
+    "format", "getTimezone", "getOffset", "getTimestamp", "getMicrosecond", "diff",
+    "modify", "add", "sub", "setDate", "setISODate", "setTime", "setTimestamp",
+    "setMicrosecond", "setTimezone", "createFromFormat", "createFromInterface",
+    "createFromImmutable", "createFromMutable", "createFromTimestamp", "getLastErrors",
+    # DateTimeZone, DateInterval, DatePeriod (book.datetime)
+    "getName", "getLocation", "getTransitions", "listAbbreviations", "listIdentifiers",
+    "createFromDateString", "getStartDate", "getEndDate", "getDateInterval",
+    "getRecurrences",
+    # PDO, PDOStatement (book.pdo)
+    "beginTransaction", "commit", "errorCode", "errorInfo", "exec", "getAttribute",
+    "getAvailableDrivers", "inTransaction", "lastInsertId", "prepare", "query", "quote",
+    "rollBack", "setAttribute", "bindColumn", "bindParam", "bindValue", "closeCursor",
+    "columnCount", "debugDumpParams", "execute", "fetch", "fetchAll", "fetchColumn",
+    "fetchObject", "getColumnMeta", "nextRowset", "rowCount", "setFetchMode",
+    # Closure (class.closure)
+    "bind", "bindTo", "call", "fromCallable", "__invoke",
+    # ArrayAccess, Countable, IteratorAggregate, Iterator, Traversable's
+    # SeekableIterator / OuterIterator / RecursiveIterator, JsonSerializable,
+    # Serializable (reserved.interfaces; spl.interfaces)
+    "offsetExists", "offsetGet", "offsetSet", "offsetUnset", "count", "getIterator",
+    "current", "key", "next", "rewind", "valid", "seek", "getInnerIterator",
+    "hasChildren", "getChildren", "jsonSerialize", "serialize", "unserialize",
+    # Generator (class.generator)
+    "getReturn", "send", "throw",
+    # SPL data structures (spl.datastructures): SplDoublyLinkedList, SplStack,
+    # SplQueue, SplHeap, SplPriorityQueue, SplFixedArray, SplObjectStorage,
+    # ArrayObject (and ArrayIterator, the same names)
+    "bottom", "isEmpty", "pop", "push", "shift", "top", "unshift", "setIteratorMode",
+    "getIteratorMode", "enqueue", "dequeue", "compare", "extract", "insert",
+    "isCorrupted", "recoverFromCorruption", "setExtractFlags", "getExtractFlags",
+    "fromArray", "getSize", "setSize", "toArray", "addAll", "attach", "contains",
+    "detach", "getHash", "getInfo", "removeAll", "removeAllExcept", "setInfo", "append",
+    "asort", "ksort", "exchangeArray", "getArrayCopy", "getFlags", "setFlags",
+    "natcasesort", "natsort", "uasort", "uksort", "getIteratorClass", "setIteratorClass",
+    # SPL iterators (spl.iterators): FilterIterator, CachingIterator,
+    # LimitIterator, RecursiveIteratorIterator, AppendIterator, MultipleIterator
+    "accept", "hasNext", "getCache", "getPosition", "getDepth", "getSubIterator",
+    "beginChildren", "endChildren", "callHasChildren", "callGetChildren", "getMaxDepth",
+    "setMaxDepth", "getIteratorIndex", "getArrayIterator", "attachIterator",
+    "detachIterator", "containsIterator", "countIterators",
+))
+
+#: The nodes a PHP variable is scoped to. A closure (``function () use ($x)``)
+#: sees an outer variable only through its ``use`` clause; an arrow function
+#: (``fn``) sees every variable of the scope around it.
+_PHP_VARIABLE_SCOPES = frozenset({
+    "function_definition", "method_declaration", "anonymous_function", "arrow_function",
+})
+
+#: Type names PHP writes as a ``named_type`` that name no class.
+_PHP_NO_CLASS_TYPES = frozenset({"parent", "mixed", "iterable", "object", "callable"})
+
+
+def _span_key(node_or_span: object) -> tuple[int, int, int, int]:
+    """A declaration's position, from its node or its symbol's span: what
+    ties a ``function_definition`` / ``method_declaration`` to its symbol."""
+    if isinstance(node_or_span, Span):
+        return (node_or_span.start_line, node_or_span.start_col,
+                node_or_span.end_line, node_or_span.end_col)
+    node = node_or_span
+    return (node.start_point[0] + 1, node.start_point[1],  # type: ignore[attr-defined]
+            node.end_point[0] + 1, node.end_point[1])  # type: ignore[attr-defined]
+
+
+def _enclosing_container(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The type declaration (class / interface / trait / enum, or an anonymous
+    ``new class``) ``node`` is written in, found by position, or None. An
+    anonymous class is the object ``$this`` means inside it, although its
+    methods' symbols carry the enclosing named type's name."""
+    current = node.parent
+    while current is not None:
+        if current.type in _PHP_TYPE_CONTAINERS or current.type == "anonymous_class":
+            return current
+        current = current.parent
+    return None
+
+
+def _container_name(container: Optional["tree_sitter.Node"], source: bytes) -> Optional[str]:
+    """A type declaration's name; None for none and for an anonymous class."""
+    name = container.child_by_field_name("name") if container is not None else None
+    return node_text(name, source) if name is not None else None
+
+
+def _container_members(
+    container: "tree_sitter.Node", kind: str,
+) -> Iterator["tree_sitter.Node"]:
+    """The direct members of a type declaration of one node kind."""
+    body = container.child_by_field_name("body")
+    for child in body.children if body is not None else ():
+        if child.type == kind:
+            yield child
+
+
+def _own_method(
+    container: "tree_sitter.Node", name: str, source: bytes,
+) -> Optional["tree_sitter.Node"]:
+    """The method ``name`` the type declaration itself declares (PHP method
+    names are case-insensitive), or None."""
+    for method in _container_members(container, "method_declaration"):
+        declared = method.child_by_field_name("name")
+        if declared is not None and node_text(declared, source).lower() == name.lower():
+            return method
+    return None
+
+
+#: The calls and the member reads ``_PhpTypes.of`` types when they are
+#: written on ``$this``, ``self`` or ``static``.
+_PHP_MEMBER_CALLS = ("member_call_expression", "nullsafe_member_call_expression",
+                     "scoped_call_expression")
+_PHP_MEMBER_ACCESSES = ("member_access_expression", "nullsafe_member_access_expression",
+                        "scoped_property_access_expression")
+
+
+def _new_type_written(creation: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The type a ``new`` writes (``Conn``, ``\\Lib\\Conn``, ``self``), or None
+    (``new $cls``, an anonymous class)."""
+    for child in creation.children:
+        if child.type in ("name", "qualified_name"):
+            return node_text(child, source)
+    return None
+
+
+#: One write of a variable: where it ends, and either the value assigned (its
+#: type is the value's) or the declared type node (a parameter, a ``catch``);
+#: both None for a write that writes no type.
+_Write = tuple[int, Optional["tree_sitter.Node"], Optional["tree_sitter.Node"]]
+
+
+class _PhpTypes:
+    r"""What type a PHP expression has, as the file writes it: THE RULE, in
+    one place for every call site.
+
+    PHP records no type on a variable. "A variable's type is the type its
+    declaration writes", where PHP writes one:
+
+    - a parameter's declared type (a promoted constructor parameter too);
+    - ``$x = new Name(...)``: ``Name`` as written;
+    - ``$x = f(...)``, ``f`` a function of this file: its declared return
+      type; ``$x = $this->m()`` (and ``self::`` / ``static::``), ``m`` the
+      enclosing type's own method: its declared return type;
+    - ``catch (Name $e)``: ``Name`` (one type caught);
+    - ``$this->p`` / ``self::$p``: the declared type of the enclosing type's
+      property ``p`` (a typed property or a promoted constructor parameter).
+
+    A variable's type is the one its LAST write before the use gives, in the
+    variable's scope (a function, a method, a closure, an arrow function; a
+    closure looks outward only for a variable of its ``use`` clause, an arrow
+    function for any). A write that writes no type (``$x = g()`` of a function
+    this file does not declare, ``foreach``, ``list()``, ``&``, ``global``,
+    ``static``) makes the variable untyped from there on. A declared type is
+    a class name only: ``?T`` and ``T|null`` are ``T``; a union of two
+    classes, an intersection and a scalar are no type; ``self`` / ``static``
+    are the enclosing type. A ``@var`` docblock is not read.
+    """
+
+    def __init__(self, tree: "tree_sitter.Tree", source: bytes) -> None:
+        self.source = source
+        self.functions: dict[str, list["tree_sitter.Node"]] = {}
+        for node in iter_tree(tree.root_node):
+            if node.type == "function_definition":
+                name = node.child_by_field_name("name")
+                if name is not None:
+                    self.functions.setdefault(node_text(name, source).lower(), []).append(node)
+        self._writes: dict[tuple[int, str], list[_Write]] = {}
+
+    def declared(self, type_node: Optional["tree_sitter.Node"]) -> Optional[str]:
+        """The class a declared type names, as written (see the class docstring)."""
+        if type_node is None:
+            return None
+        if type_node.type == "optional_type":
+            return self.declared(type_node.named_children[-1])
+        if type_node.type in ("union_type", "type_list"):
+            named = [
+                c for c in type_node.named_children
+                if not (c.type == "primitive_type" and node_text(c, self.source) == "null")
+            ]
+            return self.declared(named[0]) if len(named) == 1 else None
+        if type_node.type != "named_type":
+            return None
+        written = node_text(type_node, self.source)
+        if written.lower() in ("self", "static"):
+            return _container_name(_enclosing_container(type_node), self.source)
+        return None if written.lower() in _PHP_NO_CLASS_TYPES else written
+
+    def returned(self, declaration: "tree_sitter.Node") -> Optional[str]:
+        """A function's or method's declared return type."""
+        return self.declared(declaration.child_by_field_name("return_type"))
+
+    def of(self, expr: "tree_sitter.Node") -> Optional[str]:
+        """The type of an expression, or None when the file does not write one."""
+        kind = expr.type
+        if kind == "parenthesized_expression" and expr.named_children:
+            return self.of(expr.named_children[0])
+        if kind == "object_creation_expression":
+            return self.constructed(expr)
+        if kind == "variable_name":
+            return self.variable(expr)
+        if kind == "function_call_expression":
+            function = expr.child_by_field_name("function")
+            if function is None or function.type != "name":
+                return None
+            declared = self.functions.get(node_text(function, self.source).lower(), [])
+            types = {self.returned(d) for d in declared}
+            return types.pop() if len(types) == 1 else None
+        if kind not in _PHP_MEMBER_CALLS and kind not in _PHP_MEMBER_ACCESSES:
+            return None
+        container = _enclosing_container(expr)
+        member = expr.child_by_field_name("name")
+        if container is None or member is None or not _on_the_enclosing_object(expr, self.source):
+            return None
+        if kind in _PHP_MEMBER_CALLS:
+            method = _own_method(container, node_text(member, self.source), self.source)
+            return self.returned(method) if method is not None else None
+        return self.property(container, node_text(member, self.source).lstrip("$"))
+
+    def constructed(self, creation: "tree_sitter.Node") -> Optional[str]:
+        """The type ``new`` names, as written; ``new self`` / ``new static``
+        the enclosing type. None for ``new parent``, ``new $cls`` and an
+        anonymous class."""
+        written = _new_type_written(creation, self.source)
+        if written is None or written.lower() == "parent":
+            return None
+        if written.lower() in ("self", "static"):
+            return _container_name(_enclosing_container(creation), self.source)
+        return written
+
+    def property(self, container: "tree_sitter.Node", name: str) -> Optional[str]:
+        """The declared type of the type declaration's own property ``name``:
+        a typed property, or a promoted constructor parameter."""
+        for declaration in _container_members(container, "property_declaration"):
+            for element in declaration.children:
+                if (element.type == "property_element"
+                        and _php_property_element_name(element, self.source) == name):
+                    return self.declared(declaration.child_by_field_name("type"))
+        constructor = _own_method(container, "__construct", self.source)
+        parameters = constructor.child_by_field_name("parameters") if constructor else None
+        for parameter in parameters.children if parameters is not None else ():
+            declared = parameter.child_by_field_name("name")
+            if (parameter.type == "property_promotion_parameter" and declared is not None
+                    and node_text(declared, self.source).lstrip("&$") == name):
+                return self.declared(parameter.child_by_field_name("type"))
+        return None
+
+    def variable(self, variable: "tree_sitter.Node") -> Optional[str]:
+        """The type of a variable where it is read (the class docstring). A
+        variable of the file's top level has none: a call there has no caller
+        and is not reported, so nothing asks."""
+        name = node_text(variable, self.source)
+        at = variable.start_byte
+        scope = _variable_scope(variable)
+        while scope is not None:
+            earlier = [w for w in self._writes_in(scope, name) if w[0] <= at]
+            if earlier:
+                _, value, typed_by = earlier[-1]
+                return self.of(value) if value is not None else self.declared(typed_by)
+            at = scope.start_byte
+            scope = _variable_scope(scope) if _sees_outer(scope, name, self.source) else None
+        return None
+
+    def _writes_in(self, scope: "tree_sitter.Node", name: str) -> list["_Write"]:
+        """Every write of ``name`` in ``scope``, in source order
+        (:data:`_Write`): its parameters, then its body, nested scopes left
+        out. The type of a write is computed only for the write a read
+        selects: a value names other variables, whose earlier writes are read
+        in turn."""
+        key = (scope.id, name)
+        if key in self._writes:
+            return self._writes[key]
+        writes: list[_Write] = []
+        parameters = scope.child_by_field_name("parameters")
+        for parameter in parameters.children if parameters is not None else ():
+            declared = parameter.child_by_field_name("name")
+            if (parameter.type in _PHP_PARAMETER_NODE_TYPES and declared is not None
+                    and node_text(declared, self.source).lstrip("&") == name):
+                typed = (None if parameter.type == "variadic_parameter"
+                         else parameter.child_by_field_name("type"))
+                writes.append((parameter.end_byte, None, typed))
+        for node in _walk_scope(scope.child_by_field_name("body")):
+            written = _write_of(node, name, self.source)
+            if written is not None:
+                writes.append(written)
+        writes.sort(key=lambda w: w[0])
+        self._writes[key] = writes
+        return writes
+
+
+def _variable_scope(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The function, method, closure or arrow function ``node`` is in."""
+    scope = node.parent
+    while scope is not None and scope.type not in _PHP_VARIABLE_SCOPES:
+        scope = scope.parent
+    return scope
+
+
+def _walk_scope(root: Optional["tree_sitter.Node"]) -> Iterator["tree_sitter.Node"]:
+    """The nodes of one variable scope, nested scopes left out."""
+    stack = [root] if root is not None else []
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(c for c in reversed(node.children) if c.type not in _PHP_VARIABLE_SCOPES)
+
+
+def _sees_outer(scope: "tree_sitter.Node", name: str, source: bytes) -> bool:
+    """Whether a variable ``name`` not written in ``scope`` is the enclosing
+    scope's: always in an arrow function, through ``use`` in a closure."""
+    if scope.type == "arrow_function":
+        return True
+    if scope.type != "anonymous_function":
+        return False
+    return any(
+        variable.type == "variable_name" and node_text(variable, source) == name
+        for clause in scope.children if clause.type == "anonymous_function_use_clause"
+        for variable in clause.children
+    )
+
+
+def _write_of(node: "tree_sitter.Node", name: str, source: bytes) -> Optional[_Write]:
+    """The write of the variable ``name`` that ``node`` is, or None."""
+    def named(child: Optional["tree_sitter.Node"]) -> bool:
+        return (child is not None and child.type == "variable_name"
+                and node_text(child, source) == name)
+
+    if node.type == "assignment_expression" and named(node.child_by_field_name("left")):
+        return (node.end_byte, node.child_by_field_name("right"), None)
+    if node.type == "catch_clause" and named(node.child_by_field_name("name")):
+        return (node.child_by_field_name("name").end_byte, None,  # type: ignore[union-attr]
+                node.child_by_field_name("type"))
+    if node.type in ("reference_assignment_expression", "augmented_assignment_expression"):
+        return (node.end_byte, None, None) if named(node.child_by_field_name("left")) else None
+    if node.type in ("list_literal", "global_declaration", "static_variable_declaration"):
+        return (node.end_byte, None, None) if any(named(c) for c in node.children) else None
+    if node.type == "foreach_statement":
+        after_as = False
+        for child in node.children:
+            after_as = after_as or child.type == "as"
+            targets = child.children if child.type == "pair" else [child]
+            if after_as and any(named(t) for t in targets):
+                return (child.end_byte, None, None)
+    return None
+
+
+def _on_the_enclosing_object(expr: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether a member access or call is written on ``$this``, ``self`` or
+    ``static``: the enclosing type's own."""
+    owner = expr.child_by_field_name("object") or expr.child_by_field_name("scope")
+    text = node_text(owner, source) if owner is not None else ""
+    if owner is not None and owner.type == "variable_name":
+        return text == "$this"
+    return owner is not None and owner.type == "relative_scope" and text.lower() in ("self", "static")
+
+
+def _enclosing_declaration(
+    node: "tree_sitter.Node", declared_at: dict[tuple[int, int, int, int], Symbol],
+) -> Optional[Symbol]:
+    """The function or method ``node`` is written in, found by position: the
+    innermost ``function_definition`` / ``method_declaration`` holding it that
+    has a symbol of this file. A closure is no caller of its own: a call in
+    one is the enclosing function's."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("function_definition", "method_declaration"):
+            symbol = declared_at.get(_span_key(current))
+            if symbol is not None:
+                return symbol
+        current = current.parent
+    return None
+
+
 def _extract_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
-    global_symbols: dict[str, Symbol],
-    global_methods: dict[str, list[Symbol]],
-    global_classes: dict[str, Symbol],
-    symbol_resolver: NameResolver | None = None,
-    method_resolver: ListNameResolver | None = None,
-    class_resolver: NameResolver | None = None,
-    use_aliases: dict[str, str] | None = None,
-    module_symbol: Symbol | None = None,
+    file_symbols: list[Symbol],
+    use_aliases: dict[str, str],
 ) -> list[Edge]:
-    """Extract edges from a parsed PHP tree (pass 2).
+    r"""Extract the call, construction and import edges of one parsed PHP file
+    (pass 2).
 
-    Uses global symbol registries to resolve cross-file references.
+    THE CALLS (ADR-0064). The analyzer binds a call itself only where PHP's
+    own evidence is in hand: ``$this->m()``, ``self::m()`` and ``static::m()``
+    whose ``m`` the enclosing type declares, the type and the method both
+    found by position in this file (``own_type``). Every other call goes out
+    as an unresolved stub carrying what the call site says, and the shared
+    linkers decide through the file's import table (:class:`_PhpUses`):
 
-    Args:
-        use_aliases: Optional dict mapping short names to full qualified names for disambiguation.
+    - ``f()``, ``\A\f()``, ``A\f()``: the callee as written, no fact (the
+      function the name means from the caller's namespace and imports; the
+      module slot keeps the ``use`` path, the external identity);
+    - ``$x->m()`` / ``$x?->m()``: ``receiver_type_hint`` when the file writes
+      the receiver's type (:class:`_PhpTypes`), else no type and
+      ``stdlib_member_name`` when PHP's own classes define ``m``;
+    - ``$this->m()`` / ``self::m()`` / ``static::m()`` that the enclosing type
+      does not declare: ``enclosing_class`` (its ancestors are walked);
+      ``parent::m()``: ``enclosing_class`` and ``super_receiver``;
+    - ``Name::m()``: ``qualifier`` as written;
+    - ``new Name()``: an ``instantiates`` stub of the type as written.
+
+    Every stub of a call on a receiver or an owner is ``call_construct=
+    "method"``, which keeps the linker from reading its name as a function's.
+    The caller is the function or method found by position
+    (:func:`_enclosing_declaration`); a bare call outside any is the file's.
     """
-    if symbol_resolver is None:  # pragma: no cover - defensive
-        symbol_resolver = NameResolver(global_symbols)
-    if method_resolver is None:  # pragma: no cover - defensive
-        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
-    if class_resolver is None:  # pragma: no cover - defensive
-        class_resolver = NameResolver(global_classes)
-    if use_aliases is None:  # pragma: no cover - defensive default
-        use_aliases = {}
+    declared_at = {
+        _span_key(s.span): s for s in file_symbols
+        if s.kind in ("function", "method") and s.span is not None
+    }
+    module_symbol = next((s for s in file_symbols if s.kind == "file"), None)
+    types = _PhpTypes(tree, source)
     edges: list[Edge] = []
-    _caller_path = str(file_path)
 
     # INV-naguv: emit an `imports` edge per `use Namespace\Class;` statement.
     # php.py previously emitted zero imports edges, so PHP framework namespaces
@@ -1560,190 +1977,93 @@ def _extract_edges(
                             origin_run_id=run.execution_id,
                         ))
 
+    def report(caller: Symbol, call: "tree_sitter.Node", callee: str, **facts: object) -> None:
+        edges.append(make_unresolved_edge(
+            "php", caller.id, callee, call.start_point[0] + 1, PASS_ID, run.execution_id,
+            **facts,  # type: ignore[arg-type]
+        ))
+
+    def own_member(
+        caller: Symbol, call: "tree_sitter.Node", container: "tree_sitter.Node",
+        method: str, on_this: bool,
+    ) -> None:
+        """``$this->m()`` (``on_this``) / ``self::m()`` / ``static::m()``: the
+        enclosing type's own ``m`` of this file, else a stub for the hierarchy
+        walk."""
+        declared = _own_method(container, method, source)
+        target = declared_at.get(_span_key(declared)) if declared is not None else None
+        if target is not None:
+            edges.append(Edge.create(
+                src=caller.id, dst=target.id, edge_type="calls",
+                line=call.start_point[0] + 1, resolution_score=1.0,
+                origin=PASS_ID, origin_run_id=run.execution_id,
+                evidence_type="ast_method_this" if on_this else "ast_static_call",
+                resolved_by=resolved_by.OWN_TYPE,
+            ))
+            return
+        report(caller, call, method, call_construct="method",
+               enclosing_class=_container_name(container, source))
+
+    def on_a_value(caller: Symbol, call: "tree_sitter.Node", receiver: "tree_sitter.Node", method: str) -> None:
+        """A call on a value: its type, if the file writes one; else the name."""
+        typed = types.of(receiver)
+        if typed is not None:
+            report(caller, call, method, call_construct="method", receiver_type_hint=typed)
+        else:
+            report(caller, call, method, call_construct="method",
+                   stdlib_member_name=method.lower() in _PHP_LIBRARY_METHOD_NAMES)
+
     for node in iter_tree(tree.root_node):
-        # Function calls: func_name()
         if node.type == "function_call_expression":
-            func_node = node.child_by_field_name("function")
-            if func_node and func_node.type == "name":
-                callee_name = node_text(func_node, source)
-                current_function = _get_enclosing_function_php(node, source, file_path, global_symbols) or module_symbol
-                if current_function:
-                    # Use use_aliases for disambiguation
-                    path_hint = use_aliases.get(callee_name)
-                    lookup_result = symbol_resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
-                    # INV-fahub: a bare ``foo()`` call that resolves ONLY via a
-                    # weak short-name suffix match to a DIFFERENT class's method
-                    # is a magnet (dozens of call sites → one arbitrary
-                    # ``SomeClass.foo``). Withhold it → honest unresolved edge
-                    # stamped with the enclosing class, so the inherited_calls
-                    # Site-1 walker can recover a genuine inherited implicit-
-                    # ``this`` call and a true cross-class magnet stays external.
-                    # Free functions and same-enclosing-class methods bind.
-                    _enclosing_type = _enclosing_type_name(node, source)
-                    _sym = lookup_result.symbol
-                    _defer = (_sym is not None and defer_bare_method_call(
-                        _sym.kind, _sym.name,
-                        lookup_result.match_type, _enclosing_type,
-                    )) or defer_unresolved_tie(lookup_result)
-                    if lookup_result.found and _sym is not None and not _defer:
-                        edge = Edge.create(
-                            src=current_function.id,
-                            dst=_sym.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_call_direct",
-                            resolved_by=resolved_by_for_bare_call(
-                                _sym.kind, _sym.name,
-                                lookup_result.resolved_by, _enclosing_type,
-                            ),
-                        )
-                        edges.append(edge)
-                    else:
-                        edges.append(make_unresolved_edge(
-                            "php", current_function.id, callee_name,
-                            node.start_point[0] + 1, PASS_ID, run.execution_id,
-                            module_hint=path_hint or "external",
-                            dst_ref=(
-                                ExternalRef(lang="php", module_path=path_hint, name=callee_name)
-                                if path_hint else None
-                            ),
-                            enclosing_class=_enclosing_type,
-                        ))
+            function = node.child_by_field_name("function")
+            caller = _enclosing_declaration(node, declared_at) or module_symbol
+            if function is None or function.type not in ("name", "qualified_name") or caller is None:
+                continue
+            callee = node_text(function, source)
+            module = use_aliases.get(callee) if function.type == "name" else None
+            report(caller, node, callee, module_hint=module or "external",
+                   dst_ref=ExternalRef(lang="php", module_path=module, name=callee) if module else None)
 
-        # Method calls: $this->method() or $obj->method()
-        elif node.type == "member_call_expression":
-            current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
-            if current_function:
-                # Get the method name
-                name_node = node.child_by_field_name("name")
-                obj_node = node.child_by_field_name("object")
-                if name_node:
-                    method_name = node_text(name_node, source)
+        elif node.type in ("member_call_expression", "nullsafe_member_call_expression"):
+            caller = _enclosing_declaration(node, declared_at)
+            name_node = node.child_by_field_name("name")
+            receiver = node.child_by_field_name("object")
+            if caller is None or name_node is None or receiver is None:
+                continue
+            if name_node.type != "name":
+                continue  # ``$x->$m()``: the method's name is a value
+            method = node_text(name_node, source)
+            container = _enclosing_container(node)
+            if receiver.type == "variable_name" and node_text(receiver, source) == "$this" and container:
+                own_member(caller, node, container, method, on_this=True)
+            else:
+                on_a_value(caller, node, receiver, method)
 
-                    # Check if it's $this->method()
-                    is_this_call = obj_node and obj_node.type == "variable_name" and node_text(obj_node, source) == "$this"
-
-                    current_class_name = _enclosing_type_name(node, source)
-                    if is_this_call and current_class_name:
-                        # Try to resolve to a method in the same class
-                        full_name = f"{current_class_name}.{method_name}"
-                        lookup_result = symbol_resolver.lookup(full_name, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                resolution_score=lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_method_this",
-                                resolved_by=resolved_by.OWN_TYPE,
-                            )
-                            edges.append(edge)
-                    else:
-                        # Try to resolve to any method with this name.
-                        # Emit only one edge to the best candidate (not all
-                        # candidates) to avoid name-collision fanout.
-                        lookup_result = method_resolver.lookup(method_name, caller_path=_caller_path)
-                        # INV-fahub: this fallback ignores the receiver's static
-                        # type — a weak (ambiguous / suffix) short-name match to a
-                        # DIFFERENT class's method is the magnet. Withhold it and
-                        # stamp the enclosing class so the inherited_calls Site-1
-                        # walker can recover a genuine inherited call; an exact
-                        # single-candidate match and same-class methods still bind.
-                        _sym = lookup_result.symbol
-                        _defer = (_sym is not None and defer_bare_method_call(
-                            _sym.kind, _sym.name,
-                            lookup_result.match_type, current_class_name,
-                        )) or defer_unresolved_tie(lookup_result)
-                        if lookup_result.found and _sym is not None and not _defer:
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=_sym.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                resolution_score=lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_method_inferred",
-                                # ``$obj->m()`` on an untyped receiver that is
-                                # not ``$this``: found by its name, whoever
-                                # owns the method.
-                                resolved_by=lookup_result.resolved_by,
-                            )
-                            edges.append(edge)
-                        else:
-                            edges.append(make_unresolved_edge(
-                                "php", current_function.id, method_name,
-                                node.start_point[0] + 1, PASS_ID, run.execution_id,
-                                enclosing_class=current_class_name,
-                            ))
-
-        # Static method calls: ClassName::method()
         elif node.type == "scoped_call_expression":
-            current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
-            if current_function:
-                scope_node = node.child_by_field_name("scope")
-                name_node = node.child_by_field_name("name")
-                if scope_node and name_node:
-                    class_name = node_text(scope_node, source)
-                    method_name = node_text(name_node, source)
+            caller = _enclosing_declaration(node, declared_at)
+            scope_node = node.child_by_field_name("scope")
+            name_node = node.child_by_field_name("name")
+            if caller is None or scope_node is None or name_node is None:
+                continue
+            method = node_text(name_node, source)
+            container = _enclosing_container(node)
+            written = node_text(scope_node, source)
+            if scope_node.type == "relative_scope" and container is not None:
+                if written.lower() == "parent":
+                    report(caller, node, method, call_construct="method", super_receiver=True,
+                           enclosing_class=_container_name(container, source))
+                else:
+                    own_member(caller, node, container, method, on_this=False)
+            elif scope_node.type in ("name", "qualified_name"):
+                report(caller, node, method, call_construct="method", qualifier=written)
+            else:
+                on_a_value(caller, node, scope_node, method)
 
-                    # Handle self:: and static::
-                    current_class_name = _enclosing_type_name(node, source)
-                    _by = resolved_by.QUALIFIED
-                    if class_name in ("self", "static") and current_class_name:
-                        class_name = current_class_name
-                        _by = resolved_by.OWN_TYPE
-
-                    # Resolve class alias if present
-                    resolved_class = use_aliases.get(class_name, class_name)
-                    full_name = f"{resolved_class}.{method_name}"
-                    path_hint = use_aliases.get(class_name)
-                    lookup_result = symbol_resolver.lookup(full_name, path_hint=path_hint, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
-                        edge = Edge.create(
-                            src=current_function.id,
-                            dst=lookup_result.symbol.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_static_call",
-                            resolved_by=_by,
-                        )
-                        edges.append(edge)
-
-        # Object instantiation: new ClassName()
         elif node.type == "object_creation_expression":
-            current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
-            if current_function:
-                # Get the class name
-                for child in node.children:
-                    if child.type == "name":
-                        class_name = node_text(child, source)
-                        # Use use_aliases for disambiguation
-                        path_hint = use_aliases.get(class_name)
-                        lookup_result = class_resolver.lookup(class_name, path_hint=path_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
-                            edge = Edge.create(
-                                src=current_function.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="instantiates",
-                                line=node.start_point[0] + 1,
-                                resolution_score=lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_new",
-                                resolved_by=lookup_result.resolved_by,
-                            )
-                            edges.append(edge)
-                        break
+            caller = _enclosing_declaration(node, declared_at)
+            written_type = _new_type_written(node, source)
+            if caller is not None and written_type and written_type.lower() not in ("self", "static", "parent"):
+                report(caller, node, written_type, instantiates=True)
 
     return edges
 
@@ -1767,29 +2087,9 @@ def _analyze_php_file(
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return [], [], False
 
-    symbols = _extract_symbols(tree, source, file_path, run)
-    use_aliases = _extract_use_aliases(tree, source)
-
-    # Build symbol registry for edge extraction
-    global_symbols: dict[str, Symbol] = {}
-    global_methods: dict[str, list[Symbol]] = {}
-    global_classes: dict[str, Symbol] = {}
-
-    for sym in symbols:
-        global_symbols[sym.name] = sym
-        if sym.kind == "method":
-            # Extract just the method name (after the dot)
-            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            if method_name not in global_methods:
-                global_methods[method_name] = []
-            global_methods[method_name].append(sym)
-        elif sym.kind == "class":
-            global_classes[sym.name] = sym
-
-    edges = _extract_edges(
-        tree, source, file_path, run, global_symbols, global_methods, global_classes,
-        use_aliases=use_aliases,
-    )
+    uses = _php_uses(tree, source)
+    symbols = _extract_symbols(tree, source, file_path, run, use_aliases=uses.aliases)
+    edges = _extract_edges(tree, source, file_path, run, symbols, uses.aliases)
     return symbols, edges, True
 
 
@@ -1798,8 +2098,8 @@ class PHPAnalyzer(TreeSitterAnalyzer):
 
     Overrides ``analyze()`` because PHP uses a custom ``_get_php_parser()``
     helper (which selects the ``language_php`` sub-grammar), a three-pass
-    structure (symbols, edges, usage contexts), and per-file use-alias
-    extraction.
+    structure (symbols, edges, usage contexts), and a per-file import table
+    (``_php_uses``).
     """
 
     lang = "php"
@@ -1852,11 +2152,13 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 source = file_path.read_bytes()
                 tree = parser.parse(source)
                 record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
-                use_aliases = _extract_use_aliases(tree, source)
+                uses = _php_uses(tree, source)
+                symbols = _extract_symbols(
+                    tree, source, file_path, run, repo_root=repo_root, use_aliases=uses.aliases,
+                )
                 parsed_files.append(_ParsedFile(
-                    path=file_path, tree=tree, source=source, use_aliases=use_aliases
+                    path=file_path, tree=tree, source=source, uses=uses, symbols=symbols,
                 ))
-                symbols = _extract_symbols(tree, source, file_path, run, repo_root=repo_root)
                 all_symbols.extend(symbols)
                 files_analyzed += 1
             except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
@@ -1866,43 +2168,10 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                     f"{type(e).__name__}: {e}",
                 )
 
-        # Build global symbol registries
-        global_symbols: dict[str, Symbol] = {}
-        global_methods: dict[str, list[Symbol]] = {}
-        global_classes: dict[str, Symbol] = {}
-
-        for sym in all_symbols:
-            global_symbols[sym.name] = sym
-            if sym.kind == "method":
-                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-                if method_name not in global_methods:
-                    global_methods[method_name] = []
-                global_methods[method_name].append(sym)
-            elif sym.kind == "class":
-                global_classes[sym.name] = sym
-
-        # Pass 2: Extract edges using global symbol registry
-        symbol_resolver = NameResolver(global_symbols)
-        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
-        class_resolver = NameResolver(global_classes)
+        # Pass 2: Extract edges, each file with its own declarations and imports
         all_edges: list[Edge] = []
         for pf in parsed_files:
-            # INV-kokaj: look up the file pseudo-node by its new
-            # canonical name (the repo-relative path the Pass 1 emitter
-            # stamped). Fall back to absolute path for repo_root-less
-            # callers (legacy single-file analysis).
-            try:
-                pf_name = str(pf.path.relative_to(repo_root))
-            except ValueError:  # pragma: no cover - defensive
-                pf_name = str(pf.path)
-            file_mod_sym = global_symbols.get(pf_name)
-            edges = _extract_edges(
-                pf.tree, pf.source, pf.path, run,
-                global_symbols, global_methods, global_classes,
-                symbol_resolver, method_resolver, class_resolver,
-                use_aliases=pf.use_aliases,
-                module_symbol=file_mod_sym,
-            )
+            edges = _extract_edges(pf.tree, pf.source, pf.path, run, pf.symbols, pf.uses.aliases)
             # ADR-0015 Tier 1: automatic dataflow annotation
             if _df_config is not None:
                 annotate_dataflow(edges, pf.tree, pf.source, _df_config)
@@ -1924,6 +2193,8 @@ class PHPAnalyzer(TreeSitterAnalyzer):
             edges=all_edges,
             usage_contexts=all_usage_contexts,
             run=run,
+            # ADR-0064: each file's import table, keyed like ``Symbol.path``.
+            import_scopes={str(pf.path): pf.uses.scope for pf in parsed_files},
         )
 
 

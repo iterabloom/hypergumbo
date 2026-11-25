@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for PHP analyzer."""
+import json
 import pytest
 import sys
 from pathlib import Path
 from unittest.mock import patch
+from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX
 
 
@@ -371,10 +373,14 @@ class StaticClass {
         result = analyze_php(tmp_path)
 
         assert result.run is not None
-        # Should have a call edge
+        # ``StaticClass::helper()`` names its owner: the analyzer reports the
+        # owner as written and the inherited-calls linker binds it through the
+        # file's table (ADR-0064; end to end in test_php_call_facts.py). It
+        # used to bind it here by the class's bare name in a run-wide table.
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        assert len(call_edges) >= 1
-        assert any(e.evidence_type == "ast_static_call" for e in call_edges)
+        assert [(e.is_resolved, e.meta["qualifier"], e.meta["callee_name"]) for e in call_edges] == [
+            (False, "StaticClass", "helper"),
+        ]
 
     def test_self_static_call(self, tmp_path: Path) -> None:
         """Detects self:: and static:: calls."""
@@ -452,13 +458,14 @@ class Caller {
         result = analyze_php(tmp_path)
 
         assert result.run is not None
-        # Should have inferred method call edge
+        # ``$service`` has no declared type: the call is reported with no type
+        # and bound by nobody. It used to be bound to the repository's one
+        # ``doWork`` by its name alone (ADR-0064: unresolved beats a guess).
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        assert len(call_edges) >= 1
-        # Inferred calls have lower confidence
-        inferred = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
-        assert len(inferred) >= 1
-        assert inferred[0].confidence < 0.9  # Lower confidence for inferred
+        assert [(e.is_resolved, e.meta["callee_name"], e.meta.get("call_construct"),
+                 e.meta.get("receiver_type_hint")) for e in call_edges] == [
+            (False, "doWork", "method", None),
+        ]
 
 
 class TestPhpInferredMethodNoFanout:
@@ -574,8 +581,6 @@ class Factory {
 
     def test_cross_file_static_call(self, tmp_path: Path) -> None:
         """Resolves static method calls across files."""
-        from hypergumbo_lang_mainstream.php import analyze_php
-
         (tmp_path / "Helper.php").write_text("""<?php
 class Helper {
     public static function format($s) {
@@ -592,13 +597,19 @@ class User {
 }
 ?>""")
 
-        result = analyze_php(tmp_path)
+        out = tmp_path.parent / f"{tmp_path.name}-out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
 
-        assert result.run is not None
-        # Should have cross-file static call edge
-        call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        static_calls = [e for e in call_edges if e.evidence_type == "ast_static_call"]
-        assert len(static_calls) >= 1
+        # ``Helper::format()`` names its owner; the inherited-calls linker binds
+        # it to ``Helper::format`` in the other file through the caller's
+        # table (ADR-0064), marked ``qualified``.
+        nodes = {n["id"]: n for n in data["nodes"]}
+        bound = [
+            (nodes[e["src"]]["name"], nodes[e["dst"]]["name"], e["meta"]["resolved_by"])
+            for e in data["edges"] if e["type"] == "calls" and e.get("is_resolved")
+        ]
+        assert ("User.display", "Helper.format", "qualified") in bound
 
 
 class TestUseAliasExtraction:
@@ -2223,10 +2234,15 @@ enum E: int { private const EC = 1; case One = 1; }
 
 
 class TestPhpBareMethodMagnetGate:
-    """INV-fahub: a bare / receiver-typeless call that resolves only via a weak
-    short-name match to a DIFFERENT class's method must be WITHHELD (deferred to
-    the inherited_calls Site-1 walker), not confidently bound to an arbitrary
-    same-named def in an unrelated class."""
+    """INV-fahub: a bare / receiver-typeless call is never bound to an arbitrary
+    same-named def in an unrelated class.
+
+    ADR-0064 settles it at the root: the analyzer binds nothing by name. A bare
+    ``f()`` in PHP is a FUNCTION call (PHP has no implicit ``$this``), so its
+    stub carries no ``enclosing_class``; a call on an untyped receiver carries
+    no type and no enclosing class (it is not a call on ``$this``). Before,
+    both were stamped ``enclosing_class`` for the inherited-calls walk, and a
+    bare call was bound to a method of the enclosing class."""
 
     def _method_sym_id(self, result, qualified_name):
         for s in result.symbols:
@@ -2238,9 +2254,8 @@ class TestPhpBareMethodMagnetGate:
     def test_bare_function_call_does_not_bind_cross_class_method(
         self, tmp_path: Path,
     ) -> None:
-        """Path 1 (function_call_expression): bare ``fetch()`` inside Controller
-        must NOT bind is_resolved=True to Repository.fetch via a weak suffix
-        match; it must emit an unresolved edge stamped with the enclosing class."""
+        """Bare ``fetch()`` inside Controller is a function call: not bound to
+        Repository.fetch, and reported with no enclosing class."""
         from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "app.php").write_text("""<?php
@@ -2258,32 +2273,21 @@ class Controller {
         result = analyze_php(tmp_path)
 
         repo_fetch_id = self._method_sym_id(result, "Repository.fetch")
-        # No resolved calls edge should point at the unrelated method.
         misbinds = [
             e for e in result.edges
             if e.edge_type == "calls" and e.is_resolved and e.dst == repo_fetch_id
         ]
         assert not misbinds, f"magnet misbind to Repository.fetch: {misbinds}"
 
-        # Instead: an unresolved edge for the bare fetch() call, carrying the
-        # enclosing class so Site-1 can recover a genuine inherited call.
-        deferred = [
-            e for e in result.edges
-            if e.edge_type == "calls" and not e.is_resolved
-            and "fetch" in e.dst
-            and (e.meta or {}).get("enclosing_class") == "Controller"
-        ]
-        assert deferred, (
-            "expected a withheld fetch() edge with enclosing_class=Controller: "
-            f"{[(e.dst, e.is_resolved, e.meta) for e in result.edges]}"
-        )
+        (stub,) = [e for e in result.edges if e.edge_type == "calls"]
+        assert (stub.is_resolved, stub.meta["callee_name"]) == (False, "fetch")
+        assert "enclosing_class" not in stub.meta
 
     def test_receiver_call_does_not_bind_weak_cross_class_method(
         self, tmp_path: Path,
     ) -> None:
-        """Path 2 ($obj->method() fallback): a receiver-typeless call resolving
-        to an AMBIGUOUS (2-candidate) cross-class method must be withheld, not
-        bound @0.60 to the arbitrary sorted-first candidate."""
+        """``$unknown->process()`` with two holders of ``process``: reported
+        with no type and no enclosing class (``$unknown`` is not ``$this``)."""
         from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "svc.php").write_text("""<?php
@@ -2305,29 +2309,18 @@ class Handler {
 ?>""")
         result = analyze_php(tmp_path)
 
-        # No ast_method_inferred edge should have bound the ambiguous call.
-        inferred = [
-            e for e in result.edges
-            if e.evidence_type == "ast_method_inferred" and "process" in e.dst
-        ]
-        assert not inferred, f"ambiguous magnet bound: {inferred}"
-
-        deferred = [
-            e for e in result.edges
-            if e.edge_type == "calls" and not e.is_resolved
-            and "process" in e.dst
-            and (e.meta or {}).get("enclosing_class") == "Handler"
-        ]
-        assert deferred, (
-            "expected a withheld process() edge with enclosing_class=Handler: "
-            f"{[(e.dst, e.is_resolved, e.meta) for e in result.edges]}"
+        (stub,) = [e for e in result.edges if e.edge_type == "calls"]
+        assert (stub.is_resolved, stub.meta["callee_name"], stub.meta["call_construct"]) == (
+            False, "process", "method",
         )
+        assert "enclosing_class" not in stub.meta
+        assert "receiver_type_hint" not in stub.meta
 
-    def test_bare_function_call_same_class_still_binds(
+    def test_bare_function_call_is_not_the_enclosing_class_method(
         self, tmp_path: Path,
     ) -> None:
-        """A bare call whose weak suffix match lands on the SAME enclosing
-        class's method (implicit ``this``) still binds directly."""
+        """``paint()`` written inside ``Widget`` calls a FUNCTION ``paint``:
+        PHP has no implicit ``$this``. It used to be bound to ``Widget.paint``."""
         from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "same.php").write_text("""<?php
@@ -2342,21 +2335,14 @@ class Widget {
 ?>""")
         result = analyze_php(tmp_path)
 
-        paint_id = self._method_sym_id(result, "Widget.paint")
-        bound = [
-            e for e in result.edges
-            if e.edge_type == "calls" and e.is_resolved and e.dst == paint_id
-        ]
-        assert bound, (
-            "same-class bare call should still bind: "
-            f"{[(e.dst, e.is_resolved) for e in result.edges]}"
-        )
+        (stub,) = [e for e in result.edges if e.edge_type == "calls"]
+        assert (stub.is_resolved, stub.meta["callee_name"]) == (False, "paint")
+        assert "enclosing_class" not in stub.meta
 
     def test_free_function_still_binds(self, tmp_path: Path) -> None:
-        """A bare call to a free function (non-method) still binds directly —
-        the gate defers only method-kind cross-class magnets."""
-        from hypergumbo_lang_mainstream.php import analyze_php
-
+        """A bare call to a free function binds, now in the inherited-calls
+        linker through the file's table: the function of the caller's own
+        (here the global) namespace, marked ``same_module``."""
         (tmp_path / "free.php").write_text("""<?php
 function helper() {
     return 42;
@@ -2367,21 +2353,15 @@ class Controller {
     }
 }
 ?>""")
-        result = analyze_php(tmp_path)
-
-        helper_id = None
-        for s in result.symbols:
-            if s.kind == "function" and s.name == "helper":
-                helper_id = s.id
-        assert helper_id is not None
+        out = tmp_path.parent / f"{tmp_path.name}-out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+        nodes = {n["id"]: n for n in data["nodes"]}
         bound = [
-            e for e in result.edges
-            if e.edge_type == "calls" and e.is_resolved and e.dst == helper_id
+            (nodes[e["src"]]["name"], nodes[e["dst"]]["name"], e["meta"]["resolved_by"])
+            for e in data["edges"] if e["type"] == "calls" and e.get("is_resolved")
         ]
-        assert bound, (
-            "free-function bare call should still bind: "
-            f"{[(e.dst, e.is_resolved) for e in result.edges]}"
-        )
+        assert bound == [("Controller.index", "helper", "same_module")]
 
 
 class TestPhpTypeContainerEmission:
@@ -2482,8 +2462,11 @@ enum E2 {
 
         result = analyze_php(tmp_path)
         names = {s.id: s.name for s in result.symbols}
+        # A bound edge names its target; a stub (``helper()``, ``new Widget``,
+        # which the linkers bind, ADR-0064) names its callee as written.
         pairs = {
-            (names.get(e.src), names.get(e.dst), e.edge_type) for e in result.edges
+            (names.get(e.src), names.get(e.dst) or e.meta["callee_name"], e.edge_type)
+            for e in result.edges if e.edge_type in ("calls", "instantiates")
         }
 
         for expected in (
