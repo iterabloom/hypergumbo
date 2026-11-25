@@ -992,15 +992,16 @@ def ruby(R, D, B, S, dl, split=False, third=False):
     if third:
         files[f"{side}_spare_util.rb"] = "def helper\n  2\nend\n"
     if split:
-        # One class per file, loaded with ``require_relative``; main loads the
-        # right classes only. Decoy files carry the ``z_`` / ``a_`` prefix.
+        # One class per file, loaded with ``require_relative``; main loads R,
+        # D (``scope_decoy_local`` names it) and Child, never S or Spare. Decoy
+        # files carry the ``z_`` / ``a_`` prefix.
         files |= {"store.rb": cls(R, "execute", 1), f"{side}_store.rb": cls(D, "execute", 2),
                   "base.rb": cls(B, "ping", 1),
                   "child.rb": f"require_relative 'base'\n\nclass Child < {B}\nend\n",
                   f"{side}_stray.rb": cls(S, "ping", 2)}
         if third:
             files[f"{side}_spare.rb"] = spare
-        classes = "require_relative 'store'\nrequire_relative 'child'\n"
+        classes = f"require_relative 'store'\nrequire_relative '{side}_store'\nrequire_relative 'child'\n"
     else:
         ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
         pg = order(dl, cls(B, "ping", 1) + f"\nclass Child < {B}\nend\n", cls(S, "ping", 2))
