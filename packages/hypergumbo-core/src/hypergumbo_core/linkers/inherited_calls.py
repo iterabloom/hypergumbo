@@ -1620,15 +1620,10 @@ def _resolve_site2(
     )
     methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
 
-    # Step 1: direct method on the type.
-    for type_class_id in type_class_ids:
-        direct = methods_by_class.get(type_class_id)
-        if direct is None:
-            continue
-        if (edge.src, direct.id) in existing_call_pairs:  # pragma: no cover
-            return None
+    def declared_on_the_type(member: Symbol, type_class_id: str) -> Edge:
+        """The call bound to a member the type itself declares (steps 1, 2b)."""
         return Edge.create(
-            src=edge.src, dst=direct.id, edge_type="calls",
+            src=edge.src, dst=member.id, edge_type="calls",
             line=edge.line, confidence=_SITE_2_DIRECT_CONFIDENCE,
             origin=PASS_ID, origin_run_id=run.execution_id,
             evidence_type="ast_call_type_inferred",
@@ -1636,6 +1631,15 @@ def _resolve_site2(
             derived_from=[edge.id, type_class_id],
             resolved_by=scoped_by,
         )
+
+    # Step 1: direct method on the type.
+    for type_class_id in type_class_ids:
+        direct = methods_by_class.get(type_class_id)
+        if direct is None:
+            continue
+        if (edge.src, direct.id) in existing_call_pairs:  # pragma: no cover
+            return None
+        return declared_on_the_type(direct, type_class_id)
 
     # Step 2: MRO walk (requires a registered walker).
     if walker is not None:
@@ -1673,15 +1677,7 @@ def _resolve_site2(
         for type_class_id in type_class_ids:
             member = members.get(type_class_id)
             if member is not None and (edge.src, member.id) not in existing_call_pairs:
-                return Edge.create(
-                    src=edge.src, dst=member.id, edge_type="calls",
-                    line=edge.line, confidence=_SITE_2_DIRECT_CONFIDENCE,
-                    origin=PASS_ID, origin_run_id=run.execution_id,
-                    evidence_type="ast_call_type_inferred",
-                    is_resolved=True,
-                    derived_from=[edge.id, type_class_id],
-                    resolved_by=scoped_by,
-                )
+                return declared_on_the_type(member, type_class_id)
 
     # Step 3: the method is nowhere on the type's chain (an external base's,
     # or one the walk cannot see). The call stays unresolved; a language in
