@@ -1,0 +1,21 @@
+- op: create  # 6002
+  at: '2026-11-25T19:11:33Z'  # 6002
+  by: agent  # 6002
+  actor: jgstern_agent  # 6002
+  clock: 1  # 6002
+  nonce: '6002'  # 6002
+  data:  # 6002
+    kind: work_item  # 6002
+    title: "Batch 5a adapters (java, kotlin, php): the call routes left as they were"  # 6002
+    status: todo_hard  # 6002
+    priority: 3  # 6002
+    parent:  # 6002
+    tags:  # 6002
+    - analysis_quality  # 6002
+    - shared_call_resolution  # 6002
+    isbefore: []  # 6002
+    duplicate_of: []  # 6002
+    not_duplicate_of: []  # 6002
+    pr_ref:  # 6002
+    description: "STATEMENT: the call routes the batch 5a adapters left as they were are each either built or decided against. OBSERVED (from the three reports, sections NOT DONE): Java: this(..) and super(..) constructor calls get no edge and no stub; a bare call to a member of a lexically enclosing type is left to the hierarchy walk, which visits the inner type's ancestors only; receiver hints drop type arguments. Kotlin: super<Base>.m() is treated as super.m(); this.ext() on an extension of the enclosing type is not routed to receiver-type dispatch; a nullable declared type (Socket?) types nothing; a variable initialised by an imported member that an object declares both as a property and as a function (TlsUtil.localhost) is not typed. PHP: new self / new static / new parent emit nothing; a member call or a new at the top level of a file has no caller and emits nothing; @var docblocks and instanceof narrowing are not read; the shared lookup compares names case-sensitively while PHP's class and function names are case-insensitive. No count was taken for any of these.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 6002
+    fields: {}  # 6002
