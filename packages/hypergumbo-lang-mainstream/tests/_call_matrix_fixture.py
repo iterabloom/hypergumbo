@@ -1054,17 +1054,38 @@ end
 def php(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, ext=""):
         return f"class {n}{ext}\n{{\n    public function {m}()\n    {{\n        return {v};\n    }}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"\nclass Child extends {B}\n{{\n}}\n", cls(S, "ping", 2))
-    main = f"""<?php
+    spare = ("class Spare\n{\n    public function execute()\n    {\n        return 2;\n    }\n\n"
+             "    public function ping()\n    {\n        return 2;\n    }\n}\n")
+    side = "z" if dl else "a"
+
+    def helper_file(ns, v):
+        return f"<?php\n\nnamespace {ns};\n\nfunction helper()\n{{\n    return {v};\n}}\n"
+    files = {"util.php": helper_file("Util", 1), f"{side}decoy.php": helper_file(f"{side.upper()}Decoy", 2)}
+    if third:
+        files[f"{side}_spare_util.php"] = helper_file(f"{side.upper()}SpareUtil", 2)
+    if split:
+        # One class per file, all in namespace App, loaded with ``require_once``;
+        # main loads the right classes only. Decoy files carry the ``z_`` /
+        # ``a_`` prefix.
+        app = "<?php\n\nnamespace App;\n\n"
+        files |= {"store.php": app + cls(R, "execute", 1), f"{side}_store.php": app + cls(D, "execute", 2),
+                  "base.php": app + cls(B, "ping", 1),
+                  "child.php": app + f"require_once __DIR__ . '/base.php';\n\nclass Child extends {B}\n{{\n}}\n",
+                  f"{side}_stray.php": app + cls(S, "ping", 2)}
+        if third:
+            files[f"{side}_spare.php"] = app + spare
+        classes = "\nrequire_once __DIR__ . '/store.php';\nrequire_once __DIR__ . '/child.php';\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"\nclass Child extends {B}\n{{\n}}\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["main.php"] = f"""<?php
 
 namespace App;
 
 use ExtLib\\Factory;
 use function Util\\helper;
-
-{ex}
-{pg}
+{classes}
 function get_db(): {R}
 {{
     return new {R}();
@@ -1109,11 +1130,13 @@ function via_import()
 {{
     helper();
 }}
+
+function via_qual()
+{{
+    \\Util\\helper();
+}}
 """
-    dec = ("ZDecoy" if dl else "ADecoy")
-    return {"main.php": main,
-            "util.php": "<?php\n\nnamespace Util;\n\nfunction helper()\n{\n    return 1;\n}\n",
-            f"{dec.lower()}.php": f"<?php\n\nnamespace {dec};\n\nfunction helper()\n{{\n    return 2;\n}}\n"}
+    return files
 
 
 # ---------------------------------------------------------------- groovy
