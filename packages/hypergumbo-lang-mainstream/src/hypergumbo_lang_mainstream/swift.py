@@ -200,6 +200,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, NamedTuple,
 
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
     constructed_from_callee,
@@ -212,6 +213,7 @@ from hypergumbo_core.analyze.base import (
     labelled_parameter,
     layout_free,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     file_anchor_symbol,
     enclosing_declared_symbol,
@@ -3449,9 +3451,16 @@ def _extract_edges_from_file(
                     # stands.
                     _is_init_call = has_receiver and callee_name == "init"
                     _init_choice = None
+                    _init_by = resolved_by.QUALIFIED  # ``T.init``: the type named
                     if _is_init_call:
                         _owner, _built = _init_owner(node)
                         _receiver = _swift_nav_receiver(node, source)
+                        if _receiver is not None and (
+                            _receiver.type in ("self_expression", "super_expression")
+                            or node_text(_receiver, source) == "Self"
+                        ):
+                            # The enclosing type, or its superclass.
+                            _init_by = resolved_by.OWN_TYPE
                         _init_choice = _choose_init(
                             _owner, node, _built,
                             delegating_from=(
@@ -3476,12 +3485,19 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             meta=_init_meta,
+                            resolved_by=_init_by,
                         ))
                         resolved = True
 
                     # Try type-qualified resolution (receiver type tracking)
                     if receiver_hint and not resolved and not _is_init_call:
-                        type_name = _type_of(receiver_hint, node) or receiver_hint
+                        _hint_type = _type_of(receiver_hint, node)
+                        type_name = _hint_type or receiver_hint
+                        # A typed receiver; else the hint is the type named.
+                        _typed_by = (
+                            resolved_by.RECEIVER_TYPE if _hint_type
+                            else resolved_by.QUALIFIED
+                        )
                         # WI-mofil: a declared type keeps its spelling
                         # (``Result<Success, Failure>``); symbols are keyed by
                         # the bare name, as the module slot strips it.
@@ -3514,6 +3530,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=_typed_by,
                             ))
                             resolved = True
                         elif (
@@ -3533,6 +3550,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=_typed_by,
                             ))
                             resolved = True
 
@@ -3647,11 +3665,17 @@ def _extract_edges_from_file(
                     # which keeps one ``T`` per name. A type local to a
                     # function the call is not in is out of scope.
                     _local_callee: Symbol | None = None
+                    _local_by = resolved_by.SAME_FILE
                     if not resolved:
                         _local_callee = local_symbols.get(callee_name)
                         if _local_callee is not None and _local_callee.id in local_types:
                             _local_callee = None
-                        _local_callee = _lexical_type(callee_name, node) or _local_callee
+                        _local_callee = (
+                            _lexical := _lexical_type(callee_name, node)
+                        ) or _local_callee
+                        if _lexical is not None:
+                            # The type the call's position sees.
+                            _local_by = resolved_by.LEXICAL_SCOPE
                     if _local_callee is not None:
                         # Swift keys ``local_symbols`` by full name (``Type.method``),
                         # so a bare short name resolves here only to a same-file
@@ -3675,6 +3699,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             meta=_meta,
+                            resolved_by=_local_by,
                         ))
                         resolved = True
 
@@ -3710,6 +3735,15 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta=_meta,
+                                # A local type the lookup found is swapped for
+                                # the last top-level type of the name: ``name``.
+                                resolved_by=resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.resolved_by
+                                    if _sym is lookup_result.symbol
+                                    else resolved_by.NAME,
+                                    _enclosing_type,
+                                ),
                             ))
                         else:
                             edges.append(make_unresolved_edge(
