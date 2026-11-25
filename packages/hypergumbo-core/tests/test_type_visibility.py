@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from hypergumbo_core.import_scope import ImportScope
 from hypergumbo_core.ir import Span, Symbol
-from hypergumbo_core.type_visibility import dotted, visible_types
+from hypergumbo_core import type_visibility
+from hypergumbo_core.type_visibility import dotted
 
 
 def _type(qualified_name: str | None, name: str = "", path: str = "a.cs") -> Symbol:
@@ -23,6 +24,14 @@ def _scope(*usings: str, aliases: dict[str, tuple[str, str]] | None = None) -> I
     for local, (module, name) in (aliases or {}).items():
         scope.add_named(module, name, alias=local)
     return scope
+
+
+def visible_types(written: str, caller: str | None, scope: ImportScope,
+                  candidates: list[Symbol], caller_path: str | None = None) -> list[Symbol] | None:
+    """The function under test, with its candidate lookup made from a list."""
+    def named(short: str) -> list[Symbol]:
+        return [c for c in candidates if c.name == short]
+    return type_visibility.visible_types(written, caller, scope, named, caller_path=caller_path)
 
 
 def _names(found: list[Symbol] | None) -> list[str] | None:
@@ -118,3 +127,68 @@ def test_the_type_arguments_written_are_counted_at_the_top_level() -> None:
     assert written_arity("Policy<int>") == 1
     assert written_arity("Map<string, List<int>>") == 2
     assert written_arity("A.B.Triple<X, Func<Y, Z>, W>") == 3
+
+
+# --- languages whose imports name files -------------------------------------------
+
+
+def _file_type(name: str, path: str) -> Symbol:
+    return Symbol(
+        id=f"typescript:{path}:1-2:{name}:class", name=name, kind="class",
+        language="typescript", path=path, span=Span(1, 2, 0, 0),
+    )
+
+
+def _file_scope() -> ImportScope:
+    from hypergumbo_core.import_scope import MODULES_ARE_FILES
+
+    return ImportScope(module_kind=MODULES_ARE_FILES)
+
+
+def _paths(found: list[Symbol] | None) -> list[str] | None:
+    return None if found is None else sorted(s.path for s in found)
+
+
+def test_a_declaration_of_the_callers_own_file_answers_first() -> None:
+    conns = [_file_type("Conn", "src/main.ts"), _file_type("Conn", "src/db.ts")]
+    scope = _file_scope()
+    scope.add_named("src/db.ts", "Conn")
+    assert _paths(visible_types("Conn", None, scope, conns, caller_path="src/main.ts")) == ["src/main.ts"]
+
+
+def test_an_imported_name_is_the_declaration_in_the_file_the_import_names() -> None:
+    conns = [_file_type("Conn", "src/db.ts"), _file_type("Conn", "legacy/db.ts")]
+    scope = _file_scope()
+    scope.add_named("src/db.ts", "Conn")
+    assert _paths(visible_types("Conn", None, scope, conns, caller_path="src/main.ts")) == ["src/db.ts"]
+
+
+def test_an_import_alias_is_looked_up_by_the_original_name() -> None:
+    """``import {Conn as C} from './db'``: no class is called ``C``."""
+    conns = [_file_type("Conn", "src/db.ts"), _file_type("C", "other/c.ts")]
+    scope = _file_scope()
+    scope.add_named("src/db.ts", "Conn", alias="C")
+    assert _paths(visible_types("C", None, scope, conns, caller_path="src/main.ts")) == ["src/db.ts"]
+
+
+def test_a_name_reached_through_a_namespace_binding() -> None:
+    """``import * as db from './db'`` then ``db.Conn``; Rust ``use crate::db;``
+    then ``db::Conn``."""
+    conns = [_file_type("Conn", "src/db.ts"), _file_type("Conn", "legacy/db.ts")]
+    scope = _file_scope()
+    scope.add_namespace("src/db.ts", "db")
+    assert _paths(visible_types("db.Conn", None, scope, conns, caller_path="src/main.ts")) == ["src/db.ts"]
+    assert _paths(visible_types("db::Conn", None, scope, conns, caller_path="src/main.ts")) == ["src/db.ts"]
+    # An unknown qualifier, and a path deeper than one member, name nothing here.
+    assert visible_types("other.Conn", None, scope, conns, caller_path="src/main.ts") == []
+    assert visible_types("db.inner.Conn", None, scope, conns, caller_path="src/main.ts") == []
+
+
+def test_a_name_no_import_binds_is_not_a_type_of_the_repository_here() -> None:
+    """A global, a library type, or a name re-exported through a file that
+    does not declare it: nothing, however many namesakes exist."""
+    conns = [_file_type("Conn", "legacy/db.ts"), _file_type("Conn", "src/db.ts")]
+    assert visible_types("Conn", None, _file_scope(), conns, caller_path="src/main.ts") == []
+    reexport = _file_scope()
+    reexport.add_named("src/index.ts", "Conn")
+    assert visible_types("Conn", None, reexport, conns, caller_path="src/main.ts") == []

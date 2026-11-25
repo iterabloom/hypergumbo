@@ -1149,13 +1149,16 @@ def _type_meant(
     tie). ``None`` when visibility cannot judge (a candidate with no
     qualified name): the caller falls back to the name lookup.
     """
-    short = dotted(written.split("<", 1)[0]).rpartition(".")[2].strip()
-    candidates = [
-        class_symbols[class_id] for class_id in _same_language_class_ids(
-            short, caller.language or "", class_ids_by_name, class_symbols,
-        )
-    ]
-    seen = visible_types(written, caller.qualified_name, scope, candidates)
+    def types_named(short: str) -> list[Symbol]:
+        return [
+            class_symbols[class_id] for class_id in _same_language_class_ids(
+                short, caller.language or "", class_ids_by_name, class_symbols,
+            )
+        ]
+
+    seen = visible_types(
+        written, caller.qualified_name, scope, types_named, caller_path=caller.path,
+    )
     if seen is None:
         return None
     seen = _of_arity(seen, written_arity(written))

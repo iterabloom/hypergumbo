@@ -381,3 +381,52 @@ def test_a_member_is_bound_only_where_the_type_is_settled() -> None:
     holder = _type_with_member("field", "Sleep")
     caller = _caller()
     assert _link([*holder, caller], _stub(caller, "Sleep", receiver_type_hint="Clock"), None) == []
+
+
+# --- an alias names a type whose own name is different ----------------------------
+
+
+def test_a_receiver_typed_by_an_alias_reaches_the_aliased_type() -> None:
+    """``using Svc = App.Db.Conn;`` and a receiver declared ``Svc``: the type
+    is ``Conn``. The candidates are found by the ALIASED name, not by the
+    alias, which no class is called."""
+    conn = _type_with_method("App.Db", "Conn", "Execute", "db/Conn.cs")
+    namesake = _type_with_method("Legacy", "Conn", "Execute", "legacy/Conn.cs")
+    scope = _scope()
+    scope.add_named("App.Db", "Conn", alias="Svc")
+    caller = _caller()
+    (edge,) = _link([*conn, *namesake, caller], _stub(caller, "Execute", receiver_type_hint="Svc"), scope)
+    assert edge.dst == conn[1].id
+
+
+# --- a language whose imports name files ------------------------------------------
+
+
+def test_a_typed_receiver_follows_a_named_import_to_its_file() -> None:
+    """TypeScript-shaped: two classes ``Conn`` in two files, no namespaces.
+    The caller's file imports one of them; by name the two were a tie."""
+    from hypergumbo_core.import_scope import MODULES_ARE_FILES
+
+    def ts(kind: str, name: str, path: str, lines: tuple[int, int]) -> Symbol:
+        return Symbol(
+            id=f"typescript:{path}:{lines[0]}-{lines[1]}:{name}:{kind}", name=name, kind=kind,
+            language="typescript", path=path,
+            span=Span(start_line=lines[0], end_line=lines[1], start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+        )
+
+    wanted = [ts("class", "Conn", "src/db.ts", (1, 9)), ts("method", "Conn.execute", "src/db.ts", (3, 5))]
+    namesake = [ts("class", "Conn", "legacy/db.ts", (1, 9)), ts("method", "Conn.execute", "legacy/db.ts", (3, 5))]
+    caller = ts("function", "run", "src/main.ts", (10, 20))
+    stub = make_unresolved_edge(
+        "typescript", caller.id, "execute", 12, "test-pass", "test-run", receiver_type_hint="Conn",
+    )
+    symbols = [*wanted, *namesake, caller]
+    assert link_inherited_calls(LinkerContext(repo_root=Path("/"), symbols=symbols, edges=[stub])).edges == []
+    scope = ImportScope(module_kind=MODULES_ARE_FILES)
+    scope.add_named("src/db.ts", "Conn")
+    ctx = LinkerContext(repo_root=Path("/"), symbols=symbols, edges=[stub],
+                        import_scopes={"src/main.ts": scope})
+    (edge,) = link_inherited_calls(ctx).edges
+    assert edge.dst == wanted[1].id
+    assert edge.meta["resolved_by"] == "receiver_type"
