@@ -222,6 +222,7 @@ from hypergumbo_core.overload_arity import (
     nested_qualified_name, node_declared_arity_stable_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.c_family import (
     c_family_array_declarator, c_family_declarator, c_family_declares_local,
     c_family_file_scope_variables, c_family_is_value_operand, c_family_parameter_list, c_family_parameters,
@@ -237,6 +238,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
@@ -1698,7 +1700,7 @@ def _try_instantiation_edge(
     edges: list[Edge],
     run: AnalysisRun,
     choose: Callable[[Symbol, "tree_sitter.Node"], Optional[OverloadChoice]],
-) -> Optional[Symbol]:
+) -> Optional[tuple[Symbol, str]]:
     """Emit an instantiates edge if type_name resolves to a known symbol.
 
     Checks local symbols first (an exact match: the pathway base), then
@@ -1713,16 +1715,22 @@ def _try_instantiation_edge(
     several constructors take the count, the edge lands on their class, so
     the walk reaches all of them; an ambiguous record on the name's pick is
     kept only when the class has no symbol.
-    Returns the symbol the edge lands on, None when it draws none.
+    Returns the symbol the edge lands on and the edge's ``resolved_by``
+    (what scoped the choice of the class: ``ns::T`` names its owner, a bare
+    name is the file's table or the repository's), None when it draws none.
     """
     score: Optional[float] = None
     if type_name in local_symbols:
         target = local_symbols[type_name]
+        _by = resolved_by.SAME_FILE
     else:
         lookup_result = resolver.lookup(type_name)
         if not lookup_result.found or lookup_result.symbol is None:
             return None
         target, score = lookup_result.symbol, lookup_result.confidence
+        _by = lookup_result.resolved_by
+    if "::" in type_name:
+        _by = resolved_by.QUALIFIED
     meta: Optional[dict[str, Any]] = None
     choice = choose(target, node)
     if choice is not None and choice.symbol is not None:
@@ -1753,8 +1761,9 @@ def _try_instantiation_edge(
         origin=PASS_ID,
         origin_run_id=run.execution_id,
         meta=meta,
+        resolved_by=_by,
     ))
-    return target
+    return target, _by
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -2312,13 +2321,14 @@ def _extract_edges_from_tree(
 
     def construct(
         caller: Symbol, cls: Symbol, arity: Optional[int],
-        node: "tree_sitter.Node", evidence_type: str,
+        node: "tree_sitter.Node", evidence_type: str, by: str,
     ) -> None:
         """A construction of ``cls`` passing ``arity`` arguments also gets an
         ``instantiates`` edge to the ONE constructor that count admits, at the
         same line, so it reaches that constructor rather than every one
         (``construction._CHOSEN_INITIALIZER_LANGUAGES``). None or several
-        admitting it: no edge, and the construction reaches them all."""
+        admitting it: no edge, and the construction reaches them all. ``by``
+        is what chose ``cls``: the constructor is chosen within it."""
         if cls.kind not in ("class", "struct") or arity is None:
             return
         short = cls.name.rsplit("::", 1)[-1]
@@ -2335,6 +2345,7 @@ def _extract_edges_from_tree(
             evidence_type=evidence_type,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            resolved_by=by,
         ))
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -2472,8 +2483,8 @@ def _extract_edges_from_tree(
                 )
                 if _made_target is not None:
                     construct(
-                        current_function, _made_target, _cpp_call_arity(node),
-                        node, "ast_new",
+                        current_function, _made_target[0], _cpp_call_arity(node),
+                        node, "ast_new", _made_target[1],
                     )
             if current_function is not None and not (
                 current_function is file_anchor and c_family_is_not_a_call(node)
@@ -2505,6 +2516,13 @@ def _extract_edges_from_tree(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "receiver": "field_chain"},
+                                        # The hint is the receiver's resolved
+                                        # TYPE: a hint match is that type's.
+                                        resolved_by=(
+                                            resolved_by.RECEIVER_TYPE
+                                            if lookup.resolved_by == resolved_by.IMPORT
+                                            else lookup.resolved_by
+                                        ),
                                     ))
                                     chain_resolved = True
 
@@ -2553,6 +2571,7 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "receiver": "declared_type"},
+                                resolved_by=resolved_by.RECEIVER_TYPE,
                             ))
                             chain_resolved = True
                         elif _receiver_sym is not None and _receiver_sym.kind in ("class", "struct"):
@@ -2597,9 +2616,16 @@ def _extract_edges_from_tree(
                     # before short name to avoid collisions when multiple classes
                     # define the same method name.
                     _local_callee = None
+                    _local_by = resolved_by.SAME_FILE
                     if not chain_resolved and not explicit:
                         if path_hint and f"{path_hint}::{short_name}" in local_symbols:
                             _local_callee = local_symbols[f"{path_hint}::{short_name}"]
+                            # ``ns::f()`` names its owner; a bare call's
+                            # hint is the enclosing class.
+                            _local_by = (
+                                resolved_by.QUALIFIED if "::" in callee_name
+                                else resolved_by.OWN_TYPE
+                            )
                         elif short_name in local_symbols:
                             _local_callee = local_symbols[short_name]
                     if _local_callee is not None:
@@ -2624,6 +2650,7 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta=_local_meta,
+                            resolved_by=_local_by,
                         ))
                     # Check global symbols via resolver
                     elif not chain_resolved:
@@ -2659,6 +2686,17 @@ def _extract_edges_from_tree(
                         # claim in the meta that no consumer can audit. Absent
                         # means unknown, which is what this branch actually has.
                         _unresolved_construct = "method" if is_member_call else None
+                        # The hint is the namespace the call names, matched
+                        # in a key or (nearness) a path, or the enclosing
+                        # class of a bare call, which the bare-call rule below
+                        # turns into own_type when the pick is its method.
+                        _resolver_by = (
+                            lookup_result.resolved_by
+                            if lookup_result.resolved_by != resolved_by.IMPORT
+                            # resolved_by: closest fit, see report
+                            else resolved_by.QUALIFIED if "::" in callee_name
+                            else resolved_by.NAME
+                        )
                         _sym = lookup_result.symbol
                         _arity_factor = 1.0
                         _arity_meta: dict[str, str] = {}
@@ -2701,6 +2739,10 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "function", **_arity_meta},
+                                resolved_by=resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name, _resolver_by,
+                                    _enclosing_type, separator="::",
+                                ) if "::" not in callee_name else _resolver_by,
                             ))
                         else:
                             # WI-rupik / WI-mafik: associate the unresolved
@@ -2812,6 +2854,7 @@ def _extract_edges_from_tree(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="function_pointer_arg",
+                                    resolved_by=cb_lookup.resolved_by,
                                 ))
 
             stamp_io_mode_from_call(
@@ -2846,8 +2889,8 @@ def _extract_edges_from_tree(
                     )
                     if _new_target is not None:
                         construct(
-                            current_function, _new_target, _cpp_call_arity(node),
-                            node, "ast_new",
+                            current_function, _new_target[0], _cpp_call_arity(node),
+                            node, "ast_new", _new_target[1],
                         )
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
@@ -2875,6 +2918,12 @@ def _extract_edges_from_tree(
                         type_name, local_symbols, global_symbols, resolver,
                     )
                     if target is not None:
+                        # The file's table first, then the repository's.
+                        _by = (
+                            resolved_by.SAME_FILE
+                            if local_symbols.get(type_name) is target
+                            else resolved_by.NAME
+                        )
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=target.id,
@@ -2883,12 +2932,13 @@ def _extract_edges_from_tree(
                             evidence_type="stack_construction",
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            resolved_by=_by,
                         ))
                         for _declarator in node.children_by_field_name("declarator"):
                             construct(
                                 current_function, target,
                                 _cpp_declarator_arity(_declarator),
-                                node, "stack_construction",
+                                node, "stack_construction", _by,
                             )
 
         # Compound literal expression: Widget{42} as expression
@@ -2901,6 +2951,11 @@ def _extract_edges_from_tree(
                         type_name, local_symbols, global_symbols, resolver,
                     )
                     if target is not None:
+                        _by = (
+                            resolved_by.SAME_FILE
+                            if local_symbols.get(type_name) is target
+                            else resolved_by.NAME
+                        )
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=target.id,
@@ -2909,12 +2964,13 @@ def _extract_edges_from_tree(
                             evidence_type="stack_construction",
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            resolved_by=_by,
                         ))
                         _literal = node.child_by_field_name("value")
                         construct(
                             current_function, target,
                             _cpp_argument_count(_literal) if _literal is not None else None,
-                            node, "stack_construction",
+                            node, "stack_construction", _by,
                         )
 
         # Explicit function pointer: &process or &Class::method
