@@ -141,7 +141,7 @@ from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..import_scope import ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..type_visibility import dotted, visible_types
+from ..type_visibility import dotted, visible_types, written_arity
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
     LinkerActivation,
@@ -1088,10 +1088,29 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 _NOT_BOUND: list[str] = ["<not bound>"]
 
 
+def _type_arity(symbol: Symbol) -> int | None:
+    """How many type parameters the declaration takes, when its producer says
+    (``meta["type_arity"]``); ``None`` when it does not."""
+    arity = (symbol.meta or {}).get("type_arity")
+    return arity if isinstance(arity, int) else None
+
+
+def _of_arity(found: list[Symbol], arity: int | None) -> list[Symbol]:
+    """``found`` narrowed to the declarations that take ``arity`` type
+    parameters. Unchanged when ``arity`` is not known or any declaration does
+    not record its own: an absent count is not a zero."""
+    if arity is None or any(_type_arity(s) is None for s in found):
+        return found
+    return [s for s in found if _type_arity(s) == arity]
+
+
 def _one_type(found: list[Symbol]) -> list[str] | None:
     """The ids of ``found`` when they are declarations of ONE type (a type
     declared in several files, a C# partial class, has several declarations
-    and one qualified name); ``None`` when they are different types."""
+    and one qualified name); ``None`` when they are different types. The
+    caller has already narrowed ``found`` to one arity (``_of_arity``), which
+    is what keeps ``Policy`` and ``Policy<TResult>`` apart: they share the
+    qualified name."""
     if len({dotted(s.qualified_name or "") for s in found}) != 1:
         return None
     return [s.id for s in found]
@@ -1122,6 +1141,7 @@ def _type_meant(
     seen = visible_types(written, caller.qualified_name, scope, candidates)
     if seen is None:
         return None
+    seen = _of_arity(seen, written_arity(written))
     return (_one_type(seen) if seen else None) or _NOT_BOUND
 
 
@@ -1143,7 +1163,19 @@ def _enclosing_type_ids(
     ]
     if not owner or any(not c.qualified_name for c in candidates):
         return None
-    return [c.id for c in candidates if dotted(c.qualified_name or "") == owner] or None
+    parts = [c for c in candidates if dotted(c.qualified_name or "") == owner]
+    # A generic type and its non-generic namesake share the qualified name.
+    # The caller is written inside one of them: that declaration's arity says
+    # which type the others must be parts of.
+    line = caller.span.start_line if caller.span else 0
+    around = [
+        c for c in parts
+        if c.path == caller.path and c.span is not None
+        and c.span.start_line <= line <= c.span.end_line
+    ]
+    if len(around) == 1:
+        parts = _of_arity(parts, _type_arity(around[0]))
+    return [c.id for c in parts] or None
 
 
 def _same_language_class_ids(

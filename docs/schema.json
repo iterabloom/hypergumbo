@@ -1262,6 +1262,9 @@
             "test_dialect": {
               "description": "Test framework dialect on test Symbols (e.g. 'robot'). Fold residue per audit-findings 0006."
             },
+            "type_arity": {
+              "description": "Type Symbols (class, struct, interface, record): how many type parameters the declaration takes, 0 for a non-generic one. A generic type and a non-generic one of the same name (``Policy`` and ``Policy<TResult>``) share ``name`` and ``qualified_name`` and are different types; with this key the inherited-calls linker tells them apart and still treats the several declarations of one partial type as one (ADR-0064). Written as 0, never omitted, by a producer that writes it at all: an absent key means the producer does not say, and the declarations are then told apart by name only."
+            },
             "virtual": {
               "description": "True on virtual / abstract method Symbols. Distinct from ``override`` (a virtual method may or may not also override)."
             },

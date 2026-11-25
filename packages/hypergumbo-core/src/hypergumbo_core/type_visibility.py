@@ -33,6 +33,9 @@ it did before.
 
 WHAT THIS DOES NOT DO. It does not find candidates: the caller supplies the
 declarations that share the short name, of the kinds and language it wants.
+It does not tell a generic type from a non-generic one of the same name
+(``Policy`` and ``Policy<TResult>`` have one qualified name): the caller
+does, with ``written_arity`` and what its declarations record.
 It does not know path-based modules (a JavaScript or Rust import names a
 file, not a namespace); that half of piece (a) arrives with those adapters.
 Inherited nested types (a type nested in a base class, visible in the
@@ -64,6 +67,26 @@ def _written_name(written: str) -> tuple[str, bool]:
     name = written.split("<", 1)[0].strip()
     rooted = name.startswith(_GLOBAL_ROOT)
     return dotted(name[len(_GLOBAL_ROOT):] if rooted else name), rooted
+
+
+def written_arity(written: str) -> int:
+    """How many type arguments ``written`` carries: 0 for ``Policy``, 1 for
+    ``Policy<int>``, 2 for ``Map<string, List<int>>`` (commas inside a nested
+    argument list are not counted)."""
+    start = written.find("<")
+    if start < 0:
+        return 0
+    depth, count = 0, 1
+    for char in written[start:]:
+        if char == "<":
+            depth += 1
+        elif char == ">":
+            depth -= 1
+            if depth == 0:
+                break
+        elif char == "," and depth == 1:
+            count += 1
+    return count
 
 
 def _enclosing_scopes(caller_qualified_name: str | None) -> list[str]:

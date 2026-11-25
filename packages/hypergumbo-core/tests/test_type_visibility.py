@@ -109,3 +109,12 @@ def test_a_caller_with_no_qualified_name_sees_the_global_namespace_and_the_using
 
 def test_separators_are_one() -> None:
     assert dotted("a::b::C") == dotted("\\a\\b\\C") == "a.b.C"
+
+
+def test_the_type_arguments_written_are_counted_at_the_top_level() -> None:
+    from hypergumbo_core.type_visibility import written_arity
+
+    assert written_arity("Policy") == 0
+    assert written_arity("Policy<int>") == 1
+    assert written_arity("Map<string, List<int>>") == 2
+    assert written_arity("A.B.Triple<X, Func<Y, Z>, W>") == 3
