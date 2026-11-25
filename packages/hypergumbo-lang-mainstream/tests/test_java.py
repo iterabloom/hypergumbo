@@ -4891,11 +4891,14 @@ public class IO {
         callee_names = {e.dst.split(":")[-2] for e in unresolved}
         # fis.read() and fis.close() should appear as unresolved
         assert "fis.read" in callee_names or "read" in callee_names
-        # An unresolved call is at 0.50, and so is the unresolved
-        # ``instantiates`` stub of ``new java.io.FileInputStream``.
+        # An unresolved CALL is at 0.50. The ``new java.io.FileInputStream``
+        # is an unresolved ``instantiates`` stub too, at the ``ast_new`` band's
+        # 0.95: that pathway has no unresolved base (a registry value, not this
+        # analyzer's; giving it one also moves the floor of every graded
+        # resolved construction, so it is a decision of its own).
         assert {e.edge_type for e in unresolved} == {"calls", "instantiates"}
         for e in unresolved:
-            assert e.confidence == 0.50
+            assert e.confidence == (0.50 if e.edge_type == "calls" else 0.95)
 
     def test_typed_local_receiver_puts_the_TYPE_in_the_module_slot(
         self, tmp_path: Path,

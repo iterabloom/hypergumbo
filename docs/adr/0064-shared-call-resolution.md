@@ -104,7 +104,7 @@ What the measurements require of these pieces, beyond the sketch: a type is iden
 
 - **Step 4, the pilot: one language per family on one branch.** Rust (paths, traits), C# (declared names), JavaScript and TypeScript (paths, a module linker). The shared layer is what those three need in common: nothing enters it that fewer than two of them use, and nothing is written in two adapters that could be written once.
 - **Step 5, batches**, one PR each, one commit per language: 5a java, kotlin, php; 5b python, ruby, go, lua, perl; 5c the stable-id bump (ruling 7); 5d groovy, scala, cpp, swift, objc; 5e lang-common; 5f lang-extended1 (5e and 5f move only the analyzers the probe lists show guessing: WI-bujih, WI-giroz).
-- **Gates for every rollout PR.** Its languages' rows of the fixture in both layouts, cells and marks; the pared before/after on real repositories; a scoreboard in the PR description (the matrix, edges by mark, net lines per analyzer). A language's commit deletes what the pass replaced: a language that only adds is a duplication. A language that is not green is pulled from the batch. A rollout PR that needs a change in the shared core stops: that is a decision of its own (batch 5a needed eight; its section says what the rule became).
+- **Gates for every rollout PR.** Its languages' rows of the fixture in both layouts, cells and marks; the pared before/after on real repositories; a scoreboard in the PR description (the matrix, edges by mark, net lines per analyzer). A language's commit deletes what the pass replaced: a language that only adds is a duplication. A language that is not green is pulled from the batch. A rollout PR that needs a change in the shared core stops: that is a decision of its own (batch 5a needed seven; its section says what the rule became).
 - **Folding the older spellings** of "how was the target chosen" (audit 0030: receiver-flavoured `evidence_type` values, `resolution_quality`, the outcome half of `receiver`) happens per language in its batch (WI-gilip), under O3 below. Until then they are pinned shrink-only.
 
 ## What the pilot built and measured (step 4; rust, csharp, javascript/typescript)
@@ -146,7 +146,6 @@ Maps of 7 repositories (jedis, spring-petclinic, commons-compress; okhttp, detek
 - Several files declaring one qualified function name: the caller's own file's declaration is the one bound.
 - `method_call_recovery` leaves a stub an earlier linker answered (it added a second edge, to a class the caller constructs, beside the right one).
 - The name step never binds a bare call in a language of declared names, and counts a function declared on a receiver (a Kotlin extension) as a holder for a call on a receiver.
-- An unresolved `instantiates` stub is at 0.50, as an unresolved call is (it was at 0.95).
 
 **Result on the 7 repositories, resolved `calls` before and after:** Java 45,072 and 46,191; Kotlin 11,660 and 19,031; PHP 2,017 and 3,158. Resolved constructions: Java 5,019 and 6,487, PHP 420 and 448 (and 3,453 and 350 construction sites now stay as unresolved stubs, where before a name bound them or nothing was emitted). By mark: in Java, constructions `name` 4,958 to 0, calls `import` 0 to 450; in Kotlin `name` 1,194 to 1,301 (now the name step's), `same_file` 496 to 0, `same_module` 0 to 1,677, `receiver_type` 5,721 to 7,365, `class_hint` 530 to 2,318; in PHP `name` 1,405 to 0, `same_file` 39 to 0, `receiver_type` 0 to 1,018, `qualified` 20 to 797, `import` 0 to 437.
 
@@ -166,14 +165,14 @@ Further samples: Java binds through a static import, 8 right of 10 (2 the wrong 
 
 **The languages already moved did not move:** six C# repositories, two Rust and one TypeScript are edge-for-edge identical to dev; on knex two recovery edges keep their caller and target and change line.
 
-**What is lost and why** (each filed with its count):
+**What is lost and why** (each filed with its count; also filed: an unresolved `instantiates` stub carries the 0.95 of a resolved `new`, where an unresolved call carries 0.50):
 - Overloads. The three Kotlin edges that went from right to wrong, 2 of the wrong new ones and both wrong static-import binds are one cause: the method index keeps the last overload of a name. 255 Kotlin edges changed overload in the batch. The argument count decides five of the six cases read. The Java analyzer now selects among a class's own overloads by argument count (352 edges retargeted; 15 of 15 sampled wrong before and right now), which the shared layer does not do: that selection belongs in the shared layer, as a stub fact, before the next batch.
 - Stubs of one name from one caller collapse to one before any linker runs, and the second call's facts are dropped (432 Kotlin stubs; 5 of the 9 right Kotlin losses).
 - A receiver typed by a callee's return type (2 of the 4 right Java losses, 3 of the 8 right PHP ones), a member type inherited from a base class (the other 2 Java ones), a Kotlin function beside a class of its name (2 Kotlin ones), PHP traits (18 typed calls; 93 of the 379 lost PHP targets are trait methods), and in PHP the untyped receivers the name step is off for (294).
 - One qualified name declared in two files in a language without partial types is bound to the first by path: 168 binds on grpc's generated PHP copies, 1 of 6 judged on the wrong copy.
 
 **What the rollout rules become.**
-- "A rollout PR that needs a change in the shared core stops" was written to keep one language's needs out of the shared layer. This batch needed the eight changes above, and every one is a rule of the languages moved (three of them share the package rule). What stands: an adapter does not edit the shared core, it reports; each shared change is a commit of its own with a test that fails without it; and the languages already moved are measured again, edge for edge, in the same batch.
+- "A rollout PR that needs a change in the shared core stops" was written to keep one language's needs out of the shared layer. This batch needed the seven changes above, and every one is a rule of the languages moved (three of them share the package rule). What stands: an adapter does not edit the shared core, it reports; each shared change is a commit of its own with a test that fails without it; and the languages already moved are measured again, edge for edge, in the same batch.
 - The sample of what moved is read by a judge who does not know which side a pair came from. Each adapter also samples itself, before the shared changes its report asks for: Java's own reading of its lost edges was 13 right of 15, and after the shared changes the judge's was 4 of 15.
 - Budget one round per adapter plus one round of shared changes. No adapter of this batch was sent back; the second round was the shared layer's.
 
