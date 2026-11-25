@@ -1,0 +1,21 @@
+- op: create  # 3964
+  at: '2026-11-25T19:09:02Z'  # 3964
+  by: agent  # 3964
+  actor: jgstern_agent  # 3964
+  clock: 1  # 3964
+  nonce: '3964'  # 3964
+  data:  # 3964
+    kind: work_item  # 3964
+    title: "PHP: a method a class gets from a trait is not reached through a typed receiver (the hierarchy walk does not visit traits)"  # 3964
+    status: todo_hard  # 3964
+    priority: 3  # 3964
+    parent:  # 3964
+    tags:  # 3964
+    - analysis_quality  # 3964
+    - shared_call_resolution  # 3964
+    isbefore: []  # 3964
+    duplicate_of: []  # 3964
+    not_duplicate_of: []  # 3964
+    pr_ref:  # 3964
+    description: "STATEMENT: a call on a receiver whose type the file writes reaches a method the type gets by using a trait or mixin (PHP use T; in a class body), as it reaches one the type inherits. OBSERVED: php.py records no relation between a class and the traits it uses, so the hierarchy walk of inherited_calls does not visit them: $user->podcasts() on a typed User (which uses HasUserRelationships) is unresolved. On two PHP trees (koel, grpc src/php): 18 typed calls lost to this, and 93 of the 379 calls that were resolved before the batch and are not now had a trait method for target. Adding the relation changes inheritance edges, which batch 5a was not allowed to move. The same question is open for every language with mixins that a later batch moves (Ruby include, Scala with, Dart with).\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 3964
+    fields: {}  # 3964

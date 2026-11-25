@@ -1,0 +1,21 @@
+- op: create  # 18a7
+  at: '2026-11-25T19:08:48Z'  # 18a7
+  by: agent  # 18a7
+  actor: jgstern_agent  # 18a7
+  clock: 1  # 18a7
+  nonce: 18a7  # 18a7
+  data:  # 18a7
+    kind: work_item  # 18a7
+    title: "The return type of a callee types the variable it initialises only per analyzer: no shared place, and Java writes a short name the caller's file may not import"  # 18a7
+    status: todo_hard  # 18a7
+    priority: 2  # 18a7
+    parent:  # 18a7
+    tags:  # 18a7
+    - analysis_quality  # 18a7
+    - shared_call_resolution  # 18a7
+    isbefore: []  # 18a7
+    duplicate_of: []  # 18a7
+    not_duplicate_of: []  # 18a7
+    pr_ref:  # 18a7
+    description: "STATEMENT: a variable initialised by a call has the type the callee's declaration returns, read where the callee is declared, whichever pass resolves the callee. OBSERVED: each analyzer types such a variable itself, if at all. java.py reads the return type from a run-wide table keyed by the package-less Owner.m (first writer wins) and writes the SHORT type name as the receiver hint, which the caller's file may not import: Reducers.sum(\"@count\").as(\"sum\") (hint Reducer) and client.getAuthXManager().getListener() (hint AuthXManager) are unresolved after batch 5a; 2 of the 4 Java edges a blind judge found right before and lost. php.py types only from a function of the same file or the enclosing type's own method: $call = self::$client->Div($arg); $call->cancel(); is unresolved (3 of the 8 PHP edges judged right before and lost are a call result). kotlin.py finds the callee with type_visibility and writes the qualified name when the caller's file means another type by the short one: the one adapter that does it through the shared lookup. The shared layer has no place where a linker-resolved callee's return type types a later receiver.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 18a7
+    fields: {}  # 18a7
