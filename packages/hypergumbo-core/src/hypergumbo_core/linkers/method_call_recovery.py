@@ -91,6 +91,7 @@ from typing import TYPE_CHECKING
 
 from .. import resolved_by
 from ..member_names import member_short_name
+from ..overload_arity import narrow_by_arity
 from ..type_visibility import without_type_arguments
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, NodeId, make_pass_id, stated_module_of,
@@ -288,8 +289,9 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
             resolved_targets[e.src].add(e.dst)
 
     # Build per-class index of contained method short-names.
-    # class_id -> { short_name -> method_symbol }
-    class_methods: dict[str, dict[str, Symbol]] = defaultdict(dict)
+    # class_id -> { short_name -> [member symbols, in edge order] }: the
+    # overloads of a name are all kept, for the argument count to choose among.
+    class_methods: dict[str, dict[str, list[Symbol]]] = defaultdict(dict)
     for e in ctx.edges:
         if e.edge_type != "contains":
             continue
@@ -298,7 +300,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
         target = sym_by_id.get(e.dst)
         if target is None:
             continue
-        class_methods[e.src][short_name(target.name)] = target
+        class_methods[e.src].setdefault(short_name(target.name), []).append(target)
 
     new_edges: list[Edge] = []
     for caller_id, hints in class_hints.items():
@@ -388,9 +390,16 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                     sym_by_id[hint.dst], declared,
                 ):
                     continue
-                method = class_methods.get(hint.dst, {}).get(name)
-                if method is None:
+                # Of several overloads, the ones that can take the arguments
+                # the call writes (``overload_arity``); of those the last, as
+                # before the count was read. None taking it: no candidate.
+                overloads = narrow_by_arity(
+                    class_methods.get(hint.dst, {}).get(name, []),
+                    (ucall.meta or {}).get("argument_count"),
+                )
+                if not overloads:
                     continue
+                method = overloads[-1]
                 # WI-fihun: a member the repository declares as a non-callable
                 # value cannot be what this call dispatched to. Dropped from the
                 # CANDIDATE SET rather than abandoning the site, so a sibling

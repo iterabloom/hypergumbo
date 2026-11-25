@@ -769,3 +769,15 @@ def test_end_to_end_two_overloads_of_an_extension(tmp_path: Path) -> None:
         (7, "net.ping(): Int", "receiver_type"),
         (8, "net.ping(n: Int, m: Int): Int", "receiver_type"),
     ]
+
+
+def test_end_to_end_an_override_takes_the_default_of_what_it_overrides(tmp_path: Path) -> None:
+    """``override fun delete(path: String, mustExist: Boolean)`` cannot restate
+    the default its base gives ``mustExist`` (the base here is a library's):
+    ``fs.delete(p)`` is a call of it all the same."""
+    data = _map(tmp_path, {
+        "io/Faulty.kt": "package io\n\nimport okio.FileSystem\n\nclass Faulty : FileSystem() {\n"
+                        "    override fun delete(path: String, mustExist: Boolean) {}\n}\n",
+        "io/Use.kt": "package io\n\nfun wipe(fs: Faulty) {\n    fs.delete(\"a\")\n}\n",
+    })
+    assert _resolved(data, "wipe", "delete") == [("io.Faulty.delete", "receiver_type")]

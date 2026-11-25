@@ -176,7 +176,7 @@ def parameter_entry(
     name: str,
     type_: Optional[str] = None,
     *,
-    default: bool = False,
+    default: Optional[bool] = False,
     variadic: bool = False,
     declarator: str = "",
     receiver: bool = False,
@@ -192,7 +192,11 @@ def parameter_entry(
     there is one. ``receiver`` (written only when true) marks the parameter
     that is bound to the receiver when the callable is called on one: the
     ``this`` parameter of a C# extension method, which ``x.F(1)`` does not
-    write among its arguments and ``Ext.F(x, 1)`` does.
+    write among its arguments and ``Ext.F(x, 1)`` does. ``default=None``
+    says the declaration cannot tell: a Kotlin ``override`` may not restate
+    the default its parameter takes from the overridden declaration, so a
+    call may or may not omit it. Such a parameter is not counted as required
+    (``bounds_of_entries``).
     """
     entry: dict[str, Any] = {"name": name, "type": type_, "default": default}
     if variadic:
@@ -242,7 +246,7 @@ def bounds_of_entries(
             unbounded = True
             continue
         total += 1
-        if not entry.get("default"):
+        if entry.get("default", False) is False:
             required += 1
     return ArityBounds(required=required, maximum=None if unbounded else total)
 
