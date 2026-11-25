@@ -633,3 +633,159 @@ def test_a_bare_call_to_a_function_a_wildcard_import_supplies() -> None:
     assert (edge.dst, edge.meta["resolved_by"]) == (wanted.id, "import")
     scope.add_open_wildcard("src/other.ts")
     assert _ts_link_all([wanted, other, caller], stub, {"src/main.ts": scope}) == []
+
+
+# --- a declaration named by a bare call or a ``new``, in a language of declared names ----
+
+
+def _decl(kind: str, package: str, name: str, path: str, language: str = "kotlin",
+          lines: tuple[int, int] = (1, 9)) -> Symbol:
+    return Symbol(
+        id=f"{language}:{path}:{lines[0]}-{lines[1]}:{name}:{kind}", name=name, kind=kind,
+        language=language, path=path, qualified_name=f"{package}.{name}",
+        span=Span(start_line=lines[0], end_line=lines[1], start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+
+
+def _named_link(symbols: list[Symbol], stub: Edge, scope: ImportScope | None, path: str) -> list[Edge]:
+    ctx = LinkerContext(
+        repo_root=Path("/"), symbols=symbols, edges=[stub],
+        import_scopes={} if scope is None else {path: scope},
+    )
+    return link_inherited_calls(ctx).edges
+
+
+def test_a_bare_call_names_a_type_of_the_callers_package_or_an_imported_one() -> None:
+    """Kotlin writes a constructor as a call. ``Request(url)`` in package
+    ``okhttp3`` is ``okhttp3.Request``, not a ``Request`` nested in a test
+    helper elsewhere; with ``import fake.Request`` it is that one."""
+    own = _decl("class", "okhttp3", "Request", "okhttp3/Request.kt")
+    other = _decl("interface", "fake", "Request", "fake/FakeDns.kt")
+    caller = _decl("function", "okhttp3", "run", "okhttp3/Cache.kt", lines=(10, 20))
+    stub = make_unresolved_edge("kotlin", caller.id, "Request", 12, "test-pass", "test-run")
+    (edge,) = _named_link([own, other, caller], stub, ImportScope(), caller.path)
+    assert (edge.dst, edge.edge_type, edge.is_resolved) == (own.id, "calls", True)
+    assert edge.meta["resolved_by"] == "same_module"
+    assert edge.derived_from[0] == stub.id
+    imported = ImportScope()
+    imported.add_named("fake", "Request")
+    (edge,) = _named_link([own, other, caller], stub, imported, caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (other.id, "import")
+    # No table for the file: the stub is left as it is.
+    assert _named_link([own, other, caller], stub, None, caller.path) == []
+
+
+def test_a_bare_call_names_a_function_through_the_table() -> None:
+    """A top-level function of the caller's package, or an imported one;
+    two wildcard packages that both declare it are a tie; a name nothing in
+    scope declares is a library's."""
+    mine = _decl("function", "app", "helper", "app/Util.kt")
+    theirs = _decl("function", "lib", "helper", "lib/Util.kt")
+    third = _decl("function", "ext", "helper", "ext/Util.kt")
+    caller = _decl("function", "app", "run", "app/Main.kt", lines=(10, 20))
+    stub = make_unresolved_edge("kotlin", caller.id, "helper", 12, "test-pass", "test-run")
+    symbols = [mine, theirs, third, caller]
+    (edge,) = _named_link(symbols, stub, ImportScope(), caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (mine.id, "same_module")
+    elsewhere = _decl("function", "web", "run", "web/Main.kt", lines=(10, 20))
+    far = make_unresolved_edge("kotlin", elsewhere.id, "helper", 12, "test-pass", "test-run")
+    assert _named_link([*symbols, elsewhere], far, ImportScope(), elsewhere.path) == []
+    star = ImportScope()
+    star.add_open_wildcard("lib")
+    (edge,) = _named_link([*symbols, elsewhere], far, star, elsewhere.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (theirs.id, "import")
+    star.add_open_wildcard("ext")
+    assert _named_link([*symbols, elsewhere], far, star, elsewhere.path) == []
+
+
+def test_a_function_and_a_type_of_one_name_in_one_scope_are_a_tie() -> None:
+    function = _decl("function", "app", "Widget", "app/Factory.kt")
+    cls = _decl("class", "app", "Widget", "app/Widget.kt")
+    caller = _decl("function", "app", "run", "app/Main.kt", lines=(10, 20))
+    stub = make_unresolved_edge("kotlin", caller.id, "Widget", 12, "test-pass", "test-run")
+    assert _named_link([function, cls, caller], stub, ImportScope(), caller.path) == []
+
+
+def test_overloads_of_one_function_are_one_declaration() -> None:
+    """Two ``fun helper`` of one package share a qualified name: the call is
+    bound to the first of them in the file (overload selection is not made)."""
+    first = _decl("function", "app", "helper", "app/Util.kt", lines=(1, 3))
+    second = _decl("function", "app", "helper", "app/Util.kt", lines=(5, 7))
+    caller = _decl("function", "app", "run", "app/Main.kt", lines=(10, 20))
+    stub = make_unresolved_edge("kotlin", caller.id, "helper", 12, "test-pass", "test-run")
+    (edge,) = _named_link([second, first, caller], stub, ImportScope(), caller.path)
+    assert edge.dst == first.id
+
+
+def test_a_bare_call_cannot_name_a_type_where_the_language_writes_new() -> None:
+    """Java and PHP construct with ``new``: a bare ``Request()`` is a method
+    or a function, never the class of that name."""
+    cls = _decl("class", "app", "Request", "app/Request.java", language="java")
+    caller = _decl("method", "app", "Main.run", "app/Main.java", language="java", lines=(10, 20))
+    stub = make_unresolved_edge("java", caller.id, "Request", 12, "test-pass", "test-run")
+    assert _named_link([cls, caller], stub, ImportScope(), caller.path) == []
+
+
+def test_new_names_a_type_through_the_table() -> None:
+    """``new Conn()``: an unresolved ``instantiates`` stub whose callee is the
+    type as written. The type of the caller's package, the imported one, or a
+    qualified one; never a namesake that is not visible."""
+    own = _decl("class", "app.db", "Conn", "app/db/Conn.java", language="java")
+    other = _decl("class", "legacy", "Conn", "legacy/Conn.java", language="java")
+    caller = Symbol(
+        id="java:app/db/Main.java:10-20:Main.run:method", name="Main.run", kind="method",
+        language="java", path="app/db/Main.java", qualified_name="app.db.Main.run",
+        span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+    stub = make_unresolved_edge(
+        "java", caller.id, "Conn", 12, "test-pass", "test-run", instantiates=True,
+    )
+    assert (stub.edge_type, stub.is_resolved) == ("instantiates", False)
+    (edge,) = _named_link([own, other, caller], stub, ImportScope(), caller.path)
+    assert (edge.dst, edge.edge_type, edge.is_resolved) == (own.id, "instantiates", True)
+    assert edge.meta["resolved_by"] == "same_module"
+    imported = ImportScope()
+    imported.add_named("legacy", "Conn")
+    (edge,) = _named_link([own, other, caller], stub, imported, caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (other.id, "import")
+    qualified = make_unresolved_edge(
+        "java", caller.id, "legacy.Conn", 12, "test-pass", "test-run", instantiates=True,
+    )
+    (edge,) = _named_link([own, other, caller], qualified, ImportScope(), caller.path)
+    assert (edge.dst, edge.meta["resolved_by"]) == (other.id, "qualified")
+    outsider = Symbol(
+        id="java:web/Main.java:10-20:Main.run:method", name="Main.run", kind="method",
+        language="java", path="web/Main.java", qualified_name="web.Main.run",
+        span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+    unseen = make_unresolved_edge(
+        "java", outsider.id, "Conn", 12, "test-pass", "test-run", instantiates=True,
+    )
+    assert _named_link([own, other, outsider], unseen, ImportScope(), outsider.path) == []
+
+
+def test_a_bare_call_inside_a_class_falls_to_the_table_after_its_own_members() -> None:
+    """Kotlin ``helper()`` inside ``class Main``: a member of Main or of its
+    ancestors first (the stub carries ``enclosing_class``); when the class
+    has none, the top-level function of the caller's package. And a second
+    call of the same function from the same caller makes no second edge."""
+    main = _decl("class", "app", "Main", "app/Main.kt", lines=(1, 40))
+    helper = _decl("function", "app", "helper", "app/Util.kt")
+    caller = Symbol(
+        id="kotlin:app/Main.kt:10-20:Main.run:method", name="Main.run", kind="method",
+        language="kotlin", path="app/Main.kt", qualified_name="app.Main.run",
+        span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+    first = make_unresolved_edge("kotlin", caller.id, "helper", 12, "test-pass", "test-run",
+                                 enclosing_class="Main")
+    second = make_unresolved_edge("kotlin", caller.id, "helper", 15, "test-pass", "test-run",
+                                  enclosing_class="Main")
+    ctx = LinkerContext(repo_root=Path("/"), symbols=[main, helper, caller], edges=[first, second],
+                        import_scopes={caller.path: ImportScope()})
+    (edge,) = link_inherited_calls(ctx).edges
+    assert (edge.dst, edge.meta["resolved_by"]) == (helper.id, "same_module")
+    assert edge.derived_from[0] == first.id
