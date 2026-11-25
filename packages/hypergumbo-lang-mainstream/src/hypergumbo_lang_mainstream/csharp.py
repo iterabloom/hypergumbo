@@ -14,6 +14,16 @@ This analyzer uses tree-sitter to parse C# files and extract:
   written, which the ``receiver_type_dispatch`` linker reads to bind
   ``x.M()`` on a receiver whose ``receiver_type_hint`` names ``T``
 - Constructor declarations
+- Every method, constructor, operator, conversion operator and destructor
+  records ``meta["parameters"]`` (``_csharp_parameters``: one
+  ``overload_arity.parameter_entry`` per parameter its declaration node
+  lists, ``[]`` for none, never absent): ``int p = 0`` has a default,
+  ``params T[] xs`` and ``__arglist`` are variadic, an extension method's
+  ``this`` parameter is the receiver. An indexer, a property, a field and an
+  event write no key. Every call stub records ``argument_count``, the
+  arguments its list writes (``_argument_count``). The shared pass leaves
+  out the overloads that cannot take that many, and so does the analyzer's
+  own bind (``member`` in ``_extract_edges_from_file``; WI-tosut)
 - Property declarations, whose stable_id is the ADR-0035 producer formula
   (``make_typed_stable_id`` over the declared type and the namespace/type
   chain), not the backstop floor key (WI-tusad). Methods, constructors,
@@ -174,7 +184,10 @@ from hypergumbo_core.analyze.base import (
     file_type_names,
     resolving_type_names,
 )
-from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, narrow_by_arity, parameter_entry, scoped_stable_id,
+    scoped_table_stable_id,
+)
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.var_scope import ScopedVarTypes
@@ -380,37 +393,108 @@ def _extract_csharp_signature(
     return signature
 
 
-def _format_csharp_params(params_node: "tree_sitter.Node", source: bytes) -> str:
-    """``(int x, ref Foo y)`` for a ``parameter_list`` or an indexer's
-    ``bracketed_parameter_list``: each parameter as its modifiers, its type
-    and its name, the type as written whatever node kind spells it.
+class _CSharpParameter(NamedTuple):
+    """One declared parameter, read from its declaration node
+    (:func:`_csharp_parameter_nodes`)."""
+
+    modifiers: list[str]
+    type_node: Optional["tree_sitter.Node"]
+    name_node: "tree_sitter.Node"
+    params: bool
+    default: bool
+
+
+def _csharp_parameter_nodes(
+    params_node: "tree_sitter.Node", source: bytes,
+) -> list[_CSharpParameter]:
+    """The parameters of a ``parameter_list`` or an indexer's
+    ``bracketed_parameter_list``, in order.
 
     A ``params`` array is not a ``parameter`` node: the grammar puts its
     ``params`` token, its ``type`` and its ``name`` in the list itself, so it
-    is written from those. ``__arglist`` is a parameter with a name and no
-    type. A default value is not written.
+    is read from those. ``__arglist`` is a parameter with a name and no type.
+    A default value is the ``=`` the grammar keeps inside the parameter.
     """
-    params: list[str] = []
+    found: list[_CSharpParameter] = []
     for child in params_node.children:
         if child.type == "parameter":
-            type_node = child.child_by_field_name("type")
             name_node = child.child_by_field_name("name")
             if name_node is None:
                 continue  # pragma: no cover - the grammar names every parameter
-            words = [node_text(m, source) for m in child.children if m.type == "modifier"]
-            if type_node is not None:
-                words.append(node_text(type_node, source))
-            words.append(node_text(name_node, source))
-            params.append(" ".join(words))
+            found.append(_CSharpParameter(
+                modifiers=[node_text(m, source) for m in child.children if m.type == "modifier"],
+                type_node=child.child_by_field_name("type"),
+                name_node=name_node,
+                params=False,
+                default=any(c.type == "=" for c in child.children),
+            ))
         elif child.type == "params":
             array_type = params_node.child_by_field_name("type")
             array_name = params_node.child_by_field_name("name")
             if array_type is None or array_name is None:
                 continue  # pragma: no cover - the grammar requires both
-            params.append(
-                f"params {node_text(array_type, source)} {node_text(array_name, source)}"
-            )
+            found.append(_CSharpParameter(
+                modifiers=["params"], type_node=array_type, name_node=array_name,
+                params=True, default=False,
+            ))
+    return found
+
+
+def _format_csharp_params(params_node: "tree_sitter.Node", source: bytes) -> str:
+    """``(int x, ref Foo y)`` for a ``parameter_list`` or an indexer's
+    ``bracketed_parameter_list``: each parameter as its modifiers, its type
+    and its name, the type as written whatever node kind spells it
+    (:func:`_csharp_parameter_nodes`). A default value is not written.
+    """
+    params: list[str] = []
+    for param in _csharp_parameter_nodes(params_node, source):
+        words = list(param.modifiers)
+        if param.type_node is not None:
+            words.append(node_text(param.type_node, source))
+        words.append(node_text(param.name_node, source))
+        params.append(" ".join(words))
     return f"({', '.join(params)})"
+
+
+def _csharp_parameters(node: "tree_sitter.Node", source: bytes) -> dict[str, object]:
+    """``{"parameters": [...]}`` for a method, constructor, operator,
+    conversion operator or destructor: one ``overload_arity.parameter_entry``
+    per parameter its declaration node lists, the empty list for none
+    (WI-tosut).
+
+    The type is the type node as written (modifiers such as ``ref`` left
+    off). ``int p = 0`` has a default (a call may omit it); ``params T[] xs``
+    and ``__arglist`` take any number of arguments (variadic); the ``this``
+    parameter of an extension method is the receiver, which ``x.F(1)`` does
+    not write among its arguments and ``Ext.F(x, 1)`` does. Read here, from
+    the node, never back out of ``Symbol.signature`` (ADR-0058).
+
+    A list the parser could not read, or one holding a preprocessor
+    directive (``#if A`` / ``#else`` around a parameter, Serilog's
+    ``GetEffectiveLevel``), says no count: the grammar reads both branches
+    as parameters, or a parameter that may not be compiled. The key is then
+    not written, which ``overload_arity`` reads as an unknown arity, never
+    left out: ``{}``.
+    """
+    params_node = node.child_by_field_name("parameters")
+    if params_node is None:
+        return {}  # pragma: no cover - every callable form declares a parameter list
+    if params_node.has_error or any(
+        c.type.startswith("preproc") or any(g.type.startswith("preproc") for g in c.children)
+        for c in params_node.children
+    ):
+        return {}
+    entries: list[dict[str, object]] = []
+    for param in _csharp_parameter_nodes(params_node, source):
+        name = node_text(param.name_node, source)
+        entries.append(parameter_entry(
+            name,
+            node_text(param.type_node, source) if param.type_node is not None else None,
+            default=param.default,
+            variadic=param.params or name == "__arglist",
+            receiver="this" in param.modifiers,
+        ))
+    return {PARAMETERS_KEY: entries}
 
 
 #: WI-binap: member declarations with a body that holds calls, beyond the
@@ -490,6 +574,20 @@ def _csharp_body_member(
     if type_text and type_text != "void":
         signature += f" {type_text}"
     return kind, name, signature
+
+
+def _body_member_meta(
+    node: "tree_sitter.Node", source: bytes, kind: str, annotations: list[dict[str, object]],
+) -> Optional[dict[str, object]]:
+    """The meta of a ``_CSHARP_BODY_MEMBER_DECLS`` symbol: its annotations,
+    and the parameters of the ones emitted as methods (an operator, a
+    conversion operator, a destructor; WI-tosut). An indexer (``subscript``)
+    is reached by ``x[i]``, which no call stub counts, and an event takes
+    none: neither writes the key."""
+    meta: dict[str, object] = {"annotations": annotations} if annotations else {}
+    if kind == "method":
+        meta.update(_csharp_parameters(node, source))
+    return meta or None
 
 
 #: The parameter modifiers ``_format_csharp_params`` writes before a type.
@@ -1636,6 +1734,8 @@ def _extract_parsed_symbols(
                 receiver_type = _csharp_extension_receiver(node, source)
                 if receiver_type is not None:
                     meta = {**(meta or {}), "extension_receiver": receiver_type}
+                # The parameters it declares, for overload choice (WI-tosut).
+                meta = {**(meta or {}), **_csharp_parameters(node, source)} or None
 
                 # Extract signature
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
@@ -1723,6 +1823,7 @@ def _extract_parsed_symbols(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta=_csharp_parameters(node, source) or None,
                     stable_id=stable_id,
                     signature=signature,
                     docstring=extract_preceding_doc_comment(node, source, "csharp"),
@@ -1821,7 +1922,7 @@ def _extract_parsed_symbols(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    meta={"annotations": annotations} if annotations else None,
+                    meta=_body_member_meta(node, source, m_kind, annotations),
                     stable_id=make_typed_stable_id(
                         m_kind, norm_sig, visibility_from_modifiers(modifiers),
                         name=m_name,
@@ -2187,6 +2288,19 @@ def _count_signature_params(signature: "str | None") -> "int | None":
     return count
 
 
+def _argument_count(call: "tree_sitter.Node") -> Optional[int]:
+    """How many arguments an ``invocation_expression`` writes (WI-tosut): the
+    ``argument`` nodes of its argument list. A named argument, ``out var x``
+    and ``ref x`` are arguments; a comment in the list is not; a generic
+    method's type arguments are in its name, not here; the receiver of
+    ``x.F(1)`` is not one. The grammar gives every invocation an argument
+    list; a method group (``Select(Parse)``) is no invocation."""
+    arguments = call.child_by_field_name("arguments")
+    if arguments is None:
+        return None  # pragma: no cover - the grammar requires the list
+    return sum(1 for c in arguments.children if c.type == "argument")
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -2231,6 +2345,14 @@ def _extract_edges_from_file(
       nothing the graph holds);
     - ``base.M()``: ``enclosing_class`` and ``super_receiver``, always (the
       walk starts at the parent, so the caller's own override is skipped).
+
+    Every stub of a call says how many arguments it writes
+    (``argument_count``). The analyzer's own bind takes, of the overloads of
+    the name in its file, one that can take them (``member``): of several,
+    the one bound before arity was read (the last declared) if it is among
+    them, else the last of them; of none, no bind, and the stub is handed
+    over with its facts, so the shared pass can reach an overload an
+    ancestor declares (WI-tosut).
 
     Neither the file's short-name table nor a run-wide lookup of the callee's
     name is a reason to bind a call any more: a name looked up among every
@@ -2314,14 +2436,39 @@ def _extract_edges_from_file(
         if isinstance(arity, int):
             local_arities.setdefault(declared.name, set()).add(arity)
 
-    def type_method(written: str, callee: str) -> Optional[Symbol]:
+    # Every declaration of this file by its name, in the order Pass 1 emitted
+    # them (the source's): the overloads ``local_symbols`` collapses to the
+    # last one registered.
+    declared_by_name: dict[str, list[Symbol]] = {}
+    for declared in decl_index.values():
+        declared_by_name.setdefault(declared.name, []).append(declared)
+
+    def member(key: str, call: "tree_sitter.Node") -> Optional[Symbol]:
+        """The member ``key`` (``Type.M``) of this file that ``call`` can
+        reach by the number of arguments it writes (WI-tosut,
+        ``overload_arity.narrow_by_arity`` over each overload's
+        ``meta["parameters"]``). Of several that take them, the one chosen
+        before arity was read, the last declared, when it is among them,
+        else the last of them (the arguments' types are not read). None
+        takes them: None, and the call is handed over with its facts."""
+        chosen = local_symbols.get(key)
+        if chosen is None:
+            return None
+        admitted = narrow_by_arity(
+            declared_by_name.get(key) or [chosen], _argument_count(call))
+        if any(s is chosen for s in admitted):
+            return chosen
+        return admitted[-1] if admitted else None
+
+    def type_method(written: str, callee: str, call: "tree_sitter.Node") -> Optional[Symbol]:
         """The method ``callee`` of this file's type that ``written`` names
         (its table is keyed by the bare name, ``Type.M``), when the number of
-        type arguments written is the type's arity here."""
+        type arguments written is the type's arity here, and the overload
+        that takes the arguments ``call`` writes (:func:`member`)."""
         bare = _strip_type_arguments(written)
         if local_arities.get(bare, {written_arity(written)}) != {written_arity(written)}:
             return None
-        return local_symbols.get(f"{bare}.{callee}")
+        return member(f"{bare}.{callee}", call)
 
     def file_target(call: "tree_sitter.Node") -> Optional[Symbol]:
         """The declaration of this file a call reaches on C#'s own evidence:
@@ -2339,9 +2486,9 @@ def _extract_edges_from_file(
             return None
         if receiver is None or receiver.type == "this":
             enclosing = _get_enclosing_class(call, source)
-            return local_symbols.get(f"{enclosing}.{callee}") if enclosing else None
+            return member(f"{enclosing}.{callee}", call) if enclosing else None
         owner = receiver_type(receiver)
-        return type_method(owner, callee) if owner else None
+        return type_method(owner, callee, call) if owner else None
 
     def receiver_type(receiver: "tree_sitter.Node") -> Optional[str]:
         """The receiver's type as the source writes it, when this file knows
@@ -2414,6 +2561,7 @@ def _extract_edges_from_file(
             if callee_name is None:
                 continue
             line = node.start_point[0] + 1
+            argument_count = _argument_count(node)
             enclosing_cls = _get_enclosing_class(node, source)
             function = node.child_by_field_name("function")
             receiver = (
@@ -2431,6 +2579,7 @@ def _extract_edges_from_file(
                     "csharp", current_function.id, callee_name, line,
                     PASS_ID, run.execution_id,
                     enclosing_class=enclosing_cls, super_receiver=True,
+                    argument_count=argument_count,
                 ))
                 continue
 
@@ -2445,7 +2594,7 @@ def _extract_edges_from_file(
                     or _local_function_in_scope(node, callee_name, source)
                 )
                 own = (
-                    local_symbols.get(f"{enclosing_cls}.{callee_name}")
+                    member(f"{enclosing_cls}.{callee_name}", node)
                     if enclosing_cls and not hidden else None
                 )
                 if own is not None:
@@ -2456,6 +2605,7 @@ def _extract_edges_from_file(
                         "csharp", current_function.id, callee_name, line,
                         PASS_ID, run.execution_id,
                         enclosing_class=None if hidden else enclosing_cls,
+                        argument_count=argument_count,
                     ))
                 continue
 
@@ -2487,7 +2637,7 @@ def _extract_edges_from_file(
                 known_type = receiver_type(receiver)
                 meta["resolution_quality"] = "type_inferred"
             if known_type is not None:
-                target = type_method(known_type, callee_name)
+                target = type_method(known_type, callee_name, node)
                 if target is not None:
                     bind(current_function, node, target, resolved_by.RECEIVER_TYPE, meta)
                 else:
@@ -2497,6 +2647,7 @@ def _extract_edges_from_file(
                         module_hint=unresolved_module,
                         receiver_type_hint=_written_type(known_type),
                         call_construct="method",
+                        argument_count=argument_count,
                     ))
                 continue
 
@@ -2519,6 +2670,7 @@ def _extract_edges_from_file(
                 module_hint=unresolved_module,
                 call_construct="method",
                 qualifier=qualifier,
+                argument_count=argument_count,
             ))
 
         # Object creation expression (new ClassName())

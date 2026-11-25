@@ -1114,3 +1114,325 @@ def test_end_to_end_an_msbuild_using_of_the_project_and_of_a_conditional_targets
     assert _resolved(data, "Outcome.Check", "NotNull") == [("Polly.Utils.Guard.NotNull", "qualified")]
     assert _resolved(data, "Outcome.Check", "ValidateSecondsTimeout") == [
         ("Polly.Timeout.TimeoutValidator.ValidateSecondsTimeout", "qualified")]
+
+
+# ------------------------- overloads: parameters declared, arguments written (WI-tosut)
+#
+# Every callable says what parameters it declares (``meta["parameters"]``, one
+# ``overload_arity.parameter_entry`` each) and every call stub says how many
+# arguments it writes (``argument_count``). The analyzer's own bind (the
+# enclosing type's member, a method of a receiver's type in this file) takes
+# the overload that can take them; the shared pass does the same for what it
+# binds. Each fixture declares the WRONG overload last: the last one written
+# was what a name-keyed table kept.
+
+def _parameters(tmp_path: Path, source: str) -> dict[str, Any]:
+    """``name -> meta["parameters"]`` (``"absent"`` when the key is not written)."""
+    result = analyze_csharp(_write(tmp_path, {"A.cs": source}))
+    return {s.name: (s.meta or {}).get("parameters", "absent") for s in result.symbols
+            if s.kind not in ("file",)}
+
+
+def _entry(name: str, type_: str | None, *, default: bool = False, variadic: bool = False,
+           receiver: bool = False) -> dict[str, Any]:
+    from hypergumbo_core.overload_arity import parameter_entry
+    return parameter_entry(name, type_, default=default, variadic=variadic, receiver=receiver)
+
+
+def test_every_parameter_form_is_written_where_the_callable_is_declared(tmp_path: Path) -> None:
+    params = _parameters(tmp_path, (
+        "static class Ext {\n"
+        "    public static void Open(this ref Span<int> s, int timeout = 30) {}\n"
+        "}\n"
+        "abstract class C {\n"
+        "    public C(int a, string b) {}\n"
+        "    void None() {}\n"
+        "    void Mods(ref int x, out int y, in int z, scoped ref Span<byte> w, [In] Foo.Bar f) {}\n"
+        "    void Defaults(int a, int b = 1, string c = null, [X] bool d = default) {}\n"
+        "    void Many(string fmt, params object[] args) {}\n"
+        "    void Span(params ReadOnlySpan<int> xs) {}\n"
+        "    void Old(int a, __arglist) {}\n"
+        "    void Generic<T>(T value, (int, string) pair) {}\n"
+        "    protected abstract int Abstract(long n);\n"
+        "    public static C operator +(C a, C b) => a;\n"
+        "    public static implicit operator int(C c) => 0;\n"
+        "    ~C() {}\n"
+        "    int this[int i] => i;\n"
+        "    int Prop { get; set; }\n"
+        "    int field;\n"
+        "    event System.EventHandler Changed { add {} remove {} }\n"
+        "    void Cond(\n#if SPAN\n    ReadOnlySpan<char> c,\n#else\n    string c,\n#endif\n    out int a) {}\n"
+        "    void Maybe(\n#if SPAN\n    int extra,\n#endif\n    int a) {}\n"
+        "}\n"
+        "interface I { void Go(int a); }\n"
+        "record R(int A, int B = 2);\n"
+        "class P(int x) { }\n"
+    ))
+    assert params["Ext.Open"] == [
+        _entry("s", "Span<int>", receiver=True), _entry("timeout", "int", default=True)]
+    assert params["C.C"] == [_entry("a", "int"), _entry("b", "string")]
+    assert params["C.None"] == []
+    assert params["C.Mods"] == [
+        _entry("x", "int"), _entry("y", "int"), _entry("z", "int"),
+        _entry("w", "Span<byte>"), _entry("f", "Foo.Bar")]
+    assert params["C.Defaults"] == [
+        _entry("a", "int"), _entry("b", "int", default=True),
+        _entry("c", "string", default=True), _entry("d", "bool", default=True)]
+    assert params["C.Many"] == [_entry("fmt", "string"), _entry("args", "object[]", variadic=True)]
+    assert params["C.Span"] == [_entry("xs", "ReadOnlySpan<int>", variadic=True)]
+    assert params["C.Old"] == [_entry("a", "int"), _entry("__arglist", None, variadic=True)]
+    assert params["C.Generic"] == [_entry("value", "T"), _entry("pair", "(int, string)")]
+    assert params["C.Abstract"] == [_entry("n", "long")]
+    assert params["C.operator+"] == [_entry("a", "C"), _entry("b", "C")]
+    assert params["C.operator int"] == [_entry("c", "C")]
+    assert params["C.~C"] == []
+    assert params["I.Go"] == [_entry("a", "int")]
+    # A preprocessor directive in the list: the count is not known, no key
+    # (an unknown arity is never left out).
+    # Not callables, or not called by an argument list the linkers count: no key.
+    for name in ("C.Cond", "C.Maybe", "C.this[]", "C.Prop", "C.field", "C.Changed", "C", "I", "R", "P", "Ext"):
+        assert params[name] == "absent", name
+
+
+def _stub_counts(edges: list[Edge]) -> list[tuple[str, Any]]:
+    return sorted(((e.meta or {}).get("callee_name", ""), (e.meta or {}).get("argument_count", "absent"))
+                  for e in edges if not e.is_resolved)
+
+
+def test_every_call_stub_says_how_many_arguments_it_writes(tmp_path: Path) -> None:
+    """A receiver is not an argument; a named argument, ``out var`` and
+    ``ref`` are; a comment is not; a generic method's type arguments are not.
+    ``Ext.Open(c, 5)`` writes the receiver as an argument; ``c.Open(5)`` does
+    not. A method group (``Select(Parse)``) is no call and gets no stub."""
+    edges = _calls(tmp_path, {
+        "Main.cs": (
+            "class Main : Base {\n"
+            "    void Run(Conn c, System.Collections.Generic.List<string> xs) {\n"
+            "        c.None();\n"
+            "        c.Two(1, /* not one */ 2);\n"
+            "        c.Named(timeout: 1, out var q, ref q);\n"
+            "        c.Generic<int, string>(1);\n"
+            "        c.Open(5);\n"
+            "        Ext.Open(c, 5);\n"
+            "        Inherited(1, 2, 3);\n"
+            "        base.Up(1);\n"
+            "        xs.Select(Parse);\n"
+            "    }\n"
+            "}\n"
+        ),
+    }, "Main.Run")
+    assert _stub_counts(edges) == [
+        ("Generic", 1), ("Inherited", 3), ("Named", 3), ("None", 0), ("Open", 1), ("Open", 2),
+        ("Select", 1), ("Two", 2), ("Up", 1),
+    ]
+
+
+def _own_targets(tmp_path: Path, source: str, caller: str) -> list[tuple[int, Any]]:
+    """``(call line, line of the declaration bound, or the stub's facts)`` for
+    each call from ``caller``, in one file analysed alone."""
+    result = analyze_csharp(_write(tmp_path, {"A.cs": source}))
+    by_id = {s.id: s for s in result.symbols}
+    src = next(s.id for s in result.symbols if s.name == caller)
+    out: list[tuple[int, Any]] = []
+    for e in result.edges:
+        if e.edge_type != "calls" or e.src != src:
+            continue
+        if e.is_resolved:
+            out.append((e.line, (by_id[e.dst].span.start_line, (e.meta or {}).get("resolved_by"))))
+        else:
+            out.append((e.line, {**_facts(e), "argument_count": (e.meta or {}).get("argument_count")}))
+    return sorted(out, key=lambda x: (x[0], str(x[1])))
+
+
+def test_the_own_member_bound_is_the_overload_that_takes_the_arguments(tmp_path: Path) -> None:
+    """Bare, ``this.`` and typed-receiver calls of this file's own members.
+    The last ``Send`` takes none; ``Send(1)`` is the first. A default makes
+    ``Open()`` and ``Open(5)`` the first. When several overloads take the
+    count the choice made before stands, the last declared (``Log("a")``).
+    None takes it: the call is handed over with its facts, not bound."""
+    source = (
+        "class Box {\n"                                    # 1
+        "    void Send(int a) {}\n"                        # 2
+        "    void Send() {}\n"                             # 3
+        "    void Open(int timeout = 0) {}\n"              # 4
+        "    void Open(int a, int b) {}\n"                 # 5
+        "    void Log(params object[] xs) {}\n"            # 6
+        "    void Log(string m) {}\n"                      # 7
+        "    void Run(Box other) {\n"                      # 8
+        "        Send(1);\n"                               # 9
+        "        this.Send();\n"                           # 10
+        "        other.Send(1);\n"                         # 11
+        "        Open();\n"                                # 12
+        "        Open(5);\n"                               # 13
+        "        Open(1, 2);\n"                            # 14
+        "        Log(\"a\", 1, 2);\n"                      # 15
+        "        Log(\"a\");\n"                            # 16
+        "        Send(1, 2, 3);\n"                         # 17
+        "        other.Send(1, 2);\n"                      # 18
+        "    }\n"
+        "}\n"
+    )
+    assert _own_targets(tmp_path, source, "Box.Run") == [
+        (9, (2, "own_type")),
+        (10, (3, "own_type")),
+        (11, (2, "receiver_type")),
+        (12, (4, "own_type")),
+        (13, (4, "own_type")),
+        (14, (5, "own_type")),
+        (15, (6, "own_type")),
+        (16, (7, "own_type")),
+        (17, {"enclosing_class": "Box", "argument_count": 3}),
+        (18, {"receiver_type_hint": "Box", "call_construct": "method", "argument_count": 2}),
+    ]
+
+
+def test_the_receiver_of_a_chained_call_is_typed_by_the_overload_called(tmp_path: Path) -> None:
+    """``Make(1).Go()``: the ``Make`` that takes one argument returns a
+    ``Conn``; the last ``Make`` returns an ``Other``. None takes three: the
+    receiver has no type here."""
+    source = (
+        "class Box {\n"
+        "    Conn Make(int a) => null;\n"
+        "    Other Make() => null;\n"
+        "    void Run() { Make(1).Go(); Make().Go(); Make(1, 2, 3).Go(); }\n"
+        "}\n"
+    )
+    edges = _calls(tmp_path, {"A.cs": source}, "Box.Run")
+    gone = sorted((e.meta or {}).get("receiver_type_hint", "-") for e in edges
+                  if not e.is_resolved and (e.meta or {}).get("callee_name") == "Go")
+    assert gone == ["-", "Conn", "Other"]
+
+
+def _bound(data: dict[str, Any], caller: str) -> list[tuple[int, str, int, str]]:
+    """``(call line, target's qualified name, target's line, mark)`` of each
+    resolved call from ``caller``."""
+    nodes = {n["id"]: n for n in data["nodes"]}
+    return sorted(
+        (e["line"], nodes[e["dst"]].get("qualified_name") or "",
+         nodes[e["dst"]]["span"]["start_line"], (e.get("meta") or {}).get("resolved_by"))
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved")
+        and not (e.get("meta") or {}).get("superseded_by")
+        and nodes.get(e["src"], {}).get("name") == caller and e["dst"] in nodes
+    )
+
+
+_SERVER = (
+    "namespace Web { public class Server {\n"                            # 1
+    "    public void TakeRequest() {}\n"                                 # 2
+    "    public void TakeRequest(int timeout, int unit) {}\n"            # 3
+    "    public void Start(int port = 0) {}\n"                           # 4
+    "    public void Start(string address, int backlog) {}\n"            # 5
+    "    public void Log(params string[] lines) {}\n"                    # 6
+    "    public void Log(int level) {}\n"                                # 7
+    "} }\n"
+)
+
+
+def test_end_to_end_a_typed_call_reaches_the_overload_that_takes_its_arguments(tmp_path: Path) -> None:
+    """The receiver's type is in another file, so the shared pass binds:
+    ``TakeRequest()`` is the overload with none, ``TakeRequest(1, 2)`` the
+    one with two; ``Start()`` the one whose parameter has a default;
+    ``Log("a", "b")`` the variadic one; ``Log(1)`` takes both, and the pass
+    keeps its choice, the last."""
+    data = _map(tmp_path, {
+        "Web/Server.cs": _SERVER,
+        "App/Main.cs": (
+            "using Web;\n"
+            "namespace App { public class Main { public void Run(Server s) {\n"
+            "    s.TakeRequest();\n"
+            "    s.TakeRequest(1, 2);\n"
+            "    s.Start();\n"
+            "    s.Log(\"a\", \"b\");\n"
+            "    s.Log(1);\n"
+            "} } }\n"
+        ),
+    })
+    assert _bound(data, "Main.Run") == [
+        (3, "Web.Server.TakeRequest", 2, "receiver_type"),
+        (4, "Web.Server.TakeRequest", 3, "receiver_type"),
+        (5, "Web.Server.Start", 4, "receiver_type"),
+        (6, "Web.Server.Log", 6, "receiver_type"),
+        (7, "Web.Server.Log", 7, "receiver_type"),
+    ]
+
+
+def test_end_to_end_an_overload_the_type_inherits_beside_its_own(tmp_path: Path) -> None:
+    """``Tls`` declares ``Send(a)``; ``Send(a, b)`` is its parent's. Two
+    arguments on a ``Tls`` receiver, or written bare inside ``Tls``, are the
+    parent's overload; one argument is the own."""
+    data = _map(tmp_path, {
+        "Net/Channel.cs": "namespace Net { public class Channel { public void Send(int a, int b) {} } }\n",
+        "Net/Tls.cs": (
+            "namespace Net { public class Tls : Channel {\n"
+            "    public void Send(int a) {}\n"
+            "    public void Run() { Send(1, 2); Send(1); }\n"
+            "} }\n"
+        ),
+        "App/Main.cs": (
+            "using Net;\n"
+            "namespace App { public class Main { public void Run(Tls t) {\n"
+            "    t.Send(1, 2);\n"
+            "    t.Send(1);\n"
+            "} } }\n"
+        ),
+    })
+    assert _bound(data, "Main.Run") == [
+        (3, "Net.Channel.Send", 1, "receiver_type"),
+        (4, "Net.Tls.Send", 2, "receiver_type"),
+    ]
+    assert _bound(data, "Tls.Run") == [
+        (3, "Net.Channel.Send", 1, "own_type"),
+        (3, "Net.Tls.Send", 2, "own_type"),
+    ]
+
+
+def test_end_to_end_a_bare_call_of_an_own_member_with_overloads(tmp_path: Path) -> None:
+    data = _map(tmp_path, {
+        "App/Box.cs": (
+            "namespace App { public class Box {\n"
+            "    void Send(int a) {}\n"
+            "    void Send() {}\n"
+            "    void Run() {\n"
+            "        Send(1);\n"
+            "        Send();\n"
+            "    }\n"
+            "} }\n"
+        ),
+        "App/Other.cs": "namespace App { public class Other { void Send(int a) {} } }\n",
+    })
+    assert _bound(data, "Box.Run") == [
+        (5, "App.Box.Send", 2, "own_type"),
+        (6, "App.Box.Send", 3, "own_type"),
+    ]
+
+
+def test_end_to_end_two_overloads_of_an_extension(tmp_path: Path) -> None:
+    """Dapper's shape: ``Open(this Conn c)`` and ``Open(this Conn c, int t)``.
+    On a receiver the receiver is not an argument: ``c.Open()`` is the first,
+    ``c.Open(5)`` the second. Written as a static call the receiver is one:
+    ``Ext.Open(c, 5)`` is the second (in another caller: the graph keeps one
+    call edge per caller and callee)."""
+    data = _map(tmp_path, {
+        "Data/Conn.cs": "namespace Data { public class Conn { } }\n",
+        "Data/Ext.cs": (
+            "namespace Data { public static class Ext {\n"
+            "    public static void Open(this Conn c) {}\n"
+            "    public static void Open(this Conn c, int timeout) {}\n"
+            "} }\n"
+        ),
+        "App/Main.cs": (
+            "using Data;\n"
+            "namespace App { public class Main { public void Run(Conn c) {\n"
+            "    c.Open();\n"
+            "    c.Open(5);\n"
+            "}\n"
+            "public void Static(Conn c) { Ext.Open(c, 5); }\n"
+            "} }\n"
+        ),
+    })
+    assert _bound(data, "Main.Run") == [
+        (3, "Data.Ext.Open", 2, "receiver_type"),
+        (4, "Data.Ext.Open", 3, "receiver_type"),
+    ]
+    assert _bound(data, "Main.Static") == [(6, "Data.Ext.Open", 3, "qualified")]
