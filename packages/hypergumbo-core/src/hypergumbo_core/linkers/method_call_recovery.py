@@ -91,7 +91,7 @@ from typing import TYPE_CHECKING
 
 from .. import resolved_by
 from ..member_names import member_short_name
-from ..overload_arity import narrow_by_arity
+from ..overload_arity import best_by_arity
 from ..type_visibility import without_type_arguments
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, NodeId, make_pass_id, stated_module_of,
@@ -393,7 +393,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 # Of several overloads, the ones that can take the arguments
                 # the call writes (``overload_arity``); of those the last, as
                 # before the count was read. None taking it: no candidate.
-                overloads = narrow_by_arity(
+                overloads = best_by_arity(
                     class_methods.get(hint.dst, {}).get(name, []),
                     (ucall.meta or {}).get("argument_count"),
                 )

@@ -260,7 +260,9 @@ def test_of_two_overloads_of_an_extension_the_one_that_takes_the_arguments_is_bo
     """Two extensions ``Retry`` on one type were an ambiguity and the call was
     withheld. With the number of arguments the call writes, the one that can
     take them is the callee; the receiver parameter of a C# extension is not
-    among the arguments. Without the fact, or when both fit, still withheld."""
+    among the arguments. Of two that can, the one whose parameters all get an
+    argument before one that substitutes a default. Without the fact, or
+    when both fit alike, still withheld."""
     from hypergumbo_core.overload_arity import parameter_entry
 
     def extension(sid: str, *names: str) -> Symbol:
@@ -287,4 +289,6 @@ def test_of_two_overloads_of_an_extension_the_one_that_takes_the_arguments_is_bo
     assert targets(None) == []
     assert targets(5) == []
     two.meta["parameters"][2]["default"] = True
+    assert targets(1) == [one.id]
+    two.meta["parameters"] = two.meta["parameters"][:2]
     assert targets(1) == []

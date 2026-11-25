@@ -622,8 +622,9 @@ def test_every_call_says_how_many_arguments_it_writes(tmp_path: Path) -> None:
 def test_the_own_member_bind_takes_the_overload_the_count_admits(tmp_path: Path) -> None:
     """``connect()`` and ``this.connect(1, 2)`` in a type that declares four
     ``connect``: each binds one that takes what it writes, though another is
-    declared last; of several that take it (``connect(1, 2)``: lines 5 and 6;
-    ``connect(1)``: lines 6 and 7) the last of those, as before;
+    declared last; of several that take it, the one whose parameters all get
+    an argument before one that substitutes a default (``connect(1, 2)``:
+    line 5, not line 6; ``connect(1)``: line 7, not line 6);
     ``connect(1, 2, 3, 4)`` that none takes is reported with the enclosing
     type; ``connect(*xs)`` (unknown) takes the last, as before. (``open`` is a
     modifier the grammar does not take as a function name.)"""
@@ -646,8 +647,8 @@ def test_the_own_member_bind_takes_the_overload_the_count_admits(tmp_path: Path)
     by_line: dict[int, Edge] = {e.line: e for e in _calls(result, "D.go")}
     starts = {s.id: s.span.start_line for s in result.symbols if s.name == "D.connect"}
     assert starts[by_line[9].dst] == 4
-    # Two admit two arguments (lines 5 and 6): the last of them.
-    assert starts[by_line[10].dst] == 6
+    # Two admit two arguments (lines 5 and 6): the one that needs no default.
+    assert starts[by_line[10].dst] == 5
     assert starts[by_line[11].dst] == 7
     assert not by_line[12].is_resolved
     assert _facts(by_line[12])["enclosing_class"] == "D"

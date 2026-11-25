@@ -185,7 +185,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, narrow_by_arity, parameter_entry, scoped_stable_id,
+    PARAMETERS_KEY, best_by_arity, parameter_entry, scoped_stable_id,
     scoped_table_stable_id,
 )
 from hypergumbo_core.paths import normalize_path
@@ -2446,7 +2446,7 @@ def _extract_edges_from_file(
     def member(key: str, call: "tree_sitter.Node") -> Optional[Symbol]:
         """The member ``key`` (``Type.M``) of this file that ``call`` can
         reach by the number of arguments it writes (WI-tosut,
-        ``overload_arity.narrow_by_arity`` over each overload's
+        ``overload_arity.best_by_arity`` over each overload's
         ``meta["parameters"]``). Of several that take them, the one chosen
         before arity was read, the last declared, when it is among them,
         else the last of them (the arguments' types are not read). None
@@ -2454,7 +2454,7 @@ def _extract_edges_from_file(
         chosen = local_symbols.get(key)
         if chosen is None:
             return None
-        admitted = narrow_by_arity(
+        admitted = best_by_arity(
             declared_by_name.get(key) or [chosen], _argument_count(call))
         if any(s is chosen for s in admitted):
             return chosen

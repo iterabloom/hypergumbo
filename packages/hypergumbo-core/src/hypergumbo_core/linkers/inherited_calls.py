@@ -185,7 +185,7 @@ from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..overload_arity import arity_bounds, narrow_by_arity
+from ..overload_arity import best_by_arity
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import (
     call_language, declaring_files, dotted, visible_declarations, visible_types,
@@ -1316,7 +1316,7 @@ def _declaration_named(
 
     ``argument_count``: of several declarations the name means (overloads),
     only the ones that can take that many arguments are candidates
-    (``overload_arity.narrow_by_arity``). A type records no parameters and
+    (``overload_arity.best_by_arity``). A type records no parameters and
     is never left out by it.
     """
     language = call_language(caller.language or "")
@@ -1349,7 +1349,7 @@ def _declaration_named(
         seen = [s for s in seen or () if s.kind == "method"] or seen
     if not seen or scoped is None:
         return None
-    seen = narrow_by_arity(seen, argument_count)
+    seen = best_by_arity(seen, argument_count)
     one_name = {dotted(s.qualified_name or "") for s in seen}
     one_kind = {s.kind == "function" for s in seen}
     if len(one_name) != 1 or len(one_kind) != 1:
@@ -1672,21 +1672,23 @@ def _admitting(
     A type whose overloads of the name all refuse the count then holds no
     candidate, and the hierarchy walk goes on to its ancestors: an inherited
     overload is a candidate beside the type's own, in every language that
-    overloads. Among the overloads that do take the count, the walkers keep
-    the one the index lists last, as before: the types of the arguments are
-    not read (WI-tosut).
+    overloads. Of a type's overloads that do take the count, only the ones
+    that need the least help to take it stay (``best_by_arity``: every
+    parameter given an argument, before a default, before a variadic one);
+    among those the walkers keep the one the index lists last, as before:
+    the types of the arguments are not read (WI-tosut).
     """
-    return _TypeHierarchyIndex(
-        symbol_by_id=index.symbol_by_id,
-        methods_by_short_name={
-            name: [
-                (class_id, method)
-                for class_id, method in index.methods_by_short_name.get(name, [])
-                if (bounds := arity_bounds(method)) is None or bounds.admits(argument_count)
-            ]
-            for name in names
-        },
-    )
+    narrowed: dict[str, list[tuple[str, Symbol]]] = {}
+    for name in names:
+        by_class: dict[str, list[Symbol]] = {}
+        for class_id, method in index.methods_by_short_name.get(name, []):
+            by_class.setdefault(class_id, []).append(method)
+        narrowed[name] = [
+            (class_id, method)
+            for class_id, methods in by_class.items()
+            for method in best_by_arity(methods, argument_count)
+        ]
+    return _TypeHierarchyIndex(symbol_by_id=index.symbol_by_id, methods_by_short_name=narrowed)
 
 
 def _resolve_site1(

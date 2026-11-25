@@ -1052,3 +1052,27 @@ def test_a_bare_call_takes_the_function_overload_that_fits() -> None:
     assert target(1) == one.id
     assert target(None) == one.id
     assert target(3) is None
+
+
+def test_an_overload_whose_parameters_all_get_arguments_beats_a_wider_one() -> None:
+    """``log(format)`` and, declared after it, ``log(format, vararg args)`` and
+    ``log(format, level = 0)``: a call with one argument is the first, by the
+    rule the three languages share (``overload_arity.best_by_arity``); with
+    two it is the one with the default, before the variadic one."""
+    logger = _decl("class", "app", "Logger", "app/Logger.kt", lines=(1, 40))
+    exact = _with_parameters(_decl("method", "app", "Logger.log", "app/Logger.kt", lines=(3, 4)), "format")
+    variadic = _with_parameters(
+        _decl("method", "app", "Logger.log", "app/Logger.kt", lines=(6, 7)), "format", variadic=True)
+    defaulted = _with_parameters(
+        _decl("method", "app", "Logger.log", "app/Logger.kt", lines=(9, 10)), "format", "level", defaults=1)
+    caller = _decl("function", "app", "run", "app/Main.kt", lines=(10, 20))
+    symbols = [logger, exact, defaulted, variadic, caller]
+
+    def target(argument_count: int) -> str:
+        (edge,) = _named_link(symbols, _typed_call(caller, "log", "Logger", argument_count),
+                              ImportScope(own_namespace="app"), caller.path)
+        return edge.dst
+
+    assert target(1) == exact.id
+    assert target(2) == defaulted.id
+    assert target(3) == variadic.id

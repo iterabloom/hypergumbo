@@ -253,7 +253,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.overload_arity import (
-    narrow_by_arity, parameter_entry, scoped_stable_id, scoped_table_stable_id,
+    best_by_arity, parameter_entry, scoped_stable_id, scoped_table_stable_id,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
@@ -2875,11 +2875,10 @@ def _extract_edges(
         so this is the language's own evidence; a member the type inherits is
         the linker's walk.
 
-        The members that can take the number of arguments written
-        (``overload_arity.narrow_by_arity`` over the ``meta["parameters"]``
-        each declares), one member or several; of those, the ones whose number
-        of parameters IS that number (JLS 15.12.2.2-3 before the
-        variable-arity phase 15.12.2.4), else every one admitted. Of those
+        The members that take the number of arguments written with the least
+        help (``overload_arity.best_by_arity`` over the ``meta["parameters"]``
+        each declares: the fixed-arity ones, JLS 15.12.2.2-3, before the
+        variable-arity phase 15.12.2.4), one member or several. Of those
         still several (one arity, told apart by their types) the LAST
         declared, as the hierarchy linker's method index keeps the last of a
         type's overloads for every typed and inherited call: choosing by the
@@ -2903,11 +2902,7 @@ def _extract_edges(
             key=lambda s: (s.span.start_line, s.span.start_col) if s.span else (0, 0),
         )
         written = _java_argument_count(call)
-        admitted = narrow_by_arity(inside, written)
-        inside = [
-            s for s in admitted
-            if len((s.meta or {}).get("parameters") or ()) == written
-        ] or admitted
+        inside = best_by_arity(inside, written)
         return inside[-1] if inside else None
 
     edges: list[Edge] = []
