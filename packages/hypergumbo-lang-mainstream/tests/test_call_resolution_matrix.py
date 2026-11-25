@@ -21,7 +21,7 @@ cell are not right, and they are kept apart on purpose:
   the columns they fill (the chained call, the inherited method) are the
   evidence for or against one shared resolution pass, a decision this fixture
   informs and does not take.
-* ``unresolved`` in an ``amb`` column is the RIGHT answer.
+* ``unresolved`` in an ``amb`` column, and in ``scope_ext``, is the RIGHT answer.
 
 HOW TO CHANGE IT. A fix moves a cell: the test for that language fails and
 shows the measured row. Edit the row, and when a guess is gone delete its
@@ -62,43 +62,66 @@ import _call_matrix_fixture as fx
 SHAPES = [shape for shape, _, _ in fx.SHAPES]
 
 #: language -> cells, in the order of ``SHAPES``:
-#: var, chain, ctor, inherited, amb_ext, amb_param, import.
+#: var, chain, ctor, inherited, amb_ext, amb_param, import, scope_own, scope_ext.
 MATRIX: dict[str, tuple[str, ...]] = {
-    "cpp": ("unresolved", "unresolved", "right", "right", "unresolved", "n/a", "order:right/decoy"),
-    "csharp": ("right", "unresolved", "right", "order:decoy/right", "picked", "n/a", "order:decoy/right"),
-    "go": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right"),
+    "cpp": ("unresolved", "unresolved", "right", "right", "unresolved", "n/a", "order:right/decoy", "right",
+            "unresolved"),
+    "csharp": ("right", "unresolved", "right", "order:decoy/right", "picked", "n/a", "order:decoy/right",
+               "right", "picked"),
+    "go": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right", "unresolved"),
     "groovy": ("order:decoy/right", "unresolved", "right", "order:decoy/right", "picked", "picked",
-               "order:decoy/right"),
-    "java": ("right", "right", "right", "right", "unresolved", "n/a", "order:unresolved/right"),
+               "order:decoy/right", "right", "picked"),
+    "java": ("right", "right", "right", "right", "unresolved", "n/a", "order:unresolved/right", "right",
+             "order:unresolved/picked"),
     "javascript": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved",
-                   "order:decoy/right"),
-    "kotlin": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right"),
-    "lua": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right"),
+                   "order:decoy/right", "right", "picked"),
+    "kotlin": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right",
+               "order:unresolved/picked"),
+    "lua": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right",
+            "order:right/decoy", "picked"),
     "objc": ("order:decoy/right", "order:decoy/right", "order:decoy/right", "order:decoy/right", "picked",
-             "picked", "no_edge"),
-    "perl": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "unresolved"),
+             "picked", "no_edge", "order:decoy/right", "picked"),
+    "perl": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "unresolved",
+             "right", "unresolved"),
     "php": ("unresolved", "unresolved", "right+unresolved", "unresolved", "unresolved", "unresolved",
-            "order:decoy/right"),
-    "python": ("right", "right", "right", "right", "unresolved", "unresolved", "right"),
-    "ruby": ("unresolved", "unresolved", "right", "no_edge", "no_edge", "no_edge", "order:decoy/right"),
-    "rust": ("right", "right", "right", "unresolved", "unresolved", "n/a", "right"),
-    "scala": ("right", "right", "right", "right", "unresolved", "n/a", "unresolved"),
-    "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right"),
-    "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right"),
+            "order:decoy/right", "right+unresolved", "unresolved"),
+    "python": ("right", "right", "right", "right", "unresolved", "unresolved", "right", "right",
+               "unresolved"),
+    "ruby": ("unresolved", "unresolved", "right", "no_edge", "no_edge", "no_edge", "order:decoy/right",
+             "order:right/decoy", "picked"),
+    "rust": ("right", "right", "right", "unresolved", "unresolved", "n/a", "right", "order:right/decoy",
+             "picked"),
+    "scala": ("right", "right", "right", "right", "unresolved", "n/a", "unresolved", "right", "picked"),
+    "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right", "right",
+              "unresolved"),
+    "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
+                   "picked"),
 }
 
 #: Every guess in ``MATRIX`` and the open item that owns it. INV-jutog states
-#: the invariant all of them break.
+#: the invariant all of them break. C# and Groovy bind ``scope_ext`` by name
+#: alone, as they do ``amb_ext``, so that cell cannot show whether a variable's
+#: type crosses functions there: ``test_var_types_per_function.py`` does.
 GUESSES: dict[tuple[str, str], str] = {
-    **{("groovy", shape): "WI-tiluh" for shape in ("var", "inherited", "amb_ext", "amb_param", "import")},
-    **{("objc", shape): "WI-mokul" for shape in ("var", "chain", "ctor", "inherited", "amb_ext", "amb_param")},
-    **{("csharp", shape): "WI-dovoz" for shape in ("inherited", "amb_ext", "import")},
+    ("cpp", "import"): "WI-joniz",
+    **{("csharp", shape): "WI-dovoz" for shape in ("inherited", "amb_ext", "import", "scope_ext")},
+    **{("groovy", shape): "WI-tiluh" for shape in ("var", "inherited", "amb_ext", "amb_param", "import",
+       "scope_ext")},
+    ("java", "import"): "WI-mugon",
+    ("java", "scope_ext"): "INV-zabud",
     ("javascript", "import"): "WI-lizis",
+    ("javascript", "scope_ext"): "INV-zabud",
+    ("kotlin", "scope_ext"): "INV-zabud",
+    **{("lua", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
+    **{("objc", shape): "WI-mokul" for shape in ("var", "chain", "ctor", "inherited", "amb_ext", "amb_param",
+       "scope_own", "scope_ext")},
     ("php", "import"): "WI-jafiz",
     ("ruby", "import"): "WI-madab",
+    **{("ruby", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
+    **{("rust", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
+    ("scala", "scope_ext"): "INV-zabud",
     ("swift", "import"): "WI-nuvov",
-    ("cpp", "import"): "WI-joniz",
-    ("java", "import"): "WI-mugon",
+    ("typescript", "scope_ext"): "INV-zabud",
 }
 
 #: Declarations of the program an analyzer emits no symbol for. Objective-C: a

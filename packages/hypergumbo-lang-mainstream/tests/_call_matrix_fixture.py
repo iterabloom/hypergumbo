@@ -10,7 +10,7 @@ the matrix with confidences::
 THE PROGRAM. Two classes R and D both declare ``execute()``; a base B declares
 ``ping()``, ``Child`` inherits B, and an unrelated S declares ``ping()`` too;
 ``get_db()`` returns an R; a second file declares ``helper()`` and a decoy file
-declares another. Seven callers, one call shape each:
+declares another. Nine callers, one call shape each:
 
 ==============  =====================================  =============================
 caller          the call                               what it reaches
@@ -22,7 +22,18 @@ via_inherited   ``ch = Child(); ch.ping()``            B.ping
 via_amb_ext     ``x = extlib.make(); x.execute()``     nothing in the repository
 via_amb_param   ``(x) x.execute()``, x untyped         nothing in the repository
 via_import      ``helper()``, imported from util       util's helper
+via_scope_own   ``h = R(); h.execute()``               R.execute
+via_scope_ext   ``h = extlib.make(); h.execute()``     nothing in the repository
 ==============  =====================================  =============================
+
+THE SAME NAME IN ANOTHER FUNCTION (INV-zabud). The last two callers each bind a
+local ``h``, and two more functions bind an ``h`` of the DECOY class:
+``scope_decoy_local`` (``h = D()``) and, where a parameter can carry a type,
+``scope_decoy_param`` (``h: D``). ``decoy_last`` writes the two decoys after the
+measured callers, otherwise before them. A variable-type table kept per file
+shows here and nowhere else in the program: ``via_scope_own`` reaches the decoy
+(the first ``h`` in the file typed every ``h``), or ``via_scope_ext`` is bound
+at all (an ``h`` nothing types kept the type another function gave its own).
 
 ``via_amb_param`` exists only where the language allows an untyped parameter.
 Statically typed languages bind ``db`` with their inference keyword (``var``,
@@ -69,6 +80,59 @@ def order(decoy_last: bool, right: str, decoy: str) -> str:
     return (right + "\n" + decoy) if decoy_last else (decoy + "\n" + right)
 
 
+#: The same-named-variable callers, per language: the function's first line
+#: (``@n`` its name, ``@p`` its parameters), the line binding ``h`` to a new
+#: ``@c``, the line binding ``h`` to an external value, the call, the closing
+#: line, and a parameter ``h`` typed ``@c`` (``None`` where a parameter cannot
+#: carry a type).
+_SCOPE: dict[str, tuple[str, str, str, str, str, "str | None"]] = {
+    "python": ("def @n(@p):", "    h = @c()", "    h = extlib.make()", "    h.execute()", "", "h: @c"),
+    "javascript": ("function @n(@p) {", "  const h = new @c();", "  const h = extlib.make();",
+                   "  h.execute();", "}", None),
+    "typescript": ("function @n(@p): void {", "  const h = new @c();", "  const h = extlib.make();",
+                   "  h.execute();", "}", "h: @c"),
+    "java": ("    static void @n(@p) {", "        var h = new @c();", "        var h = Lib.make();",
+             "        h.execute();", "    }", "@c h"),
+    "kotlin": ("fun @n(@p) {", "    val h = @c()", "    val h = make()", "    h.execute()", "}", "h: @c"),
+    "scala": ("  def @n(@p): Unit = {", "    val h = new @c()", "    val h = Lib.make()", "    h.execute()",
+              "  }", "h: @c"),
+    "csharp": ("        static void @n(@p)\n        {", "            var h = new @c();",
+               "            var h = Factory.make();", "            h.execute();", "        }", "@c h"),
+    "go": ("func @n(@p) {", "\th := &@c{}", "\th := extlib.Make()", "\th.execute()", "}", "h *@c"),
+    "rust": ("pub fn @n(@p) {", "    let h = @c::new();", "    let h = extlib::make();", "    h.execute();",
+             "}", "h: @c"),
+    "swift": ("func @n(@p) {", "    let h = @c()", "    let h = ExtLib.make()", "    h.execute()", "}", "h: @c"),
+    "cpp": ("void @n(@p) {", "    @c h;", "    auto h = extlib::make();", "    h.execute();", "}", "@c& h"),
+    "objc": ("+ (void)@n@p {", "    @c *h = [[@c alloc] init];", "    id h = [ExtLib make];", "    [h execute];",
+             "}", ":(@c *)h"),
+    "ruby": ("def @n@p", "  h = @c.new", "  h = ExtLib.make", "  h.execute", "end", None),
+    "php": ("function @n(@p)\n{", "    $h = new @c();", "    $h = Factory::make();", "    $h->execute();", "}",
+            "@c $h"),
+    "groovy": ("    static void @n(@p) {", "        def h = new @c()", "        def h = Lib.make()",
+               "        h.execute()", "    }", "@c h"),
+    "lua": ("local function @n(@p)", "  local h = @c.new()", "  local h = extlib.make()", "  h:execute()", "end",
+            None),
+    "perl": ("sub @n@p {", "    my $h = @c->new();", "    my $h = ExtLib->make();", "    $h->execute();", "}",
+             None),
+}
+
+
+def scope_callers(lang: str, R: str, D: str, decoy_last: bool) -> str:
+    """The four functions that each bind a local named ``h`` (see the module docstring)."""
+    head, own, ext, call, tail, param = _SCOPE[lang]
+
+    def function(name: str, bind: str, cls: str = "", params: str = "") -> str:
+        lines = [head.replace("@n", name).replace("@p", params)]
+        lines += [bind.replace("@c", cls)] if bind else []
+        return "\n".join([*lines, call, *([tail] if tail else [])]) + "\n"
+
+    decoys = [function("scope_decoy_local", own, D)]
+    if param is not None:
+        decoys.insert(0, function("scope_decoy_param", "", params=param.replace("@c", D)))
+    measured = [function("via_scope_ext", ext), function("via_scope_own", own, R)]
+    return "\n".join(measured[::-1] + decoys[::-1] if decoy_last else decoys + measured)
+
+
 # ---------------------------------------------------------------- python
 def py(R, D, B, S, dl):
     def cls(n, m, v):
@@ -112,6 +176,7 @@ def via_amb_param(x):
     x.execute()
 
 
+{scope_callers("python", R, D, dl)}
 def via_import():
     helper()
 """
@@ -165,6 +230,7 @@ function via_amb_param(x{t(': any')}){t(': void')} {{
   x.execute();
 }}
 
+{scope_callers("typescript" if ts else "javascript", R, D, dl)}
 function via_import(){t(': void')} {{
   helper();
 }}
@@ -225,6 +291,7 @@ public class Main {{
         x.execute();
     }}
 
+{scope_callers("java", R, D, dl)}
     static void via_import() {{
         Util.helper();
     }}
@@ -277,6 +344,7 @@ fun via_amb_ext() {{
     x.execute()
 }}
 
+{scope_callers("kotlin", R, D, dl)}
 fun via_import() {{
     helper()
 }}
@@ -327,6 +395,7 @@ object Main {{
     x.execute()
   }}
 
+{scope_callers("scala", R, D, dl)}
   def via_import(): Unit = {{
     helper()
   }}
@@ -387,6 +456,7 @@ namespace App
             x.execute();
         }}
 
+{scope_callers("csharp", R, D, dl)}
         static void via_import()
         {{
             Util.helper();
@@ -443,6 +513,7 @@ func via_amb_ext() {{
 	x.execute()
 }}
 
+{scope_callers("go", R, D, dl)}
 func via_import() {{
 	util.Helper()
 }}
@@ -501,6 +572,7 @@ pub fn via_amb_ext() {{
     x.execute();
 }}
 
+{scope_callers("rust", R, D, dl)}
 pub fn via_import() {{
     helper();
 }}
@@ -550,6 +622,7 @@ func via_amb_ext() {{
     x.execute()
 }}
 
+{scope_callers("swift", R, D, dl)}
 func via_import() {{
     helper()
 }}
@@ -599,6 +672,7 @@ void via_amb_ext() {{
     x.execute();
 }}
 
+{scope_callers("cpp", R, D, dl)}
 void via_import() {{
     helper();
 }}
@@ -659,6 +733,7 @@ def objc(R, D, B, S, dl):
     [x execute];
 }}
 
+{scope_callers("objc", R, D, dl)}
 + (void)via_import {{
     helper();
 }}
@@ -713,6 +788,7 @@ def via_amb_param(x)
   x.execute
 end
 
+{scope_callers("ruby", R, D, dl)}
 def via_import
   helper()
 end
@@ -775,6 +851,7 @@ function via_amb_param($x)
     $x->execute();
 }}
 
+{scope_callers("php", R, D, dl)}
 function via_import()
 {{
     helper();
@@ -832,6 +909,7 @@ class Main {{
         x.execute()
     }}
 
+{scope_callers("groovy", R, D, dl)}
     static void via_import() {{
         Util.helper()
     }}
@@ -889,6 +967,7 @@ local function via_amb_param(x)
   x:execute()
 end
 
+{scope_callers("lua", R, D, dl)}
 local function via_import()
   util.helper()
 end
@@ -952,6 +1031,7 @@ sub via_amb_param {{
     $x->execute();
 }}
 
+{scope_callers("perl", R, D, dl)}
 sub via_import {{
     helper();
 }}
@@ -974,8 +1054,9 @@ ARMS = [(True, False), (True, True), (False, False), (False, True)]
 #: (cell name, caller, method the call names)
 SHAPES = [("var", "via_var", "execute"), ("chain", "via_chain", "execute"), ("ctor", "via_ctor", "execute"),
           ("inherited", "via_inherited", "ping"), ("amb_ext", "via_amb_ext", "execute"),
-          ("amb_param", "via_amb_param", "execute"), ("import", "via_import", "helper")]
-AMBIGUOUS = {"amb_ext", "amb_param"}
+          ("amb_param", "via_amb_param", "execute"), ("import", "via_import", "helper"),
+          ("scope_own", "via_scope_own", "execute"), ("scope_ext", "via_scope_ext", "execute")]
+AMBIGUOUS = {"amb_ext", "amb_param", "scope_ext"}
 
 
 def class_names(swap: bool) -> tuple[str, str, str, str]:
