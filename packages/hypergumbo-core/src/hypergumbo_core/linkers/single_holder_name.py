@@ -19,9 +19,10 @@ has little else: on five JavaScript / TypeScript trees, deleting the name
 lookup outright lost 11,805 resolved calls, 13 of 15 sampled ones right, and
 the name had one holder in 10,652 of them.
 
-So the name keeps ONE use, in one place, for every language whose analyzer has
-adopted the pass (its files hand over an import table,
-``LinkerContext.import_scopes``): a call no earlier linker resolved is bound
+So the name keeps ONE use, in one place, for every file whose analyzer has
+adopted the pass AND screens the names of the language's own library (its
+table, ``LinkerContext.import_scopes``, says so:
+``ImportScope.library_names_screened``): a call no earlier linker resolved is bound
 to the ONE declaration of the caller's language that has its name, and
 marked ``resolved_by="name"``. Several holders: unresolved. A holder is a
 METHOD for a call written on a receiver (``x.drain()``) and a FUNCTION for a
@@ -63,6 +64,19 @@ What this does not know: that a receiver's first name is not declared in the
 caller's file at all (a global such as ``document``). No stub says so; a
 single ``getElementById`` in a repository would be bound to it, unless the
 analyzer lists the name as the library's.
+
+Why the analyzer must screen library names first
+-------------------------------------------------
+Measured on the C# adapter, which has no list of the names the base class
+library defines: of 15 calls this pass newly bound, read in the source, 5
+were wrong (``string.Join(..)`` on the repository's one ``Join``,
+``task.AsTask()``, ``stopwatch.Start()``). JavaScript before its list was
+passed on: about 15 wrong of 20 (``items.push(x)``, ``p.catch(f)``). A
+receiver nobody could type is, more often than not in a typed language, a
+library value. So the pass does nothing for a file whose table does not say
+its analyzer screens those names; the JavaScript / TypeScript analyzer marks
+them (``stdlib_member_name``), the Rust analyzer withholds the stub
+(``analyzer_disclosure.SUPPRESSED_METHOD_NAMES``).
 
 The number
 ----------
@@ -174,7 +188,7 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
             continue
         caller = symbol_by_id.get(edge.src)
         scope = ctx.import_scopes.get(caller.path) if caller is not None else None
-        if caller is None or scope is None:
+        if caller is None or scope is None or not scope.library_names_screened:
             continue
         wanted = _holder_to_look_up(edge, scope)
         found = holders.get((call_language(caller.language or ""), *wanted), ()) if wanted else ()

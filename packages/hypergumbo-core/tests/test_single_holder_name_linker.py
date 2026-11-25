@@ -42,7 +42,7 @@ def _bare_call(caller: Symbol, callee: str) -> Edge:
 
 
 def _files() -> ImportScope:
-    return ImportScope(module_kind=MODULES_ARE_FILES)
+    return ImportScope(module_kind=MODULES_ARE_FILES, library_names_screened=True)
 
 
 def _link(symbols: list[Symbol], edges: list[Edge], scope: ImportScope | None,
@@ -120,7 +120,7 @@ def test_a_qualifier_in_a_language_of_declared_names_never_binds_by_name() -> No
     whole answer (an alias of the table included)."""
     holder = _sym("method", "Queue.Drain", "Queue.cs", language="csharp")
     caller = _caller("csharp", "Main.cs")
-    scope = ImportScope()
+    scope = ImportScope(library_names_screened=True)
     scope.add_named("App", "Queue", alias="Q")
     stub = _member_call(caller, "Drain", qualifier="Q")
     assert _link([holder, caller], [stub], scope, path="Main.cs") == []
@@ -234,4 +234,16 @@ def test_a_call_whose_producer_stated_a_module_is_not_bound_by_name() -> None:
         module_hint="./store", call_construct="method", qualifier="store",
     )
     (edge,) = _link([holder, caller], [bound], scope)
+    assert edge.dst == holder.id
+
+
+def test_a_file_whose_analyzer_does_not_screen_library_names_is_left_alone() -> None:
+    """C# today: no list of the names the base class library defines, so
+    ``task.AsTask()`` on an untyped receiver would be bound to the
+    repository's one ``AsTask``. The table says whether the analyzer screens."""
+    holder = _sym("method", "Engine.AsTask", "Engine.cs", language="csharp")
+    caller = _caller("csharp", "Main.cs")
+    stub = _member_call(caller, "AsTask")
+    assert _link([holder, caller], [stub], ImportScope(), path="Main.cs") == []
+    (edge,) = _link([holder, caller], [stub], ImportScope(library_names_screened=True), path="Main.cs")
     assert edge.dst == holder.id
