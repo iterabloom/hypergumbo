@@ -423,17 +423,19 @@ def test_a_kotlin_companion_import_still_resolves(tmp_path: Path) -> None:
     """An import through a companion object
     (``okhttp3.Headers.Companion.headersOf``) names a member whose qualified
     name has no ``Companion`` segment; reading the import literally would
-    withhold correct edges."""
-    from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+    withhold correct edges. The analyzer reports the call and the shared
+    lookup binds it through the file's table, which drops the segment."""
+    from _kotlin_linked import analyze_and_link
 
-    result = analyze_kotlin(_write(tmp_path, {
+    result = analyze_and_link(_write(tmp_path, {
         "a/Headers.kt": "package okhttp3\n\nclass Headers {\n    companion object {\n"
                         "        fun headersOf(vararg s: String): Headers = Headers()\n    }\n}\n",
         "b/Use.kt": "package app\n\nimport okhttp3.Headers.Companion.headersOf\n\n"
                     "class Use {\n    fun go(): Any = headersOf(\"a\", \"b\")\n}\n",
     }))
-    calls = _calls(result, "headersOf")
-    assert calls and all(resolved for _, resolved in calls), [e.dst for e, _ in calls]
+    declared = {s.id: s.qualified_name for s in result.symbols}
+    bound = [declared[e.dst] for e, resolved in _calls(result, "headersOf") if resolved]
+    assert bound == ["okhttp3.Headers.headersOf"]
 
 
 class TestImportedElsewhere:
