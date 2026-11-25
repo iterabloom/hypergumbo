@@ -129,6 +129,38 @@ typed receiver still goes by name. An id
 that is a known class symbol in the call's language replaces the name lookup
 and skips that guard; a missing, stale or foreign-language id falls back to
 the name path and its guard.
+
+Which type a name means (ADR-0064)
+----------------------------------
+A producer-threaded id is one way to know which class a name is. The other,
+for an analyzer that hands over its files' import tables
+(``LinkerContext.import_scopes``), is to ask: ``type_visibility.visible_types``
+turns the name on the stub into the declarations it can mean from the
+caller's place (the caller's enclosing scopes and the file's imports for a
+language with declared names; the caller's own file and the files its imports
+name for a language whose imports name files). One type: it is used exactly
+as an id is (several declarations when the type is partial, told from a
+generic namesake by ``meta["type_arity"]``). None, or two: the call stays
+unresolved, whatever namesakes the repository holds. A file with no table is
+untouched by any of this.
+
+Three more things ride on the same loop, each read only for a file with a
+table unless said otherwise:
+
+* ``meta["qualifier"]`` (``Util.Helper()``: the call names its owner) goes
+  through Site 2 and the bind is marked ``qualified``.
+* A call fact for every file: ``meta["super_receiver"]`` makes Site 1 start
+  at the enclosing type's parents (``base.M()``, ``super.m()``).
+* Site 2, step 2b: where the type is settled and no method of the name is on
+  it, a field or property of the name is bound (an invoked delegate).
+* A function called by its imported name, in a language whose imports name
+  files: an explicit binding names the function with the original name in the
+  bound file; a qualifier that is a namespace binding names that file's
+  function. Marked ``import``. This is not one of the three Sites: there is
+  no type in it.
+
+The name of this module is narrower than what it now does; it stays until the
+pilot of ADR-0064 has settled what belongs here.
 """
 
 from __future__ import annotations
@@ -139,7 +171,7 @@ from typing import Callable
 
 from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
-from ..import_scope import ImportScope
+from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import dotted, visible_types, written_arity
@@ -991,6 +1023,14 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in ctx.symbols}
 
+    # Functions by (file, name), for a call to a function by its imported
+    # name. Built only when some file's table names files.
+    functions_in_file: dict[tuple[str, str], list[Symbol]] = {}
+    if any(s.module_kind == MODULES_ARE_FILES for s in ctx.import_scopes.values()):
+        for s in ctx.symbols:
+            if s.kind == "function":
+                functions_in_file.setdefault((s.path, s.name), []).append(s)
+
     new_edges: list[Edge] = []
     for edge in ctx.edges:
         if edge.edge_type != "calls" or edge.is_resolved:
@@ -1018,15 +1058,40 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         # call fact of ADR-0064, read only where the file handed over a table.
         qualifier = meta.get("qualifier")
 
+        src_sym = symbol_by_id.get(edge.src)
+        src_lang = src_sym.language if src_sym else None
+        if src_sym is None or src_lang is None:
+            continue
+
+        # A function called by its imported name (ADR-0064). The table of a
+        # language whose imports name files says which file's function the
+        # name, or the qualifier, stands for. It comes first: a qualifier that
+        # is a namespace binding of the file names a module, not a type.
+        scope = ctx.import_scopes.get(src_sym.path)
+        if (
+            scope is not None and scope.module_kind == MODULES_ARE_FILES
+            and not (receiver_type_hint or inherited_field_receiver)
+        ):
+            imported = _imported_function(
+                parse_unresolved_name(edge.dst) or "", qualifier, scope,
+                functions_in_file, src_lang,
+            )
+            if imported is not None:
+                if (edge.src, imported.id) not in existing_call_pairs:
+                    new_edges.append(Edge.create(
+                        src=edge.src, dst=imported.id, edge_type="calls",
+                        line=edge.line, origin=PASS_ID, origin_run_id=run.execution_id,
+                        evidence_type="ast_call_direct", is_resolved=True,
+                        derived_from=[edge.id, imported.id],
+                        resolved_by=resolved_by.IMPORT,
+                    ))
+                    existing_call_pairs.add((edge.src, imported.id))
+                continue
+
         if not (
             receiver_type_hint or inherited_field_receiver
             or enclosing_class or qualifier
         ):
-            continue
-
-        src_sym = symbol_by_id.get(edge.src)
-        src_lang = src_sym.language if src_sym else None
-        if src_sym is None or src_lang is None:
             continue
 
         # WHICH type the name means (ADR-0064). The hint is a name, and a name
@@ -1038,7 +1103,6 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         # ``receiver_type_id`` is. No table: the name lookup, as before.
         scoped_by = resolved_by.RECEIVER_TYPE
         settled_type_ids: list[str] | None = None
-        scope = ctx.import_scopes.get(src_sym.path)
         if scope is not None and not inherited_field_receiver:
             named_type = receiver_type_hint
             if not named_type and qualifier:
@@ -1094,6 +1158,33 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 # Per-Site resolvers.
 # ---------------------------------------------------------------------------
+
+
+def _imported_function(
+    callee: str,
+    qualifier: str | None,
+    scope: ImportScope,
+    functions_in_file: dict[tuple[str, str], list[Symbol]],
+    language: str,
+) -> Symbol | None:
+    """The function a call names through the caller's imports, in a language
+    whose imports name files.
+
+    ``callee`` an explicit binding (``import {helper as h}``; ``h()``): the
+    function with the ORIGINAL name in the bound file. ``qualifier`` a
+    namespace binding (``import * as util``; ``util.helper()``): the function
+    ``callee`` in that file. One function of the caller's language, or
+    ``None``: no binding, a file that does not declare the name (a
+    re-export), or two declarations of it there.
+    """
+    if qualifier:
+        module = scope.namespace(dotted(qualifier))
+        key = (module, callee) if module is not None else None
+    else:
+        bound = scope.named(callee)
+        key = (bound.module, bound.name) if bound is not None else None
+    found = [f for f in functions_in_file.get(key, ()) if f.language == language] if key else []
+    return found[0] if len(found) == 1 else None
 
 
 #: Member kinds, other than a method, that a call can invoke through the
