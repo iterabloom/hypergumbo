@@ -678,23 +678,42 @@ func main() {{}}
 
 
 # ---------------------------------------------------------------- rust
-def rust(R, D, B, S, dl):
+def rust(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v):
         return (f"pub struct {n};\n\nimpl {n} {{\n    pub fn new() -> Self {{ {n} }}\n"
                 f"    pub fn {m}(&self) -> i32 {{ {v} }}\n}}\n")
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    base = (f"pub trait {B} {{\n    fn ping(&self) -> i32 {{ 1 }}\n}}\n\npub struct Child;\n\n"
-            f"impl Child {{\n    pub fn new() -> Self {{ Child }}\n}}\n\nimpl {B} for Child {{}}\n")
-    pg = order(dl, base, cls(S, "ping", 2))
-    dec = ("zdecoy" if dl else "adecoy")
-    main = f"""mod {dec};
-mod util;
-
-use util::helper;
-
-{ex}
-{pg}
-pub fn get_db() -> {R} {{
+    trait = f"pub trait {B} {{\n    fn ping(&self) -> i32 {{ 1 }}\n}}\n"
+    child = f"pub struct Child;\n\nimpl Child {{\n    pub fn new() -> Self {{ Child }}\n}}\n\nimpl {B} for Child {{}}\n"
+    spare = "pub struct Spare;\n\nimpl Spare {\n    pub fn execute(&self) -> i32 { 2 }\n    pub fn ping(&self) -> i32 { 2 }\n}\n"
+    side = "z" if dl else "a"
+    dec = f"{side}decoy"
+    files = {"Cargo.toml": '[package]\nname = "fx"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nextlib = "1"\n',
+             "src/util.rs": "pub fn helper() -> i32 { 1 }\n",
+             f"src/{dec}.rs": "pub fn helper() -> i32 { 2 }\n"}
+    extra = [f"{side}_spare_util"] if third else []
+    if third:
+        files[f"src/{side}_spare_util.rs"] = "pub fn helper() -> i32 { 2 }\n"
+    if split:
+        # One type per module file, declared with ``mod`` and brought in with
+        # ``use``. The trait is used too: ``ch.ping()`` needs it in scope. The
+        # decoy type D is used because ``scope_decoy_*`` name it; S is not.
+        files |= {"src/store.rs": cls(R, "execute", 1), f"src/{side}_store.rs": cls(D, "execute", 2),
+                  "src/base.rs": trait, "src/child.rs": f"use crate::base::{B};\n\n{child}",
+                  f"src/{side}_stray.rs": cls(S, "ping", 2)}
+        if third:
+            files[f"src/{side}_spare.rs"] = spare
+        mods = sorted(rel[4:-3] for rel in files if rel.startswith("src/"))
+        uses = sorted([f"base::{B}", "child::Child", f"store::{R}", f"{side}_store::{D}", "util::helper"])
+        classes = ""
+    else:
+        mods = [dec, "util", *extra]
+        uses = ["util::helper"]
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + ("\n" + spare if third else ""))
+        pg = order(dl, trait + "\n" + child, cls(S, "ping", 2))
+        classes = f"{ex}\n{pg}\n"
+    lines = "".join(f"mod {m};\n" for m in mods) + "\n" + "".join(f"use {u};\n" for u in uses)
+    files["src/lib.rs"] = f"""{lines}
+{classes}pub fn get_db() -> {R} {{
     {R}::new()
 }}
 
@@ -726,11 +745,12 @@ pub fn via_amb_ext() {{
 pub fn via_import() {{
     helper();
 }}
+
+pub fn via_qual() {{
+    util::helper();
+}}
 """
-    return {"Cargo.toml": '[package]\nname = "fx"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nextlib = "1"\n',
-            "src/lib.rs": main,
-            "src/util.rs": "pub fn helper() -> i32 { 1 }\n",
-            f"src/{dec}.rs": "pub fn helper() -> i32 { 2 }\n"}
+    return files
 
 
 # ---------------------------------------------------------------- swift
