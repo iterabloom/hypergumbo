@@ -4844,13 +4844,18 @@ def _extract_edges_from_file(
                             # ``std::net::UdpSocket``) is the evidence the denylist lacks:
                             # ``sock.send`` on it is the catalogued net_send sink, emitted with
                             # the type in the slot (INV-pamis). A named owner, or a receiver
-                            # type that is not provably a library's, is a fact the shared pass
-                            # can bind on, so the stub is emitted too.
+                            # type, that is not provably a library's is a fact the shared pass
+                            # can bind on, so the stub is emitted too. An owner that IS the
+                            # library's (``Vec::new()``, ``Box::new(x)``: the prelude) gives
+                            # the linker nothing, and the name stays withheld as before.
                             if (
                                 has_explicit_binding
                                 or ext_ref is not None
                                 or callee_name not in _RUST_GENERIC_TRAIT_METHODS
-                                or qualifier is not None
+                                or (
+                                    qualifier is not None
+                                    and not _rust_type_is_external(qualifier, use_aliases, crates)
+                                )
                                 or (
                                     receiver_hint is not None
                                     and not _rust_type_is_external(receiver_hint, use_aliases, crates)
