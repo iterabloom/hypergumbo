@@ -1,0 +1,22 @@
+- op: create  # 4733
+  at: '2026-11-25T01:50:49Z'  # 4733
+  by: agent  # 4733
+  actor: jgstern_agent  # 4733
+  clock: 1  # 4733
+  nonce: '4733'  # 4733
+  data:  # 4733
+    kind: work_item  # 4733
+    title: "Scoped variable types: an untyped local does not hide an outer binding; fields are per file; a Ruby def and a nested Rust fn see outer locals"  # 4733
+    status: todo_hard  # 4733
+    priority: 3  # 4733
+    parent:  # 4733
+    tags:  # 4733
+    - call_graph  # 4733
+    - analysis_quality  # 4733
+    - call_matrix  # 4733
+    isbefore: []  # 4733
+    duplicate_of: []  # 4733
+    not_duplicate_of: []  # 4733
+    pr_ref:  # 4733
+    description: "WHAT\nScopedVarTypes (hypergumbo_core/analyze/var_scope.py) closes a function's bindings when the function ends. Three things it does not do, each stated in its module docstring, none measured on a real repository:\n\n1. A local the analyzer cannot type does not hide an outer binding of the same name. With a field Other db, the receiver of var db = lib.make(); db.execute() is typed Other. Nothing is written for an untyped local, so there is nothing to close. A fix needs every analyzer to report a binding it cannot type.\n2. Fields are bound per file, not per class: a field of one class types a same-named bare receiver in another class of the file.\n3. Scopes are transparent in every language. A Ruby def and a nested Rust fn do not see the locals around them; here they do.\n\nSEEN ONCE\njedis mcf/HealthCheckCollection.java: a parameter HealthCheck[] healthChecks typed the Map field healthChecks in four later methods before INV-zabud (5 uses edges to HealthCheck, gone with the fix). The same shape with an UNTYPED local over a typed field is case 1.\n\nWHERE THIS BELONGS\nThe shared resolution pass's call facts name a receiver's origin per function (~/hypergumbo_lab_notebook/shared_resolution_design_11242026.md, piece c): \"bound here, type unknown\" is a fact an analyzer reports there. Fixing it per analyzer first would be written twice."  # 4733
+    fields: {}  # 4733

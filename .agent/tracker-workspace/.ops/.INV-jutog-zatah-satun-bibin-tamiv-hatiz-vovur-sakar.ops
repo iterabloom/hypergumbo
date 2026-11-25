@@ -22,3 +22,24 @@
     fields:  # 98a7
       statement: "A call edge marked resolved names the same destination whichever order the same-named candidates are declared in; when the analyzer cannot tell the candidates apart the call is unresolved, candidates kept."  # 98a7
       root_cause: "Not traced for any language. Observed only: 24 fixture cells in 9 of 17 mainstream languages flip between the right symbol and a decoy when two declarations (or two files) swap order; swapping the class names changes nothing."  # 98a7
+- op: discuss  # cdec
+  at: '2026-11-24T22:11:01Z'  # cdec
+  by: agent  # cdec
+  actor: jgstern_agent  # cdec
+  clock: 2  # cdec
+  nonce: cdec  # cdec
+  message: "RUST: fixed in PR #2381 (INV-hupis satisfied, evidence on that item). The matrix row is right/right/right/unresolved/unresolved/n-a/right; its five GUESSES entries are gone from test_call_resolution_matrix.py, 20 remain in 8 languages (objc 6, groovy 5, csharp 3, javascript, php, ruby, swift, cpp, java 1 each). SIZE, first measurement on real code: on 12 Rust repositories the same-file last-writer table was behind 2,006 of 81,103 resolved Rust call edges (2.5%); at least 901 were wrong by the call's own text. No such count exists for the other eight languages. The Rust A/B scripts are in ~/hypergumbo_lab_notebook/hupis_11242026/ (run_arm.sh, compare2.py, audit.py)."  # cdec
+- op: discuss  # c5db
+  at: '2026-11-24T23:32:45Z'  # c5db
+  by: agent  # c5db
+  actor: jgstern_agent  # c5db
+  clock: 3  # c5db
+  nonce: c5db  # c5db
+  message: "OWNER RULINGS, in session 2026-11-24 (full text and plan: ~/hypergumbo_lab_notebook/shared_resolution_design_11242026.md): build ONE shared call-resolution pass; 'unresolved beats a guess' replaces ADR-0006's 'false positives are preferable'; imports = each analyzer hands the shared pass a binding table (adopt import_scope.py, WI-tihup), the shared pass owns the lookup; a name-only match keeps its number until every edge is marked with how it was resolved, counted and sampled. Agreed order: (1) variable types per function, INV-zabud, one PR; (2) measure with no behaviour change (concept audit on 'how an edge was resolved', one mark, wider fixture WI-bobik, census); (3) the ADR (supersedes ADR-0006 scope + line 104 and ADR-0007's directory-name hints, extends ADR-0029; WI-mobih); (4) shared pieces, pilot = rust + csharp + javascript/typescript; (5) batches by mechanism, the fifteen stable-id bump items riding with the declared-name bump. The eight languages that still bind by declaration order are handled by that rollout, worst first. Import survey for the ruling: ~/hypergumbo_lab_notebook/import_survey_11242026/RESULTS.md."  # c5db
+- op: discuss  # 11a8
+  at: '2026-11-24T23:35:51Z'  # 11a8
+  by: agent  # 11a8
+  actor: jgstern_agent  # 11a8
+  clock: 4  # 11a8
+  nonce: 11a8  # 11a8
+  message: "OWNER RULINGS, in session 2026-11-24 (late), verbatim: \"declared names for Groovy, Scala, C++ and Swift inside the next stable-id bump, or kept out of the hash. -- inside the next stable-id bump / in-place fixes for the eight guessing languages meanwhile: none, or cheap ones only -- cheap ones only / whether to cut 11.0.0 before step 4 -- no\". For this item: the eight languages that still bind by declaration order get an in-place fix ahead of the shared pass only where it is cheap (my reading of cheap: a refusal of a few lines, no new resolution machinery in the analyzer; the owner did not define the word). Which of the eight have such a fix is not known: causes are traced for Rust only. Recorded in ~/hypergumbo_lab_notebook/shared_resolution_design_11242026.md."  # 11a8
