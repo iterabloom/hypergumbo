@@ -134,16 +134,31 @@ def scope_callers(lang: str, R: str, D: str, decoy_last: bool) -> str:
 
 
 # ---------------------------------------------------------------- python
-def py(R, D, B, S, dl):
+def py(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v):
         return f"class {n}:\n    def {m}(self):\n        return {v}\n\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child({B}):\n    pass\n\n", cls(S, "ping", 2))
-    main = f"""import extlib
+    spare = "class Spare:\n    def execute(self):\n        return 2\n\n    def ping(self):\n        return 2\n\n"
+    side = "z" if dl else "a"
+    files = {"util.py": "def helper():\n    return 1\n", f"{side}_decoy.py": "def helper():\n    return 2\n"}
+    if third:
+        files[f"{side}_spare_util.py"] = "def helper():\n    return 2\n"
+    if split:
+        # One class per file. The decoys' files sort after (``z_``) or before
+        # (``a_``) every right file; main imports the right classes only.
+        files |= {"store.py": cls(R, "execute", 1), f"{side}_store.py": cls(D, "execute", 2),
+                  "base.py": cls(B, "ping", 1), "child.py": f"from base import {B}\n\n\nclass Child({B}):\n    pass\n",
+                  f"{side}_stray.py": cls(S, "ping", 2)}
+        if third:
+            files[f"{side}_spare.py"] = spare
+        classes = f"from store import {R}\nfrom child import Child\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"class Child({B}):\n    pass\n\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["main.py"] = f"""import extlib
+import util
 from util import helper
-
-{ex}
-{pg}
+{classes}
 def get_db() -> {R}:
     return {R}()
 
@@ -179,9 +194,12 @@ def via_amb_param(x):
 {scope_callers("python", R, D, dl)}
 def via_import():
     helper()
+
+
+def via_qual():
+    util.helper()
 """
-    dec = ("z" if dl else "a") + "_decoy.py"
-    return {"main.py": main, "util.py": "def helper():\n    return 1\n", dec: "def helper():\n    return 2\n"}
+    return files
 
 
 # ---------------------------------------------------------------- javascript / typescript
@@ -1051,11 +1069,15 @@ LANGS: dict[str, Callable[..., dict[str, str]]] = {
 }
 #: (decoy_last, swap)
 ARMS = [(True, False), (True, True), (False, False), (False, True)]
+#: The three-candidate arms: ``decoy_last`` only. ``swap`` is not crossed in:
+#: over the four arms above it changed no cell in any language.
+THIRD_ARMS = [True, False]
 #: (cell name, caller, method the call names)
 SHAPES = [("var", "via_var", "execute"), ("chain", "via_chain", "execute"), ("ctor", "via_ctor", "execute"),
           ("inherited", "via_inherited", "ping"), ("amb_ext", "via_amb_ext", "execute"),
           ("amb_param", "via_amb_param", "execute"), ("import", "via_import", "helper"),
-          ("scope_own", "via_scope_own", "execute"), ("scope_ext", "via_scope_ext", "execute")]
+          ("scope_own", "via_scope_own", "execute"), ("scope_ext", "via_scope_ext", "execute"),
+          ("qual", "via_qual", "helper")]
 AMBIGUOUS = {"amb_ext", "amb_param", "scope_ext"}
 
 
@@ -1064,10 +1086,12 @@ def class_names(swap: bool) -> tuple[str, str, str, str]:
     return ("Other", "Conn", "Stray", "Base") if swap else ("Conn", "Other", "Base", "Stray")
 
 
-def write_arm(root: Path, lang: str, decoy_last: bool, swap: bool) -> Path:
+def write_arm(root: Path, lang: str, decoy_last: bool, swap: bool, *, split: bool = False,
+              third: bool = False) -> Path:
     """Write one arm of one language under ``root`` and return its directory."""
-    directory = root / f"{lang}__dl{int(decoy_last)}_sw{int(swap)}"
-    for rel, text in LANGS[lang](*class_names(swap), decoy_last).items():
+    directory = root / f"{lang}__dl{int(decoy_last)}_sw{int(swap)}_sp{int(split)}_th{int(third)}"
+    program = LANGS[lang](*class_names(swap), decoy_last, split=split, third=third)
+    for rel, text in program.items():
         path = directory / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
@@ -1115,14 +1139,16 @@ def callers(behavior_map: dict[str, Any], caller: str) -> set[str]:
 
 
 def arm_cell(behavior_map: dict[str, Any], directory: Path, shape: str, caller: str,
-             target: str) -> tuple[str, list[float]]:
-    """One arm's verdict for one caller, and the confidences of the edges behind it."""
+             target: str) -> tuple[str, list[float], set[str]]:
+    """One arm's verdict for one caller, the confidences of the edges behind it,
+    and the resolution marks (``meta["resolved_by"]``) of the resolved ones."""
     sources = callers(behavior_map, caller)
     if not sources:
-        return "n/a", []
+        return "n/a", [], set()
     nodes = {n["id"]: n for n in behavior_map["nodes"]}
     sides: set[str] = set()
     confidences: list[float] = []
+    marks: set[str] = set()
     for edge in behavior_map["edges"]:
         if edge["src"] not in sources or edge["type"] != "calls":
             continue
@@ -1136,11 +1162,13 @@ def arm_cell(behavior_map: dict[str, Any], directory: Path, shape: str, caller: 
         else:
             continue
         confidences.append(edge.get("confidence"))
+        meta = edge.get("meta") or {}
+        marks |= {meta["resolved_by"]} if "resolved_by" in meta else set(meta.get("resolved_by_values", ()))
     if not sides:
-        return "no_edge", []
+        return "no_edge", [], set()
     if shape in AMBIGUOUS and sides & {"right", "decoy"}:
-        return "picked", confidences
-    return "+".join(sorted(sides)), confidences
+        return "picked", confidences, marks
+    return "+".join(sorted(sides)), confidences, marks
 
 
 def missing_declarations(behavior_map: dict[str, Any], directory: Path) -> set[str]:
@@ -1152,47 +1180,86 @@ def missing_declarations(behavior_map: dict[str, Any], directory: Path) -> set[s
     return missing
 
 
-def measure(root: Path, lang: str) -> tuple[dict[str, str], dict[str, list[float]], set[str]]:
-    """Run the four arms of ``lang`` under ``root``.
+def _collapse(verdicts: list[str]) -> str:
+    """Four arms (decoy last / first, each plain and swapped) as one cell."""
+    last_plain, last_swapped, first_plain, first_swapped = verdicts
+    if len(set(verdicts)) == 1:
+        return verdicts[0]
+    if last_plain == last_swapped and first_plain == first_swapped:
+        return f"order:{last_plain}/{first_plain}"
+    return "mixed:" + ",".join(verdicts)
 
-    Returns the collapsed cell per shape, the confidences seen per shape, and
-    the declarations missing in any arm.
+
+class Measured:
+    """What one language's arms gave, in one layout.
+
+    ``cells`` is the collapsed cell per shape over the four arms, ``marks`` the
+    resolution marks seen on the resolved edges behind it (sorted, joined with
+    ``|``; ``-`` when no edge was resolved), ``third`` the same cell measured
+    with a third same-named candidate (two arms: decoy last / first),
+    ``confidences`` the confidences seen, ``missing`` the declarations with no
+    symbol in any arm and ``absent_callers`` the callers with none.
     """
+
+    def __init__(self) -> None:
+        self.cells: dict[str, str] = {}
+        self.marks: dict[str, str] = {}
+        self.third: dict[str, str] = {}
+        self.confidences: dict[str, list[float]] = {shape: [] for shape, _, _ in SHAPES}
+        self.missing: set[str] = set()
+        self.absent_callers: set[str] = set()
+
+
+def measure(root: Path, lang: str, *, split: bool = False) -> Measured:
+    """Run the arms of ``lang`` under ``root`` in one layout."""
+    out = Measured()
     per_arm: dict[str, list[str]] = {shape: [] for shape, _, _ in SHAPES}
-    confidences: dict[str, list[float]] = {shape: [] for shape, _, _ in SHAPES}
-    missing: set[str] = set()
+    third: dict[str, list[str]] = {shape: [] for shape, _, _ in SHAPES}
+    marks: dict[str, set[str]] = {shape: set() for shape, _, _ in SHAPES}
     for decoy_last, swap in ARMS:
-        directory = write_arm(root, lang, decoy_last, swap)
+        directory = write_arm(root, lang, decoy_last, swap, split=split)
         behavior_map = survey(directory)
-        missing |= missing_declarations(behavior_map, directory)
+        out.missing |= missing_declarations(behavior_map, directory)
+        out.absent_callers |= {caller for _, caller, _ in SHAPES if not callers(behavior_map, caller)}
         for shape, caller, target in SHAPES:
-            verdict, seen = arm_cell(behavior_map, directory, shape, caller, target)
+            verdict, seen, by = arm_cell(behavior_map, directory, shape, caller, target)
             per_arm[shape].append(verdict)
-            confidences[shape] += seen
-    cells = {}
+            out.confidences[shape] += seen
+            marks[shape] |= by
+    for decoy_last in THIRD_ARMS:
+        directory = write_arm(root, lang, decoy_last, False, split=split, third=True)
+        behavior_map = survey(directory)
+        for shape, caller, target in SHAPES:
+            third[shape].append(arm_cell(behavior_map, directory, shape, caller, target)[0])
     for shape, verdicts in per_arm.items():
-        last_plain, last_swapped, first_plain, first_swapped = verdicts
-        if len(set(verdicts)) == 1:
-            cells[shape] = verdicts[0]
-        elif last_plain == last_swapped and first_plain == first_swapped:
-            cells[shape] = f"order:{last_plain}/{first_plain}"
-        else:
-            cells[shape] = "mixed:" + ",".join(verdicts)
-    return cells, confidences, missing
+        out.cells[shape] = _collapse(verdicts)
+        out.marks[shape] = "|".join(sorted(marks[shape])) or "-"
+        last, first = third[shape]
+        out.third[shape] = last if last == first else f"order:{last}/{first}"
+    return out
 
 
 def main() -> None:  # pragma: no cover - a printing aid, run by hand
+    """Print both layouts. ``python _call_matrix_fixture.py [language ...]``."""
+    import sys
     shapes = [shape for shape, _, _ in SHAPES]
-    print("| language | " + " | ".join(shapes) + " | no symbol for |")
-    print("|---|" + "---|" * (len(shapes) + 1))
-    with tempfile.TemporaryDirectory() as root:
-        for lang in LANGS:
-            cells, confidences, missing = measure(Path(root), lang)
-            row = []
-            for shape in shapes:
-                seen = sorted({f"{c:.2f}".rstrip("0").rstrip(".") for c in confidences[shape] if c is not None})
-                row.append(cells[shape] + (" (" + ", ".join(seen) + ")" if seen else ""))
-            print(f"| {lang} | " + " | ".join(row) + " | " + (", ".join(sorted(missing)) or "-") + " |")
+    for split in (False, True):
+        print(f"\n## {'one class per file' if split else 'one file'}\n")
+        print("| language | " + " | ".join(shapes) + " | no symbol for | no caller |")
+        print("|---|" + "---|" * (len(shapes) + 2))
+        with tempfile.TemporaryDirectory() as root:
+            for lang in sys.argv[1:] or LANGS:
+                got = measure(Path(root), lang, split=split)
+                row = []
+                for shape in shapes:
+                    seen = sorted({f"{c:.2f}".rstrip("0").rstrip(".") for c in got.confidences[shape]
+                                   if c is not None})
+                    cell = got.cells[shape] + (" (" + ", ".join(seen) + ")" if seen else "")
+                    cell += f" [{got.marks[shape]}]" if got.marks[shape] != "-" else ""
+                    cell += f" {{3: {got.third[shape]}}}" if got.third[shape] != got.cells[shape] else ""
+                    row.append(cell)
+                print(f"| {lang} | " + " | ".join(row) + " | " + (", ".join(sorted(got.missing)) or "-")
+                      + " | " + (", ".join(sorted(got.absent_callers)) or "-") + " |")
 
 
 if __name__ == "__main__":
