@@ -223,6 +223,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
@@ -231,6 +232,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
@@ -2269,6 +2271,7 @@ def _extract_edges_from_file(
                         resolution_score=found.confidence,
                         origin=PASS_ID, origin_run_id=run.execution_id,
                         evidence_type="ast_call_static",
+                        resolved_by=resolved_by.QUALIFIED,
                     ))
                     return
         edges.append(make_unresolved_edge(
@@ -2348,6 +2351,9 @@ def _extract_edges_from_file(
                     resolution_score=found.confidence,
                     origin=PASS_ID, origin_run_id=run.execution_id,
                     evidence_type="ast_call_this",
+                    # ``super`` is the enclosing object; the key is its
+                    # declared base's member.
+                    resolved_by=resolved_by.OWN_TYPE,
                 ))
                 return
         base = bases[0] if bases else None
@@ -2493,6 +2499,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_this",
+                                    resolved_by=resolved_by.OWN_TYPE,
                                 ))
                                 edge_added = True
 
@@ -2531,6 +2538,7 @@ def _extract_edges_from_file(
                                         evidence_type=(
                                             "ast_call_this_property"
                                         ),
+                                        resolved_by=resolved_by.RECEIVER_TYPE,
                                     ))
                                     edge_added = True
                         # Every other navigation receiver is emitted here,
@@ -2599,6 +2607,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_static",
+                                    resolved_by=resolved_by.QUALIFIED,
                                 ))
                                 edge_added = True
                                 resolved_nav_sym = _target
@@ -2626,6 +2635,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_type_inferred",
+                                    resolved_by=resolved_by.RECEIVER_TYPE,
                                 ))
                                 edge_added = True
                                 resolved_nav_sym = _target
@@ -2729,6 +2739,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
+                                    resolved_by=resolved_by.QUALIFIED,
                                 ))
                                 edge_added = True
 
@@ -2811,12 +2822,19 @@ def _extract_edges_from_file(
                         local_symbols.get(f"{_enclosing_type}.{callee_name}")
                         if _enclosing_type else None
                     )
+                    _by = resolved_by.OWN_TYPE
                     if local_callee is None and callee_name in local_symbols:
                         _short = local_symbols[callee_name]
                         if not defer_bare_method_call(
                             _short.kind, _short.name, "suffix", _enclosing_type,
                         ):
                             local_callee = _short
+                            # The file's bare-name table, last declaration
+                            # winning: nothing but the file scoped it.
+                            _by = resolved_by_for_bare_call(
+                                _short.kind, _short.name,
+                                resolved_by.SAME_FILE, _enclosing_type,
+                            )
                     if local_callee is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -2827,6 +2845,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "function"},
+                            resolved_by=_by,
                         ))
                         resolved_simple_sym = local_callee
                     # Check global symbols via resolver
@@ -2868,6 +2887,16 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "function"},
+                                # The file's import of the callee binds it
+                                # (``_kt_import_target`` re-targets to the
+                                # import's path); without one, the name.
+                                resolved_by=(
+                                    resolved_by.IMPORT if import_hint is not None
+                                    else resolved_by_for_bare_call(
+                                        _target.kind, _target.name,
+                                        lookup_result.resolved_by, _enclosing_type,
+                                    )
+                                ),
                             ))
                             resolved_simple_sym = _target
                         else:
