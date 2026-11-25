@@ -293,3 +293,49 @@ def test_every_type_like_kind_can_be_a_receivers_type() -> None:
         stub = _stub(caller, "Origin", qualifier="Point")
         edges = _link([*holder, caller], stub, _scope("App.Geo"))
         assert [e.dst for e in edges] == [holder[1].id], kind
+
+
+# --- a call on super / base starts at the parent ---------------------------------
+
+
+def _extends(child: Symbol, parent: Symbol) -> Edge:
+    return Edge.create(src=child.id, dst=parent.id, edge_type="extends", line=1,
+                       origin="test", origin_run_id="test-run")
+
+
+def _link_all(symbols: list[Symbol], edges: list[Edge]) -> list[Edge]:
+    ctx = LinkerContext(repo_root=Path("/"), symbols=symbols, edges=edges)
+    return link_inherited_calls(ctx).edges
+
+
+def test_a_call_on_the_parent_does_not_bind_the_callers_own_override() -> None:
+    """``base.Run()`` inside ``Child.Run``: the callee is the parent's Run.
+    With only ``enclosing_class`` the walk starts AT the caller's type and
+    finds the override, which is the caller itself. The fact
+    ``super_receiver`` makes it start one step up."""
+    base = _type_with_method("App", "Base", "Run", "Base.cs")
+    child = _type_with_method("App", "Child", "Run", "Child.cs")
+    caller = child[1]
+    extends = _extends(child[0], base[0])
+    plain = _stub(caller, "Run", enclosing_class="Child")
+    assert [e.dst for e in _link_all([*base, *child], [extends, plain])] == [caller.id]
+    up = _stub(caller, "Run", enclosing_class="Child", super_receiver=True)
+    assert up.meta["super_receiver"] is True
+    (edge,) = _link_all([*base, *child], [extends, up])
+    assert edge.dst == base[1].id
+    assert edge.meta["resolved_by"] == "own_type"
+
+
+def test_a_call_on_the_parent_reaches_a_grandparent_and_stops_where_none_has_it() -> None:
+    top = _type_with_method("App", "Top", "Run", "Top.cs")
+    middle = [_sym("class", "Middle", "App.Middle", "Middle.cs", (1, 9))]
+    child = _type_with_method("App", "Child", "Run", "Child.cs")
+    edges = [_extends(child[0], middle[0]), _extends(middle[0], top[0])]
+    up = _stub(child[1], "Run", enclosing_class="Child", super_receiver=True)
+    (edge,) = _link_all([*top, *middle, *child], [*edges, up])
+    assert edge.dst == top[1].id
+    # No ancestor declares it (the parent is a library's type): unresolved,
+    # never the caller's own method.
+    alone = _type_with_method("App", "Solo", "Run", "Solo.cs")
+    lone = _stub(alone[1], "Run", enclosing_class="Solo", super_receiver=True)
+    assert _link_all(alone, [lone]) == []
