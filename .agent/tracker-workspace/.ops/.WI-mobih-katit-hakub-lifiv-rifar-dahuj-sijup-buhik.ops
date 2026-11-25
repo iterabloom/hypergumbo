@@ -28,3 +28,10 @@
   set: {}  # d7d2
   add:  # d7d2
     tags: [outside_review_10_0_0]  # d7d2
+- op: discuss  # aeb1
+  at: '2026-11-25T09:41:58Z'  # aeb1
+  by: agent  # aeb1
+  actor: jgstern_agent  # aeb1
+  clock: 3  # aeb1
+  nonce: aeb1  # aeb1
+  message: "Point 2 of this item (ADR-0006 still prefers false positives) is handled: ADR-0006 withdrew the sentence on 2026-11-24 with the measurement that refuted it (PR #2385), and ADR-0064 (Proposed, PR #2398) records the owner's ruling that replaces it, 'unresolved beats a guess'; each names the other. Points 1 (ADR-0004 to 0006 dated 2025) and 3 (ADR-0035 titled v6) are NOT done."  # aeb1

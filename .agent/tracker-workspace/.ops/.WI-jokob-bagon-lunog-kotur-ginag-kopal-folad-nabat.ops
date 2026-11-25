@@ -1,0 +1,21 @@
+- op: create  # b50a
+  at: '2026-11-25T14:29:35Z'  # b50a
+  by: agent  # b50a
+  actor: jgstern_agent  # b50a
+  clock: 1  # b50a
+  nonce: b50a  # b50a
+  data:  # b50a
+    kind: work_item  # b50a
+    title: "C#: a base written with type arguments gets no extends edge when a namesake of another arity exists"  # b50a
+    status: todo_hard  # b50a
+    priority: 2  # b50a
+    parent:  # b50a
+    tags:  # b50a
+    - analysis_quality  # b50a
+    - shared_call_resolution  # b50a
+    isbefore: []  # b50a
+    duplicate_of: []  # b50a
+    not_duplicate_of: []  # b50a
+    pr_ref:  # b50a
+    description: "STATEMENT: class PredicateBuilder : PredicateBuilder<object> has an extends edge to the arity-1 declaration. OBSERVED: csharp.py stores base_classes without type arguments and linkers/inheritance.py picks by name, so the base resolves to the class itself and no edge is made; 19 right call edges on Polly depend on it (also Dapper Identity<T1..T7> : Identity). base_classes is matched literally by about thirty readers, so the arity must travel beside it (a parallel fact), not in it; the inheritance linker then narrows candidates by meta type_arity.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # b50a
+    fields: {}  # b50a

@@ -1,0 +1,21 @@
+- op: create  # 7319
+  at: '2026-11-25T14:29:29Z'  # 7319
+  by: agent  # 7319
+  actor: jgstern_agent  # 7319
+  clock: 1  # 7319
+  nonce: '7319'  # 7319
+  data:  # 7319
+    kind: work_item  # 7319
+    title: "Overload selection: a typed call lands on whichever overload the index kept last; the extension-dispatch linker withholds on two"  # 7319
+    status: todo_hard  # 7319
+    priority: 2  # 7319
+    parent:  # 7319
+    tags:  # 7319
+    - analysis_quality  # 7319
+    - shared_call_resolution  # 7319
+    isbefore: []  # 7319
+    duplicate_of: []  # 7319
+    not_duplicate_of: []  # 7319
+    pr_ref:  # 7319
+    description: "STATEMENT: a call bound to a type's method names the overload its arguments select, or is unresolved; the two linkers that bind a typed call follow one policy. OBSERVED: inherited_calls Site 2 builds dict(candidates) so the last overload of a name on a type wins; receiver_type_dispatch counts two overloads of one extension as ambiguity and withholds (16 of 53 extension calls on Dapper/Polly/Serilog). C#, six trees: 9 of 30 sampled moved-and-resolved edges are the right type and the wrong overload; round 4: 2 of 15. NEEDS: a call fact (argument count at least) and one rule; belongs with the batch that brings Java / Kotlin / C++.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # 7319
+    fields: {}  # 7319
