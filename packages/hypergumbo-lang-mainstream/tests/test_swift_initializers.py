@@ -383,6 +383,7 @@ func use() {
         assert by_id[amb.dst].span.start_line == 2
         assert amb.meta == {
             "call_construct": "function", "resolution_quality": "ambiguous",
+            "resolved_by": "name",
         }
 
     def test_an_unknown_super_keeps_the_old_edge(self, tmp_path: Path) -> None:
