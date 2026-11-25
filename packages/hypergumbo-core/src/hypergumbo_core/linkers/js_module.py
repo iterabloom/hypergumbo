@@ -684,6 +684,76 @@ def _get_npm_package_name(import_path: str) -> str:
     return import_path.split("/")[0]
 
 
+class SpecifierResolver:
+    """Which file of the repository a JavaScript / TypeScript import names.
+
+    One resolver for the two places that need the answer: this linker, which
+    turns an ``imports`` edge to a specifier into an edge to a file, and the
+    JS/TS analyzer, which records in each file's import table the file a
+    binding comes from (ADR-0064, piece b). Two resolvers would disagree the
+    first time one of them learned a rule the other had not.
+
+    The tsconfig / jsconfig alias index, the Vite aliases and the workspace
+    package index are built once, at construction.
+    """
+
+    def __init__(self, repo_root: Path) -> None:
+        self._repo_root = repo_root
+        self._repo_root_abs = repo_root.resolve()
+        # tsconfig index: maps directory → aliases from the nearest
+        # tsconfig.json. Supports monorepos where packages/frontend/ and
+        # packages/backend/ have different path aliases.
+        self._tsconfig_index = _build_tsconfig_alias_index(repo_root)
+        # Vite aliases are global (always at repo root).
+        self._vite_aliases = _load_vite_aliases(repo_root)
+        # Source directory → combined aliases, longest prefix first.
+        self._aliases_cache: dict[str, list[tuple[str, Path]]] = {}
+        self._workspace_packages = _build_workspace_package_index(repo_root)
+
+    def resolve(self, importer_path: str, import_path: str) -> tuple[Path | None, bool]:
+        """The file ``import_path`` names when written in ``importer_path``
+        (repo-relative or absolute), and whether an alias supplied it.
+
+        ``(None, False)`` when the specifier names no file of the repository:
+        an npm package, a Node core module, a path that does not exist.
+        """
+        # ANCHOR ON THE REPO ROOT. Symbol paths are repo-relative
+        # ('src/a.ts'); read as-is they would resolve relative imports against
+        # the process CWD, losing imports whenever the repository is analyzed
+        # from outside its own directory, and the tsconfig ancestor walk would
+        # never meet the index's absolute keys. ``root / path`` leaves an
+        # already-absolute path unchanged (WI-fukaf).
+        abs_src = self._repo_root_abs / importer_path
+
+        if _is_relative_import(import_path):
+            # Relative import: resolve from source file's directory
+            base_path = (abs_src.parent / import_path).resolve()
+            # Node's LOAD_AS_DIRECTORY: a directory with a package.json loads
+            # its entry (``main`` / ``exports``), else its ``index``.
+            return (
+                _package_entry(base_path)
+                if (base_path / "package.json").is_file()
+                else _probe_file(base_path)
+            ), False
+
+        # Non-relative: get per-file aliases (nearest tsconfig + Vite)
+        src_dir = str(abs_src.parent)
+        if src_dir not in self._aliases_cache:
+            file_aliases = _get_aliases_for_file(
+                str(abs_src), self._tsconfig_index, self._repo_root
+            )
+            combined = file_aliases + self._vite_aliases
+            combined.sort(key=lambda a: len(a[0]), reverse=True)
+            self._aliases_cache[src_dir] = combined
+        aliases = self._aliases_cache[src_dir]
+
+        if aliases:
+            resolved = _resolve_alias(import_path, aliases)
+            if resolved is not None:
+                return resolved, True
+        return _resolve_workspace_import(import_path, self._workspace_packages), False
+
+
 def link_js_modules(
     *,
     repo_root: Path,
@@ -757,16 +827,7 @@ def link_js_modules(
 
     repo_root_abs = repo_root.resolve()
 
-    # Build alias indices (once per run)
-    # tsconfig index: maps directory → aliases from nearest tsconfig.json
-    # Supports monorepos where packages/frontend/ and packages/backend/
-    # have different tsconfig.json with different path aliases.
-    tsconfig_index = _build_tsconfig_alias_index(repo_root)
-    # Vite aliases are global (always at repo root)
-    vite_aliases = _load_vite_aliases(repo_root)
-    # Cache: source directory → combined sorted aliases (avoid re-sorting)
-    aliases_cache: dict[str, list[tuple[str, Path]]] = {}
-    workspace_packages = _build_workspace_package_index(repo_root)
+    resolver = SpecifierResolver(repo_root)
 
     for edge in import_edges:
         # Parse the dst to extract import path
@@ -791,47 +852,9 @@ def link_js_modules(
             continue
 
         # Resolve import path to actual file on disk
-        resolved: Path | None = None
-        evidence_type = "import_resolution"
-        import_confidence = 0.90
-
-        # ANCHOR ON THE REPO ROOT. Symbol paths are repo-relative
-        # ('src/a.ts'); read as-is they would resolve relative imports against
-        # the process CWD, losing imports whenever the repository is analyzed
-        # from outside its own directory, and the tsconfig ancestor walk would
-        # never meet the index's absolute keys. ``root / path`` leaves an
-        # already-absolute path unchanged (WI-fukaf).
-        abs_src = repo_root_abs / src_path
-
-        if _is_relative_import(import_path):
-            # Relative import: resolve from source file's directory
-            base_path = (abs_src.parent / import_path).resolve()
-            # Node's LOAD_AS_DIRECTORY: a directory with a package.json loads
-            # its entry (``main`` / ``exports``), else its ``index``.
-            resolved = (
-                _package_entry(base_path)
-                if (base_path / "package.json").is_file()
-                else _probe_file(base_path)
-            )
-        else:
-            # Non-relative: get per-file aliases (nearest tsconfig + Vite)
-            src_dir = str(abs_src.parent)
-            if src_dir not in aliases_cache:
-                file_aliases = _get_aliases_for_file(
-                    str(abs_src), tsconfig_index, repo_root
-                )
-                combined = file_aliases + vite_aliases
-                combined.sort(key=lambda a: len(a[0]), reverse=True)
-                aliases_cache[src_dir] = combined
-            aliases = aliases_cache[src_dir]
-
-            if aliases:
-                resolved = _resolve_alias(import_path, aliases)
-                if resolved is not None:
-                    evidence_type = "alias_resolution"
-                    import_confidence = 0.85
-            if resolved is None:
-                resolved = _resolve_workspace_import(import_path, workspace_packages)
+        resolved, through_alias = resolver.resolve(src_path, import_path)
+        evidence_type = "alias_resolution" if through_alias else "import_resolution"
+        import_confidence = 0.85 if through_alias else 0.90
 
         if resolved is not None:
             # Compute path relative to repo_root for the symbol
