@@ -138,3 +138,28 @@ def test_re_adding_named_overwrites() -> None:
     scope.add_named("first.module", "foo")
     scope.add_named("second.module", "foo")
     assert scope.resolve("foo") == CanonicalName(module="second.module", name="foo")
+
+
+# --- what the shared call-resolution pass reads (ADR-0064, piece b) ---
+
+
+def test_an_open_wildcard_names_a_module_whose_exports_are_not_listed() -> None:
+    """``using System.Text;`` / ``use crate::m::*;``: every name of the module
+    is in scope and the analyzer does not know which ones exist. The scope
+    keeps the MODULE; who declares what is the declaration index's business."""
+    scope = ImportScope()
+    scope.add_open_wildcard("System.Text")
+    scope.add_open_wildcard("MyApp.Util")
+    scope.add_open_wildcard("System.Text")
+    assert scope.wildcard_modules == ("System.Text", "MyApp.Util")
+    assert scope.resolve("StringBuilder") is None
+
+
+def test_an_explicit_binding_can_be_read_on_its_own() -> None:
+    """``resolve`` answers for a named binding or a namespace alias; a resolver
+    that asks "is this local name an alias of a declaration" reads ``named``."""
+    scope = ImportScope()
+    scope.add_named("MyApp.Util", "Helper", alias="H")
+    scope.add_namespace("MyApp.Util", "U")
+    assert scope.named("H") == CanonicalName("MyApp.Util", "Helper")
+    assert scope.named("U") is None
