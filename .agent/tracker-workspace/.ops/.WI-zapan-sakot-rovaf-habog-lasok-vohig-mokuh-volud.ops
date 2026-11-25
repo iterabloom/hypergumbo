@@ -1,0 +1,22 @@
+- op: create  # d131
+  at: '2026-11-25T09:22:08Z'  # d131
+  by: agent  # d131
+  actor: jgstern_agent  # d131
+  clock: 1  # d131
+  nonce: d131  # d131
+  data:  # d131
+    kind: work_item  # d131
+    title: "php: a call through a fully qualified function name has no call edge"  # d131
+    status: todo_hard  # d131
+    priority: 3  # d131
+    parent:  # d131
+    tags:  # d131
+    - call_graph  # d131
+    - analysis_quality  # d131
+    - call_matrix  # d131
+    isbefore: []  # d131
+    duplicate_of: []  # d131
+    not_duplicate_of: []  # d131
+    pr_ref:  # d131
+    description: "STATEMENT\nA PHP call to a function through its fully qualified name (`\\Util\\helper();`) has a call edge: to the function when the repository declares it, unresolved otherwise.\n\nOBSERVED (2026-11-25, the call-resolution fixture, column `qual`, both layouts, every arm)\n`function via_qual() { \\Util\\helper(); }` with `namespace Util; function helper() { return 1; }` in util.php: no outgoing call edge of any kind from via_qual (cell `no_edge`). The same file's `use function Util\\helper; helper();` (column `import`) does get an edge.\nReproduce: python packages/hypergumbo-lang-mainstream/tests/_call_matrix_fixture.py php\nPinned as `no_edge` in test_call_resolution_matrix.py (MATRIX and MATRIX_SPLIT, php, last cell). Not investigated: whether the qualified-name node is not visited or the callee text is dropped."  # d131
+    fields: {}  # d131

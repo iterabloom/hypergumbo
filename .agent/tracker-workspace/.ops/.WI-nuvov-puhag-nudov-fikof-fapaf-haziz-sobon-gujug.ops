@@ -21,3 +21,10 @@
     pr_ref:  # a1cd
     description: "WHAT\n  import Util   ...   helper()\nwith helper() declared in Sources/Util/util.swift and again in Sources/ZDecoy/decoy.swift (a module the file does not import) binds the call to the LAST directory's helper, at 0.85.\nEXPECTED: Util's helper in both orders.\nNOT CHECKED: a fixture with a Package.swift naming the targets (the fixture has none; the modules are the Sources/<Name> directories).\nRELATED: WI-lonoh (calls on a local type bind by name).\n\nHOW IT WAS MEASURED (2026-11-24, dev 44a858dbb): the call-resolution fixture of WI-tazuk. One program per language: classes R and D both declare execute(); B declares ping(), Child inherits B, an unrelated S also declares ping(); get_db() returns an R; a second file declares helper() and a decoy file declares another helper(). Four arms per language: the decoy declared after / before the right one (dl1 / dl0), and the class names swapped (sw0 / sw1). Every right method returns 1 and every decoy returns 2, so a destination is judged by what its declaration returns, not by its name.\n  generate:  python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/gen.py <dir>\n  survey:    hypergumbo survey <dir>/swift__dl1_sw0 --out x.json --no-sketch-fan-out --no-handler-slices\n  read:      python3 ~/hypergumbo_lab_notebook/call_matrix_11242026/classify.py --raw swift\nStored maps and the whole matrix: ~/hypergumbo_lab_notebook/call_matrix_11242026/{out,matrix_run2.md,matrix_run2_raw.txt}.\nIn all 17 languages the class-name swap changed nothing; only declaration order did.\nNOT DONE: the code path was not read; no real repository was measured, so the number of edges this affects outside the fixture is not known."  # a1cd
     fields: {}  # a1cd
+- op: discuss  # 2b1d
+  at: '2026-11-25T07:33:09Z'  # 2b1d
+  by: agent  # 2b1d
+  actor: jgstern_agent  # 2b1d
+  clock: 2  # 2b1d
+  nonce: 2b1d  # 2b1d
+  message: "Code site (PR #2389 stamping): swift.py ~3304 _visible_global_type returns the last registered top-level type of a name."  # 2b1d
