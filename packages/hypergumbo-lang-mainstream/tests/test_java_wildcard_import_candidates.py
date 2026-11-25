@@ -336,33 +336,47 @@ def test_a_single_type_import_still_wins_over_the_implicit_package():
 def test_a_project_class_of_the_same_name_is_not_sent_to_java_lang():
     """THE REFUTATION CELL. A project's own ``System`` is not java.lang's.
 
-    The mechanism that holds this is NOT a guard in the java.lang branch -- one
-    there would be unreachable. ``class_resolver`` claims a project class name
-    before the branch runs and emits a RESOLVED edge, so the branch never sees
-    it. The cell exists because the GUARANTEE is what matters
-    and the mechanism could move; if a future change makes the resolver defer,
-    this is what fails.
+    The analyzer reports ``System.currentTimeMillis()`` with ``qualifier
+    System`` and the java.lang slot; the shared pass binds it to the project's
+    ``System`` where that class is visible from the caller (its package, JLS
+    6.4.1: a type of the caller's package shadows an on-demand import, which
+    java.lang's is) and demotes the java.lang stub (``superseded_by``), which
+    the boundary classifier then skips. Where the project's ``System`` is NOT
+    visible (another package, no import), the call is java.lang's (JLS 6.5).
+    The cell exists because the GUARANTEE is what matters and the mechanism
+    could move.
     """
+    import json
+
+    from hypergumbo_core.cli import run_behavior_map
+
     with tempfile.TemporaryDirectory() as d:
-        pathlib.Path(d, "System.java").write_text(
+        repo = pathlib.Path(d, "repo")
+        (repo / "demo").mkdir(parents=True)
+        (repo / "web").mkdir()
+        (repo / "demo" / "System.java").write_text(
             "package demo;\n"
             "public class System { public static long currentTimeMillis() "
             "{ return 0L; } }\n"
         )
-        pathlib.Path(d, "P.java").write_text(
+        (repo / "demo" / "P.java").write_text(
             "package demo;\n"
             "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
         )
-        res = analyze_java(pathlib.Path(d))
-        slots = [
-            (e.dst_ref.module_path if getattr(e, "dst_ref", None) else None)
-            for e in res.edges
-            if e.edge_type == "calls" and "currentTimeMillis" in e.dst
-        ]
-    assert "java.lang.System" not in slots, (
-        "a project class must not be attributed to the JDK: "
-        f"slots={slots}"
-    )
+        (repo / "web" / "Q.java").write_text(
+            "package web;\n"
+            "public class Q { void f() { long t = System.currentTimeMillis(); } }\n"
+        )
+        out = pathlib.Path(d, "map.json")
+        run_behavior_map(repo_root=repo, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+    live = {
+        (e["src"].split(":")[1], e["dst"].split(":")[1])
+        for e in data["edges"]
+        if e["type"] == "calls" and "currentTimeMillis" in e["dst"]
+        and not (e.get("meta") or {}).get("superseded_by")
+    }
+    assert live == {("demo/P.java", "demo/System.java"), ("web/Q.java", "java.lang.System")}, live
 
 
 def test_a_capitalised_receiver_outside_java_lang_is_still_left_alone():

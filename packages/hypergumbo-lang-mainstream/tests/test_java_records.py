@@ -93,8 +93,9 @@ def test_calls_inside_a_record_are_anchored_on_its_members(tmp_path: Path) -> No
     assert ("R", "getenv") in calls  # a field initialiser, on the record
     assert ("R.R", "exists") in calls  # inside the compact constructor
     assert ("R.compareTo", "compare") in calls
+    # ``new R(..)`` is reported (ADR-0064): the stub names the type written.
     inst = [
-        (names.get(e.src), names.get(e.dst))
+        (names.get(e.src), (e.meta or {}).get("callee_name"))
         for e in analysis.edges if e.edge_type == "instantiates"
     ]
     assert ("R.of", "R") in inst

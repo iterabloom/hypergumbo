@@ -37,9 +37,6 @@
       "resolution_quality=chained_return_type": 1,
       "resolution_quality=typed_receiver": 2
     },
-    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py": {
-      "evidence_type=ast_call_static": 1
-    },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py": {
       "evidence_type=ast_method_inferred": 3,
       "evidence_type=ast_method_this": 1,
