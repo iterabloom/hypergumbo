@@ -174,6 +174,7 @@ from collections.abc import Container
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
@@ -185,6 +186,7 @@ from hypergumbo_core.analyze.base import (
     ancestor_labels,
     layout_free,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     emit_module_attribute_refs,
     find_child_by_type,
@@ -3002,6 +3004,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=resolved_by.QUALIFIED,
                             ))
                             edge_added = True
                         elif visible:
@@ -3047,6 +3050,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=resolved_by.RECEIVER_TYPE,
                             ))
                             edge_added = True
 
@@ -3214,6 +3218,11 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                # The file's bare-name table.
+                                resolved_by=resolved_by_for_bare_call(
+                                    callee.kind, callee.name,
+                                    resolved_by.SAME_FILE, enclosing_type,
+                                ),
                             ))
                     elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
@@ -3261,6 +3270,10 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
+                                resolved_by=resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.resolved_by, enclosing_type,
+                                ),
                             ))
                         else:
                             # INV-fahub: stamp the enclosing class so the
