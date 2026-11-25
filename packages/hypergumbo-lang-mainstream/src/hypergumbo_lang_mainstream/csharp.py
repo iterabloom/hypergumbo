@@ -185,7 +185,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, best_by_arity, parameter_entry, scoped_stable_id,
+    PARAMETERS_KEY, best_by_arity, declared_around, parameter_entry, scoped_stable_id,
     scoped_table_stable_id,
 )
 from hypergumbo_core.paths import normalize_path
@@ -2454,8 +2454,11 @@ def _extract_edges_from_file(
         chosen = local_symbols.get(key)
         if chosen is None:
             return None
+        overloads = declared_by_name.get(key) or [chosen]
         admitted = best_by_arity(
-            declared_by_name.get(key) or [chosen], _argument_count(call))
+            overloads, _argument_count(call),
+            caller_id=declared_around(overloads, _caller_path, call.start_point[0] + 1),
+        )
         if any(s is chosen for s in admitted):
             return chosen
         return admitted[-1] if admitted else None

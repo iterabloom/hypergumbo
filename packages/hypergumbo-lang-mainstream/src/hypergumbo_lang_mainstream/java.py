@@ -253,7 +253,7 @@ from hypergumbo_core.analyze.base import (
     resolving_type_names,
 )
 from hypergumbo_core.overload_arity import (
-    best_by_arity, parameter_entry, scoped_stable_id, scoped_table_stable_id,
+    best_by_arity, declared_around, parameter_entry, scoped_stable_id, scoped_table_stable_id,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
@@ -2902,7 +2902,10 @@ def _extract_edges(
             key=lambda s: (s.span.start_line, s.span.start_col) if s.span else (0, 0),
         )
         written = _java_argument_count(call)
-        inside = best_by_arity(inside, written)
+        inside = best_by_arity(
+            inside, written,
+            caller_id=declared_around(inside, str(file_path), call.start_point[0] + 1),
+        )
         return inside[-1] if inside else None
 
     edges: list[Edge] = []

@@ -869,3 +869,12 @@ def test_of_a_classs_overloads_the_one_that_takes_the_arguments_is_recovered() -
     assert recovered(2) == [two.id]
     assert recovered(None) == [two.id]
     assert recovered(4) == []
+    # The caller already reaches an overload of the name on that class: the
+    # construction's call is answered, and this stub is another receiver's.
+    answered = _edge(main.id, two.id, "calls", line=7)
+    stub = make_unresolved_edge(
+        "kotlin", main.id, "addHeader", 9, "test-pass", "test-run",
+        call_construct="method", argument_count=1,
+    )
+    ctx = _ctx([main, cls, one, two], [built, *contains, answered, stub])
+    assert link_method_call_recovery(ctx).edges == []

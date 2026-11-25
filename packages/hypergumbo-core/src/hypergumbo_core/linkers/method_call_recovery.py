@@ -393,10 +393,15 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 # Of several overloads, the ones that can take the arguments
                 # the call writes (``overload_arity``); of those the last, as
                 # before the count was read. None taking it: no candidate.
-                overloads = best_by_arity(
-                    class_methods.get(hint.dst, {}).get(name, []),
-                    (ucall.meta or {}).get("argument_count"),
-                )
+                # The caller already has an edge to an overload of that name on
+                # this class: the call the hint stands for is answered, and a
+                # second stub of the name is some other receiver's
+                # (``response.trailers()`` beside ``MockResponse.Builder()
+                # .trailers(h)``), not another overload's.
+                of_that_name = class_methods.get(hint.dst, {}).get(name, [])
+                if any(m.id in already_resolved for m in of_that_name):
+                    continue
+                overloads = best_by_arity(of_that_name, (ucall.meta or {}).get("argument_count"))
                 if not overloads:
                     continue
                 method = overloads[-1]
