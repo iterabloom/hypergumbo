@@ -1,0 +1,22 @@
+- op: create  # 641c
+  at: '2026-11-25T07:13:20Z'  # 641c
+  by: agent  # 641c
+  actor: jgstern_agent  # 641c
+  clock: 1  # 641c
+  nonce: 641c  # 641c
+  data:  # 641c
+    kind: work_item  # 641c
+    title: "c: a call to a static function of the caller's own file binds another file's same-named function"  # 641c
+    status: todo_hard  # 641c
+    priority: 3  # 641c
+    parent:  # 641c
+    tags:  # 641c
+    - call_graph  # 641c
+    - analysis_quality  # 641c
+    - call_matrix  # 641c
+    isbefore: []  # 641c
+    duplicate_of: []  # 641c
+    not_duplicate_of: []  # 641c
+    pr_ref:  # 641c
+    description: "STATEMENT\nA C call to a function the caller's own file defines `static` binds that function, never a same-named function of another file.\n\nOBSERVED (2026-11-25, mark PR head)\nc.py builds `NameResolver(global_symbols)` (c.py:1472, also 900) over a table that holds one function per name for the run. a.c `static void init(){}` plus b.c `static void init(){}`: `call_static` in a.c binds b.c's init (resolved_by name). `static` gives the function internal linkage: the other file's function is not callable from a.c at all.\nOn tmux (curriculum_repos/tmux): 7 function names are defined in two or more files; 12 resolved calls go to them; 4 of the 12 land in another file although the caller's own file defines the name.\n\nANALOGUE: the cpp item for the same rule (an unqualified call binds a static function of another .cpp file). c is not a column of the call-resolution matrix's guess list today.\n\nNOT CHECKED: other C repositories; calls to non-static functions with two external definitions (link-time ambiguity, a different question).\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/mainA/RESULTS.md, guess-prone 1."  # 641c
+    fields: {}  # 641c
