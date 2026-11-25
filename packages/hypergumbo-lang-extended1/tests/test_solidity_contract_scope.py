@@ -496,7 +496,7 @@ contract B { function who() public {} }
         assert g.out("A.who") == ["Base.who"]
         edge = g.edge("A.who", "Base.who")
         assert edge.evidence_type == "ast_call_direct"
-        assert edge.meta == {"receiver": "qualified"}
+        assert edge.meta == {"receiver": "qualified", "resolved_by": "qualified"}
 
     def test_library_in_another_file(self, tmp_path: Path) -> None:
         _write(tmp_path, "lib.sol", """
