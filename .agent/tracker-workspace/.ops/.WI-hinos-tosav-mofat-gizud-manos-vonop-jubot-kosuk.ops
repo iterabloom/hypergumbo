@@ -1,0 +1,22 @@
+- op: create  # bb7f
+  at: '2026-11-25T09:34:13Z'  # bb7f
+  by: agent  # bb7f
+  actor: jgstern_agent  # bb7f
+  clock: 1  # bb7f
+  nonce: bb7f  # bb7f
+  data:  # bb7f
+    kind: work_item  # bb7f
+    title: "swift: a call is bound to one overload by position; labels, arity and async context are not read"  # bb7f
+    status: todo_hard  # bb7f
+    priority: 3  # bb7f
+    parent:  # bb7f
+    tags:  # bb7f
+    - call_graph  # bb7f
+    - analysis_quality  # bb7f
+    - call_matrix  # bb7f
+    isbefore: []  # bb7f
+    duplicate_of: []  # bb7f
+    not_duplicate_of: []  # bb7f
+    pr_ref:  # bb7f
+    description: "STATEMENT\nA Swift call is bound to the overload its argument labels, arity and sync / async context select, or to the type with the candidates kept when the analyzer cannot tell; it is not bound to one overload by position.\n\nOBSERVED (2026-11-25; blinded sample judged from source, ~/hypergumbo_lab_notebook/sample_11252026/results.md; swift-nio, vapor, swift-composable-architecture; 22 wrong of 61 judged)\n13 of the 22 are the RIGHT OWNER AND THE WRONG OVERLOAD: the call's labels or argument types select another signature of the same type. Examples: `make(...)` without the required `logger:` label; `succeed(())` against `succeed(_:)`; a string literal selecting the variadic `PathComponent...` overload and not the `[PathComponent]` one; `retry` without `using:`; `send(_ action:)`; a synchronous test calling the sync `withTemporaryFile` and not the async one; `Reduce { }` in client code bound to the internal `init(internal:)` and not the public `init(_:)`.\nThe other 9: 5 another declaration (a closure parameter called by name, twice; a same-named helper of another test module, twice; a same-named extension method of another module), 4 outside the repository (SystemPackage.FileDescriptor, Result.init(catching:), XCTAssertThrowsError, XCTAssertNoThrow).\nAn edge to the wrong overload of the right type is the mildest wrong here (the type and file are right), and it is the one this language produces most. The census counts overloads of one scope as one candidate, so none of the 13 is in a \"several candidates\" population by construction."  # bb7f
+    fields: {}  # bb7f

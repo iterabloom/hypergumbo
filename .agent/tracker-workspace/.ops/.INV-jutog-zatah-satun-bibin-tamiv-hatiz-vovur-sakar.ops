@@ -50,3 +50,10 @@
   clock: 5  # 3b71
   nonce: 3b71  # 3b71
   message: "PR #2385 (INV-zabud satisfied) added two columns to the fixture, scope_own and scope_ext. No cell of this item's 20 moved. The wider table has 4 more guess cells in languages already listed here: csharp scope_ext (WI-dovoz), groovy scope_ext (WI-tiluh), objc scope_own and scope_ext (WI-mokul). Still 8 languages. ruby amb_param moved no_edge -> unresolved."  # 3b71
+- op: discuss  # ed97
+  at: '2026-11-25T09:34:20Z'  # ed97
+  by: agent  # ed97
+  actor: jgstern_agent  # ed97
+  clock: 6  # ed97
+  nonce: ed97  # ed97
+  message: "Sample 2026-11-25 (424 resolved call edges of the 51-tree baseline, drawn at random per mark, judged blind from source by eight judges; ~/hypergumbo_lab_notebook/sample_11252026/results.md): name with several same-named candidates in the repository: 57 wrong of 120 (37 of them another declaration of the same repository); name with one candidate: 10 wrong of 96 (9 of the 10 are calls to something outside the repository). receiver_type whose owner name several types share: 17 wrong of 36; with one owner: 2 of 35, both another overload of the right type. same_file: 14 wrong of 41. class_hint 6 of 15, qualified 4 of 17. No wrong edge in own_type (24), import (20), lexical_scope (9), same_module (5). This is the first measurement of this invariant on real code outside Rust."  # ed97
