@@ -366,18 +366,36 @@ public class Main {{
 
 
 # ---------------------------------------------------------------- kotlin
-def kotlin(R, D, B, S, dl):
+def kotlin(R, D, B, S, dl, split=False, third=False):
     def cls(n, m, v, op=""):
         return f"{op}class {n} {{\n    fun {m}(): Int = {v}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1, "open ") + f"class Child : {B}()\n", cls(S, "ping", 2))
-    main = f"""package app
+    spare = "class Spare {\n    fun execute(): Int = 2\n\n    fun ping(): Int = 2\n}\n"
+    dec = ("zdecoy" if dl else "adecoy")
+    files = {"util/Util.kt": "package util\n\nfun helper(): Int = 1\n",
+             f"{dec}/Util.kt": f"package {dec}\n\nfun helper(): Int = 2\n"}
+    if third:
+        files[f"{dec}/spare/Util.kt"] = f"package {dec}.spare\n\nfun helper(): Int = 2\n"
+    if split:
+        # One class per file, named by role. The right classes are in package
+        # ``model``, the decoys in the decoy package, whose directory sorts after
+        # (``zdecoy``) or before (``adecoy``) every right one. Main imports R and Child.
+        files |= {"model/Store.kt": "package model\n\n" + cls(R, "execute", 1),
+                  f"{dec}/Store.kt": f"package {dec}\n\n" + cls(D, "execute", 2),
+                  "model/Base.kt": "package model\n\n" + cls(B, "ping", 1, "open "),
+                  "model/Child.kt": f"package model\n\nclass Child : {B}()\n",
+                  f"{dec}/Stray.kt": f"package {dec}\n\n" + cls(S, "ping", 2)}
+        if third:
+            files[f"{dec}/Spare.kt"] = f"package {dec}\n\n" + spare
+        classes = f"import model.{R}\nimport model.Child\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        pg = order(dl, cls(B, "ping", 1, "open ") + f"class Child : {B}()\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["app/Main.kt"] = f"""package app
 
 import ext.make
 import util.helper
-
-{ex}
-{pg}
+{classes}
 fun get_db(): {R} {{
     return {R}()
 }}
@@ -410,11 +428,12 @@ fun via_amb_ext() {{
 fun via_import() {{
     helper()
 }}
+
+fun via_qual() {{
+    util.helper()
+}}
 """
-    dec = ("zdecoy" if dl else "adecoy")
-    return {"app/Main.kt": main,
-            "util/Util.kt": "package util\n\nfun helper(): Int = 1\n",
-            f"{dec}/Util.kt": f"package {dec}\n\nfun helper(): Int = 2\n"}
+    return files
 
 
 # ---------------------------------------------------------------- scala
