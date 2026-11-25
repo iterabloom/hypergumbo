@@ -46,9 +46,9 @@ gone from BOTH layouts delete its ``GUESSES`` entry
 (``test_every_guess_names_its_item`` fails until you do). A cell may never
 move TO a guess without a tracker item of its own.
 
-The reach assertion comes first in every test: a cell is only read after the
-program's declarations and callers are found in the map, so a missing symbol
-cannot pass for "unresolved".
+The reach assertion comes first: a cell is only read after the program's
+declarations and callers are found in the map, so a missing symbol cannot
+pass for "unresolved".
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/csharp.py
@@ -71,7 +71,7 @@ cannot pass for "unresolved".
 # covers: packages/hypergumbo-core/src/hypergumbo_core/linkers/receiver_type_dispatch.py
 from __future__ import annotations
 
-from typing import Callable
+from pathlib import Path
 
 import pytest
 
@@ -282,20 +282,6 @@ def _is_guess(cell: str) -> bool:
     return cell == "picked" or cell.startswith(("order:", "mixed:"))
 
 
-@pytest.fixture(scope="module")
-def measured(tmp_path_factory: pytest.TempPathFactory) -> Callable[[str, str], fx.Measured]:
-    """``(layout, language)`` measured once per module (six surveys each)."""
-    done: dict[tuple[str, str], fx.Measured] = {}
-
-    def get(layout: str, lang: str) -> fx.Measured:
-        if (layout, lang) not in done:
-            root = tmp_path_factory.mktemp(f"{layout}_{lang}")
-            done[layout, lang] = fx.measure(root, lang, split=layout == "split")
-        return done[layout, lang]
-
-    return get
-
-
 def test_the_tables_cover_every_language_and_shape() -> None:
     for cells, marks in TABLES.values():
         assert set(cells) == set(marks) == set(fx.LANGS)
@@ -305,41 +291,37 @@ def test_the_tables_cover_every_language_and_shape() -> None:
 
 
 @pytest.mark.parametrize(("layout", "lang"), CASES)
-def test_every_arm_finds_the_program(layout: str, lang: str, measured) -> None:
-    """Reach: the callers and both declarations of each callee have symbols."""
-    got = measured(layout, lang)
+def test_the_language_is_as_measured(layout: str, lang: str, tmp_path: Path) -> None:
+    """One measurement (six surveys), four readings, reach first.
+
+    One test and not four: each reading needs the same six surveys, and a
+    result kept between tests would be state another test depends on.
+    """
+    got = fx.measure(tmp_path, lang, split=layout == "split")
+
+    # Reach: the callers and both declarations of each callee have symbols. A
+    # cell is only read after this, so a missing symbol cannot pass for "unresolved".
     not_written = ({"via_amb_param"} if lang in NO_UNTYPED_PARAMETER else set()) | (
         {"via_qual"} if lang in NO_QUALIFIED_CALL else set())
     assert got.absent_callers == not_written, (layout, lang)
     assert got.missing == NO_SYMBOL.get(lang, set())
 
-
-@pytest.mark.parametrize(("layout", "lang"), CASES)
-def test_the_row_is_as_measured(layout: str, lang: str, measured) -> None:
-    got = measured(layout, lang)
     row = tuple(got.cells[shape] for shape in SHAPES)
     assert row == TABLES[layout][0][lang], (
         f"{lang}, {layout}: the measured row differs from the table. If a fix moved a cell, edit the row "
         f"(and GUESSES when a guess is gone). Measured: {dict(zip(SHAPES, row, strict=True))}"
     )
 
-
-@pytest.mark.parametrize(("layout", "lang"), CASES)
-def test_the_marks_are_as_measured(layout: str, lang: str, measured) -> None:
-    """What scoped the choice behind each cell (``resolved_by``, audit 0030)."""
-    got = measured(layout, lang)
+    # What scoped the choice behind each cell (``resolved_by``, audit 0030).
     marks = tuple(got.marks[shape] for shape in SHAPES)
     assert marks == TABLES[layout][1][lang], (
         f"{lang}, {layout}: measured marks: {dict(zip(SHAPES, marks, strict=True))}"
     )
 
-
-@pytest.mark.parametrize(("layout", "lang"), CASES)
-def test_a_third_candidate_moves_only_the_listed_cells(layout: str, lang: str, measured) -> None:
-    got = measured(layout, lang)
+    # A third same-named candidate moves the listed cells and no other.
     moved = {shape: got.third[shape] for shape in SHAPES if got.third[shape] != got.cells[shape]}
     listed = {shape: cell for (at, language, shape), cell in THIRD.items() if (at, language) == (layout, lang)}
-    assert moved == listed
+    assert moved == listed, f"{lang}, {layout}: cells a third candidate moved: {moved}"
 
 
 def test_every_guess_names_its_item() -> None:
