@@ -1026,6 +1026,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         # that declaration is then used exactly as a producer-threaded
         # ``receiver_type_id`` is. No table: the name lookup, as before.
         scoped_by = resolved_by.RECEIVER_TYPE
+        settled_type_ids: list[str] | None = None
         scope = ctx.import_scopes.get(src_sym.path)
         if scope is not None and not inherited_field_receiver:
             named_type = receiver_type_hint
@@ -1038,7 +1039,13 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
                 if meant is _NOT_BOUND:
                     continue
                 if meant is not None:
-                    receiver_type_hint, receiver_type_id = named_type, meant
+                    receiver_type_hint, settled_type_ids = named_type, meant
+            elif not named_type and enclosing_class and enclosing_class_id is None:
+                # A bare call starts at the type the caller is declared in,
+                # which the caller's own qualified name identifies.
+                settled_type_ids = _enclosing_type_ids(
+                    src_sym, enclosing_class, class_ids_by_name, class_symbols,
+                )
         if not (receiver_type_hint or inherited_field_receiver or enclosing_class):
             continue
 
@@ -1061,6 +1068,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             existing_call_pairs=existing_call_pairs,
             run=run,
             scoped_by=scoped_by,
+            settled_type_ids=settled_type_ids,
         )
         if emitted is not None:
             new_edges.append(emitted)
@@ -1075,9 +1083,18 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 
 
-#: ``_type_meant``'s answer when the name means no single declaration from the
+#: ``_type_meant``'s answer when the name means no single type from the
 #: caller's place: the call stays unresolved.
-_NOT_BOUND = "<not bound>"
+_NOT_BOUND: list[str] = ["<not bound>"]
+
+
+def _one_type(found: list[Symbol]) -> list[str] | None:
+    """The ids of ``found`` when they are declarations of ONE type (a type
+    declared in several files, a C# partial class, has several declarations
+    and one qualified name); ``None`` when they are different types."""
+    if len({dotted(s.qualified_name or "") for s in found}) != 1:
+        return None
+    return [s.id for s in found]
 
 
 def _type_meant(
@@ -1086,15 +1103,15 @@ def _type_meant(
     scope: ImportScope,
     class_ids_by_name: dict[str, list[str]],
     class_symbols: dict[str, Symbol],
-) -> str | None:
-    """The class id ``written`` means for ``caller``, whose file's imports are
-    ``scope`` (``type_visibility.visible_types``).
+) -> list[str] | None:
+    """The class ids ``written`` means for ``caller``, whose file's imports
+    are ``scope`` (``type_visibility.visible_types``).
 
-    One id when the name is settled. ``_NOT_BOUND`` when no declaration of
-    that name is visible from the caller (a library's type, however many
-    namesakes the repository holds) or when two are (a tie). ``None`` when
-    visibility cannot judge (a candidate with no qualified name): the caller
-    falls back to the name lookup.
+    The ids of one type when the name is settled. ``_NOT_BOUND`` when no
+    declaration of that name is visible from the caller (a library's type,
+    however many namesakes the repository holds) or when two types are (a
+    tie). ``None`` when visibility cannot judge (a candidate with no
+    qualified name): the caller falls back to the name lookup.
     """
     short = dotted(written.split("<", 1)[0]).rpartition(".")[2].strip()
     candidates = [
@@ -1105,7 +1122,28 @@ def _type_meant(
     seen = visible_types(written, caller.qualified_name, scope, candidates)
     if seen is None:
         return None
-    return seen[0].id if len(seen) == 1 else _NOT_BOUND
+    return (_one_type(seen) if seen else None) or _NOT_BOUND
+
+
+def _enclosing_type_ids(
+    caller: Symbol,
+    enclosing_class: str,
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+) -> list[str] | None:
+    """The declarations of the type ``caller`` is a member of: the classes
+    named ``enclosing_class`` whose qualified name is the caller's own minus
+    its last segment. ``None`` when the caller or a candidate records no
+    qualified name, or none matches: the name walk is then all there is."""
+    owner = dotted(caller.qualified_name or "").rpartition(".")[0]
+    candidates = [
+        class_symbols[class_id] for class_id in _same_language_class_ids(
+            enclosing_class, caller.language or "", class_ids_by_name, class_symbols,
+        )
+    ]
+    if not owner or any(not c.qualified_name for c in candidates):
+        return None
+    return [c.id for c in candidates if dotted(c.qualified_name or "") == owner] or None
 
 
 def _same_language_class_ids(
@@ -1160,8 +1198,15 @@ def _try_resolve(
     existing_call_pairs: set[tuple[str, str]],
     run: AnalysisRun,
     scoped_by: str = resolved_by.RECEIVER_TYPE,
+    settled_type_ids: list[str] | None = None,
 ) -> Edge | None:
     """Dispatch an unresolved edge to the right Site resolver.
+
+    ``settled_type_ids``: the declarations of the ONE type the caller's file
+    means (ADR-0064), for Site 2 the receiver's type and for Site 1 the type
+    the caller is declared in; a Site resolver uses them in place of the
+    by-name candidates and skips the same-name guard, as it does for a
+    producer-threaded id.
 
     Returns the resolved edge (or ``None`` if no Site matches). Caller
     appends to ``new_edges`` and updates the dedupe set.
@@ -1208,6 +1253,7 @@ def _try_resolve(
             existing_call_pairs=existing_call_pairs,
             run=run,
             scoped_by=scoped_by,
+            settled_type_ids=settled_type_ids,
         )
 
     # Site 1: bare/this call.
@@ -1223,6 +1269,7 @@ def _try_resolve(
             inheritance_index=inheritance_index,
             existing_call_pairs=existing_call_pairs,
             run=run,
+            settled_type_ids=settled_type_ids,
         )
     return None  # pragma: no cover  # unreachable: caller gated on any-hint
 
@@ -1240,6 +1287,7 @@ def _resolve_site1(
     inheritance_index: dict[str, list[tuple[str, str]]],
     existing_call_pairs: set[tuple[str, str]],
     run: AnalysisRun,
+    settled_type_ids: list[str] | None = None,
 ) -> Edge | None:
     """Site 1: bare / ``this`` call → walk enclosing class's MRO."""
     walker = _MRO_WALKERS.get(src_lang)
@@ -1255,7 +1303,9 @@ def _resolve_site1(
     # language match guards a foreign-language id keying a same-id class (belt-
     # and-suspenders: Symbol.id is language-prefixed, so this is always True for a
     # producer-stamped id — but a future shared stamp helper must not leak one).
-    if (
+    if settled_type_ids is not None:
+        start_class_ids = settled_type_ids
+    elif (
         enclosing_class_id is not None
         and enclosing_class_id in class_symbols
         and class_symbols[enclosing_class_id].language == src_lang
@@ -1329,6 +1379,7 @@ def _resolve_site2(
     existing_call_pairs: set[tuple[str, str]],
     run: AnalysisRun,
     scoped_by: str = resolved_by.RECEIVER_TYPE,
+    settled_type_ids: list[str] | None = None,
 ) -> Edge | None:
     """Site 2: ``var.method()`` typed receiver, or ``Type.method()`` where the
     call site names the type (``scoped_by`` is then ``qualified``).
@@ -1366,7 +1417,9 @@ def _resolve_site2(
     # NOT under-determined — resolve it precisely (Step 1/2) and SKIP the
     # ambiguity guard, recovering the recall the guard
     # sacrifices. Absent / stale / foreign-language → the name path below.
-    if (
+    if settled_type_ids is not None:
+        type_class_ids = settled_type_ids
+    elif (
         receiver_type_id is not None
         and receiver_type_id in class_symbols
         and class_symbols[receiver_type_id].language == src_lang

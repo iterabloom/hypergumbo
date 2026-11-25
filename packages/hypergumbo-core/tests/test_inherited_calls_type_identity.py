@@ -155,3 +155,58 @@ def test_candidates_with_no_qualified_name_keep_the_name_lookup() -> None:
     stub = _stub(caller, "Execute", receiver_type_hint="Conn")
     (edge,) = _link([*lone, caller], stub, _scope("Whatever"))
     assert edge.dst == lone[1].id
+
+
+# --- one type in several files, and the caller's own type ---------------------
+
+
+def test_a_type_declared_in_two_files_is_one_type() -> None:
+    """A partial class: two declarations, one qualified name. The name is
+    settled (it is not a tie), and a method of either part is on the type."""
+    first = _sym("class", "Conn", "App.Db.Conn", "db/Conn.cs", (1, 9))
+    second = _type_with_method("App.Db", "Conn", "Execute", "db/Conn.Extra.cs")
+    namesake = _type_with_method("Legacy", "Conn", "Execute", "legacy/Conn.cs")
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Conn")
+    (edge,) = _link([first, *second, *namesake, caller], stub, _scope("App.Db"))
+    assert edge.dst == second[1].id
+
+
+def _handler_with(method: str | None, namespace: str, path: str) -> list[Symbol]:
+    symbols = [_sym("class", "Handler", f"{namespace}.Handler", path, (1, 30))]
+    if method:
+        symbols.append(_sym("method", f"Handler.{method}", f"{namespace}.Handler.{method}", path, (22, 24)))
+    return symbols
+
+
+def test_a_bare_call_starts_at_the_callers_own_type_not_at_a_namesake() -> None:
+    """``Helper()`` inside ``App.Web.Handler``, which has no ``Helper``; an
+    unrelated ``Other.Handler`` has one. By name the namesake's method is
+    bound (the first class of that name that has it). With the table the walk
+    starts at the type the caller is declared in, and finds nothing."""
+    own = _handler_with(None, "App.Web", CALLER_FILE)
+    namesake = _handler_with("Helper", "Other", "other/Handler.cs")
+    caller = _caller()
+    stub = _stub(caller, "Helper", enclosing_class="Handler")
+    assert [e.dst for e in _link([*own, *namesake, caller], stub, None)] == [namesake[1].id]
+    assert _link([*own, *namesake, caller], stub, _scope()) == []
+
+
+def test_a_bare_call_finds_a_method_of_another_part_of_its_own_type() -> None:
+    own = _handler_with(None, "App.Web", CALLER_FILE)
+    other_part = _handler_with("Helper", "App.Web", "web/Handler.Helpers.cs")
+    namesake = _handler_with("Helper", "Other", "other/Handler.cs")
+    caller = _caller()
+    stub = _stub(caller, "Helper", enclosing_class="Handler")
+    (edge,) = _link([*own, *namesake, *other_part, caller], stub, _scope())
+    assert edge.dst == other_part[1].id
+    assert edge.meta["resolved_by"] == "own_type"
+
+
+def test_a_caller_whose_type_has_no_qualified_name_keeps_the_name_walk() -> None:
+    own = [_sym("class", "Handler", None, CALLER_FILE, (1, 30)),
+           _sym("method", "Handler.Helper", None, CALLER_FILE, (22, 24))]
+    caller = _sym("method", "Handler.Get", None, CALLER_FILE, (10, 20))
+    stub = _stub(caller, "Helper", enclosing_class="Handler")
+    (edge,) = _link([*own, caller], stub, _scope())
+    assert edge.dst == own[1].id
