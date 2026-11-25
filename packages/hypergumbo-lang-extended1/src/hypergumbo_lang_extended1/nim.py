@@ -71,6 +71,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -1117,8 +1118,9 @@ class _NimScope:
         self, name: str, caller: str, receiver: Optional[str],
         args: Optional[int] = None, dotted: bool = False,
         first_type: Optional[str] = None,
-    ) -> LookupResult:
-        """The declaration a call binds, among those ``caller`` can see.
+    ) -> tuple[LookupResult, Optional[str]]:
+        """The declaration a call binds, among those ``caller`` can see, and
+        what scoped the choice (``resolved_by``, None when nothing bound).
 
         ``args`` is the call's argument count and ``dotted`` its ``x.f(..)``
         form (``_nim_call_arity``); None leaves arity out of it. A qualified
@@ -1135,16 +1137,22 @@ class _NimScope:
         (:meth:`_NimTypes.incompatible`) is no candidate: ``result.add
         photo`` in a proc returning ``seq[GalleryPhoto]`` is system's ``add``,
         not a project's ``add*(timeline: var seq[Tweets]; ..)``.
+
+        The value: ``import`` for a qualified call (an import binds the
+        qualifier) and for the imported-modules tier; ``same_module`` for the
+        caller's file and the files ``include`` joins to it. A graded pick
+        among several in one tier keeps its tier's value: the number of
+        candidates is not part of the mark.
         """
         candidates = self.by_name.get(name, [])
         grants = self.module_named(receiver, caller) if receiver else None
         if grants == []:
-            return LookupResult(symbol=None)  # a library module's qualified call
+            return LookupResult(symbol=None), None  # a library module's qualified call
         if grants:
             visible = [c for c in candidates if any(g.admits(c) for g in grants)]
             qualified = self._choose([visible], args)
             if qualified.found:
-                return qualified
+                return qualified, resolved_by.IMPORT
             # The module declares no such name -- or none that takes this many
             # arguments -- so the receiver is a value that shadows the module's
             # name (``query.getTabClass`` with a ``query`` parameter and a
@@ -1165,7 +1173,12 @@ class _NimScope:
                 [c for c in tier if not self._refuses(first_type, c)]
                 for tier in tiers
             ]
-        return self._choose(tiers, args)
+        chosen = self._choose(tiers, args)
+        if not chosen.found:
+            return chosen, None
+        # tiers[1], the module, holds tiers[0], the caller's file.
+        own = any(c is chosen.symbol for c in tiers[1])
+        return chosen, resolved_by.SAME_MODULE if own else resolved_by.IMPORT
 
     def _refuses(self, first_type: str, candidate: Symbol) -> bool:
         """The candidate's first parameter cannot take a ``first_type`` value."""
@@ -1331,7 +1344,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
                     if caller:
                         args, dotted = _nim_call_arity(node)
                         first = receiver if dotted else _first_argument_name(node, source)
-                        lookup_result = scope.lookup(
+                        lookup_result, _by = scope.lookup(
                             target_name, rel_path, receiver, args, dotted,
                             first_type=(
                                 proc_types.type_of(first, node) if first else None
@@ -1352,6 +1365,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
                                     if lookup_result.match_type == "ambiguous"
                                     else None
                                 ),
+                                resolved_by=_by,
                             ))
                         else:
                             edges.append(make_unresolved_edge(
