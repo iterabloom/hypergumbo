@@ -896,20 +896,48 @@ void via_qual() {{
 
 
 # ---------------------------------------------------------------- objective-c
-def objc(R, D, B, S, dl):
-    def cls(n, m, v, sup="NSObject"):
-        return (f"@interface {n} : {sup}\n- (int){m};\n@end\n\n@implementation {n}\n"
-                f"- (int){m} {{ return {v}; }}\n@end\n")
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    child = f"\n@interface Child : {B}\n@end\n\n@implementation Child\n@end\n"
-    pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
-    main = f"""#import <Foundation/Foundation.h>
-#import <ExtLib/ExtLib.h>
-#import "Util.h"
+def objc(R, D, B, S, dl, split=False, third=False):
+    # No ``via_qual``: helper is a C function, and C has no qualified form of a
+    # call to one (no namespace, no module prefix).
+    def iface(n, ms, sup="NSObject"):
+        return f"@interface {n} : {sup}\n" + "".join(f"- (int){m};\n" for m in ms) + "@end\n"
 
-{ex}
-{pg}
-@interface App : NSObject
+    def impl(n, ms, v):
+        return f"@implementation {n}\n" + "\n".join(f"- (int){m} {{ return {v}; }}\n" for m in ms) + "@end\n"
+
+    def cls(n, m, v, sup="NSObject"):
+        return iface(n, [m], sup) + "\n" + impl(n, [m], v)
+    side = "z" if dl else "a"
+    files = {"Util.h": "int helper(void);\n", "Util.m": '#import "Util.h"\n\nint helper(void) { return 1; }\n',
+             f"{side}_decoy.m": "static int helper(void) { return 2; }\n\nint decoy_user(void) { return helper(); }\n"}
+    if third:
+        files[f"{side}_spare_util.m"] = "static int helper(void) { return 2; }\n\nint spare_user(void) { return helper(); }\n"
+    if split:
+        # One class per header and implementation file. main imports the headers
+        # of the classes it names: R, Child, and D (``scope_decoy_*`` declare a
+        # D); S's header is imported by its own .m only.
+        def unit(role, n, ms, v, sup="NSObject", imp="<Foundation/Foundation.h>"):
+            return {f"{role}.h": f"#import {imp}\n\n" + iface(n, ms, sup),
+                    f"{role}.m": f'#import "{role}.h"\n\n' + impl(n, ms, v)}
+        files |= unit("store", R, ["execute"], 1) | unit(f"{side}_store", D, ["execute"], 2)
+        files |= unit("base", B, ["ping"], 1) | unit("child", "Child", [], None, B, '"base.h"')
+        files |= unit(f"{side}_stray", S, ["ping"], 2)
+        if third:
+            files |= unit(f"{side}_spare", "Spare", ["execute", "ping"], 2)
+        local = sorted(["Util.h", "child.h", "store.h", f"{side}_store.h"])
+        classes = ""
+    else:
+        local = ["Util.h"]
+        spare = "\n" + iface("Spare", ["execute", "ping"]) + "\n" + impl("Spare", ["execute", "ping"], 2)
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare if third else ""))
+        child = f"\n@interface Child : {B}\n@end\n\n@implementation Child\n@end\n"
+        pg = order(dl, cls(B, "ping", 1) + child, cls(S, "ping", 2))
+        classes = f"{ex}\n{pg}\n"
+    imports = "".join(f'#import "{h}"\n' for h in local)
+    files["main.m"] = f"""#import <Foundation/Foundation.h>
+#import <ExtLib/ExtLib.h>
+{imports}
+{classes}@interface App : NSObject
 @end
 
 @implementation App
@@ -951,10 +979,7 @@ def objc(R, D, B, S, dl):
 }}
 @end
 """
-    dec = ("z" if dl else "a") + "_decoy.m"
-    return {"main.m": main, "Util.h": "int helper(void);\n",
-            "Util.m": '#import "Util.h"\n\nint helper(void) { return 1; }\n',
-            dec: "static int helper(void) { return 2; }\n\nint decoy_user(void) { return helper(); }\n"}
+    return files
 
 
 # ---------------------------------------------------------------- ruby
