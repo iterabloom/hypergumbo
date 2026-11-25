@@ -333,6 +333,7 @@ from hypergumbo_core.ir import (
     make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.analyze.base import (
     constructed_from_callee,
     AnalysisResult,
@@ -3698,7 +3699,7 @@ def _go_bare_reference_target(
     own_package: ListNameResolver,
     current_function: Symbol,
     bound_names: Container[str],
-) -> tuple[Symbol, Optional[float]] | None:
+) -> tuple[Symbol, Optional[float], str] | None:
     """The function a BARE identifier in value position names, if any (WI-bivin).
 
     Serves ``register(handler)`` and ``Command{Run: run}``. Go scoping places a
@@ -3719,11 +3720,11 @@ def _go_bare_reference_target(
     local = local_symbols.get(ref_name)
     if local is not None and local.kind not in _GO_MEMBER_KINDS:
         if local.kind == "function" and local.id != current_function.id:
-            return local, None
+            return local, None, resolved_by.SAME_FILE
         return None
     found = own_package.lookup(ref_name)
     if found.symbol is not None and found.symbol.kind == "function":
-        return found.symbol, found.confidence
+        return found.symbol, found.confidence, resolved_by.SAME_MODULE
     return None
 
 
@@ -3760,7 +3761,7 @@ def _go_selector_reference_target(
     global_symbols: dict[str, list[Symbol]],
     resolver: ListNameResolver,
     caller_dir: str,
-) -> tuple[Symbol, Optional[float]] | None:
+) -> tuple[Symbol, Optional[float], str] | None:
     """The function or method a SELECTOR in value position names (WI-kibah).
 
     Serves ``register(pkg.Handler)``, ``r.Get("/x", h.GetAPI)`` and
@@ -3801,7 +3802,7 @@ def _go_selector_reference_target(
             f"{node_text(pointer_operand, source)}.{name}",
         )
         if method_expr is not None and method_expr.kind == "method":
-            return method_expr, None
+            return method_expr, None, resolved_by.QUALIFIED
         return None
     if operand.type != "identifier":
         # A literal operand names its own type: ``(&T{}).Serve``, ``T{}.Serve``.
@@ -3819,7 +3820,7 @@ def _go_selector_reference_target(
         # A method expression, ``Handler.Serve``: the operand is the type.
         method_expr = local_symbols.get(f"{alias}.{name}")
         if method_expr is not None and method_expr.kind == "method":
-            return method_expr, None
+            return method_expr, None, resolved_by.QUALIFIED
     if alias in import_aliases and alias not in bound:
         path = import_aliases[alias]
         hint = _strip_module_prefix(path, module_path) if module_path else path
@@ -3829,7 +3830,12 @@ def _go_selector_reference_target(
             and found.symbol.kind == "function"
             and _go_in_hinted_package(found.symbol, hint)
         ):
-            return found.symbol, found.confidence
+            # The import's path filters the candidates; the module's root
+            # package (an empty hint) filters nothing.
+            return (
+                found.symbol, found.confidence,
+                resolved_by.IMPORT if hint else found.resolved_by,
+            )
         return None
     return _go_typed_method_value(
         var_types.get(alias), name, import_aliases, module_path,
@@ -3845,7 +3851,7 @@ def _go_typed_method_value(
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, list[Symbol]],
     caller_dir: str,
-) -> tuple[Symbol, Optional[float]] | None:
+) -> tuple[Symbol, Optional[float], str] | None:
     """``Type.name`` as a method value, for a receiver of a known in-module type.
 
     None for an unknown type and for a type outside this module, whose methods
@@ -3863,7 +3869,7 @@ def _go_typed_method_value(
     )
     if target is None or target.kind != "method":
         return None
-    return target, None
+    return target, None, resolved_by.RECEIVER_TYPE
 
 
 def _go_method_of_type(
@@ -4015,6 +4021,7 @@ def _extract_function_reference_edges(
                 resolution_score=target[1],
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
+                resolved_by=target[2],
             ))
             passed.append((arguments.index(arg), arg, target[0]))
     return passed
@@ -4105,6 +4112,7 @@ def _emit_go_alias_edges(
                 resolution_score=target[1],
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
+                resolved_by=target[2],
             ))
 
 
@@ -4614,6 +4622,7 @@ def _extract_edges_from_file(
             resolution_score=target[1],
             origin=PASS_ID,
             origin_run_id=run.execution_id,
+            resolved_by=target[2],
         ))
         return current_function, target[0]
 
@@ -4803,6 +4812,7 @@ def _extract_edges_from_file(
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
+                                            resolved_by=resolved_by.RECEIVER_TYPE,
                                         ))
                                         callee_name = None  # Already resolved
                                     elif qualified_name in global_symbols:
@@ -4827,6 +4837,7 @@ def _extract_edges_from_file(
                                                 origin=PASS_ID,
                                                 origin_run_id=run.execution_id,
                                                 meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
+                                                resolved_by=resolved_by.RECEIVER_TYPE,
                                             ))
                                             callee_name = None  # Already resolved
                                     # Fallback: a qualified type whose package we
@@ -4919,6 +4930,7 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         meta={"call_construct": "method", "receiver": "typed_field"},
+                                        resolved_by=resolved_by.RECEIVER_TYPE,
                                     ))
                                     callee_name = None  # Already resolved
                                 # Fallback: if resolved_type is a qualified
@@ -5066,6 +5078,7 @@ def _extract_edges_from_file(
                                                         "call_construct": "method",
                                                         "resolution_quality": "chained_return_type",
                                                     },
+                                                    resolved_by=resolved_by.RECEIVER_TYPE,
                                                 ))
                                                 callee_name = None
 
@@ -5260,6 +5273,9 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta=_iface_meta,
+                                    # The method's bare name among the repo's
+                                    # declarations; the interface test checks it.
+                                    resolved_by=resolved_by.NAME,
                                 ))
                                 callee_name = None  # Already handled
                             else:
@@ -5438,6 +5454,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": call_construct},
+                                resolved_by=resolved_by.SAME_FILE,
                             ))
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
@@ -5454,6 +5471,16 @@ def _extract_edges_from_file(
                                 admit=_go_package_member if package_qualified else _value_admit,
                             )
                             )
+                            # A bare name: the caller's own package. ``pkg.F()``:
+                            # the import's path (none for the module root). A
+                            # value's hint is the package that made the value,
+                            # a nearness heuristic for where its method lives.
+                            _by = (
+                                resolved_by.SAME_MODULE if callee_shape == "identifier"
+                                else resolved_by.IMPORT
+                                if package_qualified and import_path_hint
+                                else resolved_by.NAME
+                            )
                             if (
                                 not lookup_result.found
                                 and import_path_hint is None
@@ -5466,6 +5493,7 @@ def _extract_edges_from_file(
                                 lookup_result = _go_lookup_through_dot_imports(
                                     resolver, callee_name, dot_imports, module_path,
                                 )
+                                _by = resolved_by.IMPORT
                             # INV-fahub's bare-method deferral (defer_bare_method_call
                             # + an ``enclosing_class`` stamp for the inherited_calls
                             # Site-1 walker) is NOT applied here, and cannot fire
@@ -5500,6 +5528,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": call_construct},
+                                    resolved_by=_by,
                                 ))
                             # Create an edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
@@ -6659,6 +6688,10 @@ def _extract_go_routes(
                                                 meta={
                                                     "framework_dispatch": "route_mount",
                                                 },
+                                                resolved_by=(
+                                                    resolved_by.SAME_FILE
+                                                    if _handler_resolved else None
+                                                ),
                                             ))
 
         elif n.type == "assignment_statement":
