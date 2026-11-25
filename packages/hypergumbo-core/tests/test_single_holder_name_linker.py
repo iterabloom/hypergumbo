@@ -168,7 +168,7 @@ def test_holders_are_counted_in_the_callers_language_and_are_callables() -> None
     field = _sym("field", "Queue.drain", "src/q.ts")
     caller = _caller()
     assert _link([foreign, field, caller], [_member_call(caller, "drain")], _files()) == []
-    holder = _sym("function", "drain", "src/drain.js", language="javascript")
+    holder = _sym("method", "Pool.drain", "src/pool.js", language="javascript")
     (edge,) = _link([foreign, field, holder, caller], [_member_call(caller, "drain")], _files())
     assert edge.dst == holder.id
     component = _sym("file", "Main.vue", "src/Main.vue", (1, 40), "vue")
@@ -190,3 +190,22 @@ def test_edges_that_are_not_open_call_stubs_are_ignored() -> None:
         meta={"call_construct": "method"},
     )
     assert _link([holder, caller], [imports, orphan, shapeless], _files()) == []
+
+
+def test_a_holder_is_a_method_for_a_call_on_a_receiver_and_a_function_for_a_bare_call() -> None:
+    """``cd.shout()`` on an imported object is not the module-level function
+    ``shout``; a bare ``drain()`` is not some class's method ``drain``. And a
+    function of the name does not make a second holder for the method."""
+    function = _sym("function", "shout", "src/c.ts")
+    method = _sym("method", "Queue.drain", "src/queue.ts")
+    spare = _sym("function", "drain", "src/drain.ts")
+    caller = _caller()
+    scope = _files()
+    scope.add_named("src/c.ts", "default", alias="cd")
+    scope.add_named("src/index.ts", "drain")
+    symbols = [function, method, spare, caller]
+    assert _link(symbols, [_member_call(caller, "shout", qualifier="cd")], scope) == []
+    (edge,) = _link(symbols, [_member_call(caller, "drain")], scope)
+    assert edge.dst == method.id
+    (edge,) = _link(symbols, [_bare_call(caller, "drain")], scope)
+    assert edge.dst == spare.id
