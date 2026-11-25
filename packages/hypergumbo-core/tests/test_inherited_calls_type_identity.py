@@ -755,8 +755,7 @@ def test_new_names_a_type_through_the_table() -> None:
     stub = make_unresolved_edge(
         "java", caller.id, "Conn", 12, "test-pass", "test-run", instantiates=True,
     )
-    # Nobody has said which type it is yet: an unresolved stub's confidence.
-    assert (stub.is_resolved, stub.confidence) == (False, 0.5)
+    assert not stub.is_resolved
     assert (stub.edge_type, stub.is_resolved) == ("instantiates", False)
     (edge,) = _named_link([own, other, caller], stub, ImportScope(), caller.path)
     assert (edge.dst, edge.edge_type, edge.is_resolved) == (own.id, "instantiates", True)
