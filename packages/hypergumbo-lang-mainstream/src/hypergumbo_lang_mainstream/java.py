@@ -37,7 +37,8 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   ``extends`` reach the graph through ``meta["base_classes"]``, which the
   core ``inheritance`` linker turns into edges. An enum's ``implements``
   reaches neither, so it has no edge.
-- Instantiation: new ClassName() and ``ClassName::new`` (``instantiates`` edges)
+- Instantiation: new ClassName() and ``ClassName::new``, reported as
+  unresolved ``instantiates`` stubs naming the type as written
 - Method references: ``Type::method`` / ``this::method`` (``references`` edges)
 - Annotations: ``decorated_by`` edges to the annotation type (unresolved for
   project/framework annotations; standard ones like ``@Override`` are skipped)
@@ -124,19 +125,22 @@ How It Works
    - Pass 2: Detect calls/inheritance, resolve against global symbol
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
-4. Detect method calls, inheritance, and instantiation patterns. A
-   ``this.m()`` / bare ``m()`` call binds the enclosing class's own member,
-   which Java declares in the same file; one that the class does not declare
-   is emitted unresolved with an ``enclosing_class`` hint, and a
-   typed-receiver or inherited-field call is emitted unresolved with a
-   ``receiver_type_hint`` / ``inherited_field_receiver`` hint even when
-   ``<Type>.<method>`` is a project symbol; the Tier-2
-   ``inherited_calls`` linker walks the hierarchy and resolves them. A
-   static ``ClassName.m()`` call resolves here (``ast_call_static``).
-   A resolved call, ``new`` or ``::new`` target is dropped when the file
-   imports a different class of that simple name, or when a bare name would
-   reach a nested type from another file (``_is_import_class_mismatch``;
-   INV-finak, WI-bunul). Colliding base-class names resolve same-file, then
+4. Detect method calls, inheritance, and instantiation patterns
+   (ADR-0064: the analyzer binds only on Java's own evidence and REPORTS the
+   rest for the shared pass). A ``this.m()`` / bare ``m()`` call binds the
+   enclosing class's own member, which Java declares in the same file, found
+   by the call's position (of several overloads, the ones with as many
+   parameters as the call has arguments); one that the class does not
+   declare is emitted unresolved with an ``enclosing_class`` hint, and
+   ``super.m()`` always is, with ``super_receiver``. A typed-receiver or
+   inherited-field call is emitted unresolved with a ``receiver_type_hint`` /
+   ``inherited_field_receiver`` hint, a call on a receiver that names a
+   project type (``Util.m()``, ``util.Util.m()``) with ``qualifier``, and a
+   ``new T()`` / ``T::new`` as an unresolved ``instantiates`` stub. The file's
+   imports go to the linkers as one ``ImportScope`` per file
+   (``AnalysisResult.import_scopes``, :func:`_java_import_scope`), and the
+   Tier-2 ``inherited_calls`` linker says through it which declaration a name
+   means and walks the hierarchy. Colliding base-class names resolve same-file, then
    import, then same-package (Java needs no import for a class of its own
    package), then first by id (``_resolve_base_class_java``).
    A class's OWN facts are found by its declaration's POSITION
@@ -211,7 +215,9 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
-from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
+from hypergumbo_core.import_scope import ImportScope
+from hypergumbo_core.type_visibility import without_type_arguments
+from hypergumbo_core.symbol_resolution import LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
     AnalysisResult,
@@ -377,6 +383,13 @@ _JAVA_CONSTRUCTOR_NODES: frozenset[str] = frozenset({
 
 #: Every declaration that owns a callable body.
 _JAVA_CALLABLE_NODES: frozenset[str] = _JAVA_CONSTRUCTOR_NODES | {"method_declaration"}
+
+#: A declared parameter (``receiver_parameter``, ``Foo this``, is not one: no
+#: argument is written for it).
+_JAVA_PARAMETER_NODES: frozenset[str] = frozenset({"formal_parameter", "spread_parameter"})
+
+#: Comments, which the grammar places among an argument list's named nodes.
+_JAVA_COMMENT_NODES: frozenset[str] = frozenset({"line_comment", "block_comment"})
 
 
 def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1511,6 +1524,49 @@ def _extract_wildcard_imports(
     return wildcards
 
 
+def _java_import_scope(tree: "tree_sitter.Tree", source: bytes) -> ImportScope:
+    """The file's imports as the table the shared call resolution reads
+    (ADR-0064, piece b): which declaration a name written in this file means
+    is decided there, by the declared-name rule (``type_visibility``).
+
+    - ``import a.b.Foo;`` names one declaration: ``add_named("a.b", "Foo")``.
+    - ``import a.b.*;`` brings every type of a package: ``add_open_wildcard``.
+    - ``import static a.b.Util.helper;`` brings the static members named
+      ``helper`` of ``a.b.Util``, a static nested type among them (JLS 7.5.3):
+      ``add_named("a.b.Util", "helper")``, so a type written ``helper`` (a
+      nested type) means that one. A METHOD named so is not found through
+      it: the shared lookup finds functions, and a Java method is not one.
+    - ``import static a.b.Util.*;`` brings Util's static members, its static
+      nested types among them: ``add_open_wildcard("a.b.Util")``.
+
+    Not recorded: the file's own package, which the caller's qualified name
+    supplies; ``java.lang``, imported into every file (JLS 7.3) and declared
+    nowhere in a repository; ``import Foo;``, a type of the unnamed package,
+    which a file of a named package cannot import (JLS 7.5). Java has no
+    import aliases. Imports stand at the top of a compilation unit only, so
+    the root's children are all that is read.
+    """
+    scope = ImportScope()
+    for node in tree.root_node.children:
+        if node.type != "import_declaration":
+            continue
+        written = next(
+            (c for c in node.children if c.type in ("scoped_identifier", "identifier")), None,
+        )
+        if written is None:  # pragma: no cover - the grammar always names what is imported
+            continue
+        path = _node_text(written, source)
+        if any(c.type == "asterisk" for c in node.children):
+            # ``import util.*;``: a one-segment package is an identifier.
+            scope.add_open_wildcard(path)
+        elif written.type == "identifier":
+            continue
+        else:
+            module, _, name = path.rpartition(".")
+            scope.add_named(module=module, name=name)
+    return scope
+
+
 def _extract_import_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -2472,39 +2528,17 @@ def _is_import_class_mismatch(
     type_name: str,
     resolved_sym: "Symbol",
     imports: dict[str, str],
-    caller_file: str = "",
 ) -> bool:
-    """Check if a resolved class symbol conflicts with the file's imports.
+    """Whether a method found under ``<type_name>.<m>`` belongs to another
+    class than the one the file imports under ``type_name``.
 
-    When NameResolver suffix-matches ``Logger`` to ``Config.Logger`` but the
-    file actually imports ``org.slf4j.Logger``, the resolved symbol is wrong —
-    the developer intended the external library class. This prevents false
-    edges that inflate centrality of inner/nested classes (INV-finak).
+    When the run-wide table answers ``Logger.info`` with a project
+    ``Logger``'s method but the file imports ``org.slf4j.Logger``, the
+    answer is not the file's (INV-finak). Read only for the return-type
+    cascade (``_peek_return_type_owner``): no call is bound on it.
 
-    Also rejects nested class resolution from bare names when the caller is
-    outside the outer class's file. In Java, ``new Properties()`` cannot refer
-    to ``Log4jConfiguration.Properties`` from outside Log4jConfiguration —
-    you'd need the qualified name ``new Log4jConfiguration.Properties()``.
-    This prevents false edges from JDK class name collisions (WI-bunul).
-
-    Returns True when the edge should be **skipped** (import points elsewhere).
+    Returns True when the answer should be **skipped** (import points elsewhere).
     """
-    # Check 1: Nested class guard — if the resolved symbol is a nested class
-    # (name contains "." AND kind is class/interface/enum) but the lookup used
-    # a bare name, and the caller is not in the same file as the nested class,
-    # it's almost certainly wrong. In Java, bare inner class names are only
-    # valid inside the outer class.
-    resolved_name = resolved_sym.name
-    if (
-        "." in resolved_name
-        and "." not in type_name
-        and resolved_sym.kind in _JAVA_TYPE_SYMBOL_KINDS
-    ):
-        resolved_path = resolved_sym.path or ""
-        if caller_file != resolved_path:
-            return True  # Bare name can't refer to nested class from outside
-
-    # Check 2: Explicit import mismatch (original INV-finak check)
     if type_name not in imports:
         return False  # No import → can't disprove; allow the edge
 
@@ -2684,11 +2718,9 @@ def _extract_edges(
     class_symbols: dict[str, Symbol],
     imports: dict[str, str] | None = None,
     resolver: NameResolver | None = None,
-    class_resolver: NameResolver | None = None,
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
     class_by_name: dict[str, list[Symbol]] | None = None,
     sym_file_imports: dict[str, dict[str, str]] | None = None,
-    method_resolver: ListNameResolver | None = None,
     class_parents: dict[str, str] | None = None,
     class_fields: dict[str, dict[str, str]] | None = None,
     static_imports: dict[str, str] | None = None,
@@ -2703,12 +2735,13 @@ def _extract_edges(
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     Optionally uses NameResolver for suffix-based matching and confidence tracking.
 
-    Handles:
-    - Direct method calls: method(), this.method()
-    - Qualified method calls: ClassName.method()
-    - Variable method calls: variable.method() (with type inference)
-    - Object instantiation: new ClassName()
-    - Inherited method calls: walks extends chain when direct lookup fails
+    Handles (module docstring, step 4: what is bound here, what is reported):
+    - Direct method calls: method(), this.method(), bound to the enclosing
+      type's own member; super.method() reported
+    - Qualified method calls: ClassName.method(), reported with ``qualifier``
+    - Variable method calls: variable.method() (with type inference), reported
+      with ``receiver_type_hint``
+    - Object instantiation: new ClassName() and ClassName::new, reported
 
     Type inference tracks types from (the numbered list on ``_ParsedFile``):
     - Constructor calls: stub = new Client() -> stub has type Client
@@ -2734,8 +2767,6 @@ def _extract_edges(
         imports = {}
     if resolver is None:
         resolver = NameResolver(global_symbols)
-    if class_resolver is None:
-        class_resolver = NameResolver(class_symbols)
     if method_return_type_registry is None:
         method_return_type_registry = {}
     if project_class_names is None:
@@ -2750,12 +2781,74 @@ def _extract_edges(
             symbol_by_position = _java_position_index(held)
         if file_symbols is None:
             file_symbols = [s for s in held if s.path == str(file_path)]
-    # This file's members by name, for a call on the enclosing class
-    # (``helper()`` / ``this.helper()``). Last declaration wins for an
-    # overload (WI-gikuk).
+    # This file's members by name, for a method reference ``this::m`` (last
+    # declaration wins for an overload; WI-gikuk).
     own_members: dict[str, Symbol] = {
         s.name: s for s in file_symbols if s.kind in ("method", "constructor")
     }
+    # Every method of each name, for a call on the enclosing type
+    # (``helper()`` / ``this.helper()``; ``_own_member``). A constructor is
+    # never what a method invocation calls (``this(..)`` is another node).
+    members_by_name: dict[str, list[Symbol]] = {}
+    for s in file_symbols:
+        if s.kind == "method" and s.span is not None:
+            members_by_name.setdefault(s.name, []).append(s)
+
+    def _arity(member: Symbol) -> tuple[int, bool] | None:
+        """``member``'s number of parameters and whether the last is ``T...``,
+        read from its declaration node, which starts where its span does."""
+        start = (member.span.start_line - 1, member.span.start_col) if member.span else (0, 0)
+        decl = tree.root_node.descendant_for_point_range(start, start)
+        while decl is not None and not (
+            decl.type in _JAVA_CALLABLE_NODES and decl.start_point == start
+        ):
+            decl = decl.parent
+        params = decl.child_by_field_name("parameters") if decl is not None else None
+        if params is None:  # pragma: no cover - a method declaration always has a parameter list
+            return None
+        kinds = [c.type for c in params.named_children if c.type in _JAVA_PARAMETER_NODES]
+        return len(kinds), "spread_parameter" in kinds
+
+    def _own_member(call: "tree_sitter.Node", method_name: str) -> Symbol | None:
+        """The member ``method_name`` of the type whose body holds ``call``:
+        that type found by POSITION, its member among the declarations inside
+        its span (two local classes ``L`` of one file share the name
+        ``Outer.L``). Java declares a type's members in the type's own file,
+        so this is the language's own evidence; a member the type inherits is
+        the linker's walk.
+
+        Several overloads: the ones whose number of parameters is the number
+        of arguments written (JLS 15.12.2.1), else the variable-arity ones
+        that accept that many. Of those still several (one arity, told apart
+        by their types) the LAST declared, as the hierarchy linker's method
+        index keeps the last of a type's overloads for every typed and
+        inherited call: choosing by the types of the arguments is not made
+        (WI-tosut), and where the analyzer cannot tell it answers as the
+        shared pass does.
+        """
+        owner = _get_enclosing_type_symbol(call, file_path, symbol_by_position)
+        if owner is None or owner.span is None:  # pragma: no cover - current_class implies one
+            return None
+        inside = sorted(
+            (
+                s for s in members_by_name.get(f"{owner.name}.{method_name}", ())
+                if s.span is not None
+                and owner.span.start_line <= s.span.start_line <= owner.span.end_line
+            ),
+            key=lambda s: (s.span.start_line, s.span.start_col) if s.span else (0, 0),
+        )
+        if len(inside) > 1:
+            arguments = call.child_by_field_name("arguments")
+            written = len([
+                c for c in (arguments.named_children if arguments is not None else [])
+                if c.type not in _JAVA_COMMENT_NODES
+            ])
+            arities = [(s, _arity(s)) for s in inside]
+            fixed = [s for s, a in arities if a is not None and a[0] == written]
+            spread = [s for s, a in arities if a is not None and a[1] and written >= a[0] - 1]
+            inside = fixed or spread or inside
+        return inside[-1] if inside else None
+
     edges: list[Edge] = []
     # A call in no method is anchored on its type, else the file (INV-bamij).
     file_anchor = file_anchor_symbol("java", str(file_path), PASS_ID, run.execution_id)
@@ -2858,6 +2951,45 @@ def _extract_edges(
         if name[:1].isupper() and (wildcard_imports or name in _JAVA_LANG_TYPES):
             return _wildcard_candidate_slot(wildcard_imports or [], name)
         return None
+
+    def _named_type(obj: "tree_sitter.Node") -> str | None:
+        """The receiver as written when it NAMES A TYPE of the repository: an
+        identifier or a dotted chain of identifiers (``Util``, ``util.Util``,
+        ``Outer.Inner``) whose last name is a project type's and whose first
+        is not a variable, ``this`` or a type parameter. Which declaration it
+        means is the linker's question (the file's imports, its package, the
+        path as written); this only says that the call names an owner. A name
+        no project type has (``Arrays``, ``Math``) is a library's and is not
+        handed over."""
+        if obj.type not in ("identifier", "field_access"):
+            return None
+        written = "".join(_node_text(obj, source).split())
+        parts = written.split(".")
+        if (
+            not all(part.isidentifier() for part in parts)
+            or parts[0] in ("this", "super")
+            or parts[0] in var_types
+            or parts[0] in type_params
+            or parts[-1] not in project_class_names
+        ):
+            return None
+        return written
+
+    def _peek_return_type_owner(type_name: str, method_name: str) -> Symbol | None:
+        """The method ``<type_name>.<method_name>`` as the run-wide name table
+        holds it, read ONLY for its return type: the cascade below types
+        ``Client c = f.createClient(); c.send();`` from it. It binds no call.
+        The table is keyed by the package-less name, so the method may be a
+        namesake's; the return type of a callee the linker (not the analyzer)
+        resolves is a stated gap of ADR-0064, and this is the cascade the
+        analyzer had before, kept as it was. ``None`` when the file imports a
+        different class of that name (INV-finak)."""
+        lookup_result = resolver.lookup(f"{type_name}.{method_name}", caller_path=_caller_path)
+        if lookup_result.symbol is None or _is_import_class_mismatch(
+            type_name, lookup_result.symbol, imports,
+        ):
+            return None
+        return lookup_result.symbol
 
     def _call_return_type(
         call: "tree_sitter.Node", current_class: str | None,
@@ -3154,6 +3286,8 @@ def _extract_edges(
                     pr4_receiver_type_hint: str | None = None
                     pr4_inherited_field_receiver: str | None = None
                     pr4_enclosing_class_hint: str | None = None
+                    pr4_qualifier: str | None = None
+                    pr4_super_receiver = False
                     if stdio_receiver:
                         # The field's declared type; the cases below that
                         # look the receiver up BY NAME are skipped for it.
@@ -3185,25 +3319,19 @@ def _extract_edges(
                             object_node, source,
                         )
 
-                    # Case 1: this.method() or method() - resolve in current class.
-                    # ONLY those (and ``super.m()``). A receiver EXPRESSION --
-                    # a constructor, a chained call, a cast, a literal -- also
+                    # Case 1: this.method() or method(): the enclosing
+                    # type's OWN member, which Java declares in this file
+                    # (WI-gikuk), found by the call's position
+                    # (``_own_member``). A receiver EXPRESSION -- a
+                    # constructor, a chained call, a cast, a literal -- also
                     # leaves ``receiver_name`` at ``None``, but reading that as
                     # an implicit ``this`` would bind
                     # ``new FileOutputStream(p).write(b)`` to the ENCLOSING
                     # class's own ``write`` as a resolved call, and the sink
                     # edge would never be emitted (WI-halin).
-                    if object_node is None or object_node.type in ("this", "super"):
+                    if object_node is None or object_node.type == "this":
                         if current_class:
-                            # The enclosing class's OWN member, which Java
-                            # declares in this file (WI-gikuk). A run-wide
-                            # name-keyed table holds one ``Foo.helper`` for
-                            # ``a.Foo`` and ``b.Foo`` both, so it could bind
-                            # b's ``helper()`` to a's; and where this class
-                            # declares no ``helper`` another file's namesake
-                            # is not its inherited one either (the linker
-                            # walks for that).
-                            own_member = own_members.get(f"{current_class}.{method_name}")
+                            own_member = _own_member(node, method_name)
                             if own_member is not None:
                                 # The resolver's grade, not a fixed
                                 # confidence: it interpolates in the
@@ -3224,103 +3352,63 @@ def _extract_edges(
                                 edge_added = True
                                 resolved_sym = own_member
                             else:
-                                # The extends-chain walk belongs to the
-                                # Tier-2 ``inherited_calls`` linker
-                                # (``_walk_single_then_interfaces``,
-                                # priority=18), which walks the extends
-                                # + implements chain and emits
-                                # ``ast_call_inherited`` at confidence
-                                # 0.90 (WI-dukog). The analyzer hands off
-                                # by stashing the ``enclosing_class``
-                                # hint for the final unresolved emit
-                                # below.
-                                #
-                                # ``resolved_sym`` is intentionally
-                                # left None, so the return-type-inference
-                                # cascade further below does not fire
-                                # for inherited matches.
-                                #
-                                # No edge is emitted here: the final
-                                # unresolved emit below fires for the
-                                # same site, so a second edge would
-                                # double-count it, and that emit is the
-                                # one wired up to ``static_imports`` /
-                                # ``wildcard_imports`` for proper
-                                # ``module_hint`` and ``dst_ref``
-                                # (WI-sivuk).
+                                # A member the type inherits: the Tier-2
+                                # ``inherited_calls`` linker walks the extends
+                                # + implements chain from the type named by
+                                # ``enclosing_class`` / ``enclosing_class_id``
+                                # (WI-dukog), so the final unresolved emit
+                                # below carries the hint. ``resolved_sym``
+                                # stays None: no return type is inferred
+                                # from a member found by the linker.
                                 pr4_enclosing_class_hint = current_class
 
-                    # Case 2: ClassName.method() - static call
-                    elif (
-                        receiver_name and receiver_name in class_symbols
-                        and not stdio_receiver
-                    ):
-                        candidate = f"{receiver_name}.{method_name}"
-                        lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                        # Consult file imports (WI-fuhaj). Without this guard,
-                        # a static call like ``Logger.info(...)`` would resolve
-                        # to a local class named ``Logger`` even when the file
-                        # actually imports ``org.slf4j.Logger`` — the same
-                        # short-name collision guarded for instantiations and
-                        # Case 3 type-inferred calls (INV-finak).
-                        if lookup_result.found and not _is_import_class_mismatch(
-                            receiver_name, lookup_result.symbol, imports,
-                            caller_file=str(file_path),
-                        ):
-                            edge = Edge.create(
-                                src=current_method.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                resolution_score=lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_call_static",
-                                resolved_by=resolved_by.QUALIFIED,
-                            )
-                            edges.append(edge)
-                            edge_added = True
-                            resolved_sym = lookup_result.symbol
+                    # ``super.m()`` names the PARENT's ``m``: never the type's
+                    # own ``m``, which is the usual caller of it. Reported
+                    # for the linker, which starts its walk at the enclosing
+                    # type's parents (``super_receiver``).
+                    elif object_node.type == "super":
+                        if current_class:
+                            pr4_enclosing_class_hint = current_class
+                            pr4_super_receiver = True
 
-                    # Case 3: variable.method() — Site 2 typed receiver.
-                    # Edge emission (``<TypeName>.<method>`` direct lookup
-                    # + fallback-to-type symbol) belongs to the Tier-2
-                    # ``inherited_calls`` linker (``_resolve_site2``,
-                    # priority=18; WI-puvil). The analyzer only stashes
-                    # the inferred type as the ``receiver_type_hint`` and
-                    # lets the final unresolved emit thread it through.
+                    # Case 3: variable.method() -- Site 2 typed receiver. A
+                    # VARIABLE is looked at before a type of the same name:
+                    # in an expression a simple name means the variable
+                    # (JLS 6.4.2). The analyzer stashes the type its
+                    # declaration writes as ``receiver_type_hint``; the
+                    # Tier-2 ``inherited_calls`` linker (``_resolve_site2``)
+                    # decides which type that name means from this file
+                    # (its import table, ADR-0064) and finds the method.
                     #
-                    # We still run a side-effect-only resolver lookup
-                    # here to populate ``resolved_sym``, which the
-                    # return-type-inference cascade further below
-                    # consumes to chain ``var_types`` across factory-
-                    # method patterns (``Client c = f.createClient();``
-                    # then ``c.send();``). Without this peek, the
-                    # cascade breaks and ``c`` would have no
-                    # receiver_type_hint on the next call, costing the
-                    # Site-2 resolution.
+                    # The resolver is asked ``<Type>.<method>`` only to read
+                    # a RETURN TYPE (``resolved_sym``), for the cascade below
+                    # that types ``Client c = f.createClient(); c.send();``.
+                    # It binds nothing.
                     elif (
                         receiver_name and receiver_name in var_types
                         and not stdio_receiver
                     ):
                         type_class_name = var_types[receiver_name]
                         pr4_receiver_type_hint = type_class_name
-                        candidate = (
-                            f"{type_class_name}.{method_name}"
+                        resolved_sym = _peek_return_type_owner(
+                            type_class_name, method_name,
                         )
-                        lookup_result = resolver.lookup(
-                            candidate, caller_path=_caller_path,
+
+                    # Case 2: ``Type.m()`` / ``pkg.Type.m()``: the receiver
+                    # NAMES a type (``_named_type``). Reported with the
+                    # receiver as written as ``qualifier``: the linker binds
+                    # the call only if that name means a type visible from
+                    # this file (its imports, its package, a qualified
+                    # path), and never a namesake it cannot see (ADR-0064;
+                    # a run-wide ``Type.m`` lookup bound one before).
+                    elif (
+                        not stdio_receiver
+                        and (pr4_qualifier := _named_type(object_node)) is not None
+                        and receiver_name is not None
+                    ):
+                        resolved_sym = _peek_return_type_owner(
+                            receiver_name, method_name,
                         )
-                        if (
-                            lookup_result.found
-                            and not _is_import_class_mismatch(
-                                type_class_name,
-                                lookup_result.symbol,
-                                imports,
-                                caller_file=str(file_path),
-                            )
-                        ):
-                            resolved_sym = lookup_result.symbol
 
                     # Case 3.5: inherited field.method() — Site 3.
                     # The parent-chain field walk belongs to the linker's
@@ -3334,6 +3422,7 @@ def _extract_edges(
                         and receiver_name
                         and not stdio_receiver
                         and receiver_name not in var_types
+                        and pr4_qualifier is None
                         and receiver_name not in class_symbols
                         and class_fields
                         and current_class
@@ -3401,45 +3490,6 @@ def _extract_edges(
                             library_ret = _call_return_type(node, current_class)
                             if library_ret is not None:
                                 _bind_declarator(parent_node, library_ret, exact=False)
-
-                    # Case 4: Fallback - try imported class or just the receiver name
-                    # This handles edge cases where the receiver isn't recognized as a
-                    # class or variable but might still match a symbol via imports.
-                    # Also reachable when Case 2's import guard rejects a mismatched
-                    # static call — WI-fuhaj — so the guard must be repeated here.
-                    if (
-                        not edge_added and receiver_name and resolver
-                        and not stdio_receiver
-                    ):
-                        candidates = [f"{receiver_name}.{method_name}"]
-                        # Try imported class name
-                        if receiver_name in imports:
-                            full_class = imports[receiver_name].split(".")[-1]
-                            candidates.insert(0, f"{full_class}.{method_name}")
-                        for candidate in candidates:
-                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                            if (
-                                lookup_result.found
-                                and lookup_result.symbol is not None
-                                and not _is_import_class_mismatch(
-                                    receiver_name, lookup_result.symbol, imports,
-                                    caller_file=str(file_path),
-                                )
-                            ):
-                                edge = Edge.create(  # pragma: no cover
-                                    src=current_method.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_call_direct",
-                                    resolved_by=resolved_by.QUALIFIED,
-                                )
-                                edges.append(edge)  # pragma: no cover
-                                edge_added = True  # pragma: no cover
-                                break  # pragma: no cover
 
                     # Emit unresolved external edge when no resolution strategy succeeded
                     if not edge_added:
@@ -3731,16 +3781,14 @@ def _extract_edges(
                             # ``Helper.doThing()`` still gets NO module rather
                             # than a guessed one (INV-fazim).
                             #
-                            # NO PROJECT-CLASS GUARD HERE, because none is
-                            # needed: a repo defining its own ``System`` never
-                            # reaches this branch at all, because
-                            # ``class_resolver`` claims the name first and emits
-                            # a RESOLVED edge, whether the class is in the
-                            # calling package or a different one. A guard would
-                            # also be wrong in the second case: ``app.P``
+                            # NO PROJECT-CLASS GUARD HERE. A repo defining its
+                            # own ``System`` reports the call with that
+                            # ``qualifier`` too, and the shared pass binds it
+                            # where that class is visible from this file (its
+                            # package, an import); where it is not, ``app.P``
                             # calling ``System.currentTimeMillis()`` without
                             # importing ``other.System`` means java.lang's, by
-                            # JLS 6.5.
+                            # JLS 6.5, which is this slot.
                             elif (
                                 receiver_name
                                 and receiver_name != "this"
@@ -3773,6 +3821,8 @@ def _extract_edges(
                                 pr4_inherited_field_receiver
                             ),
                             call_construct=pr4_call_construct,
+                            qualifier=pr4_qualifier,
+                            super_receiver=pr4_super_receiver,
                         )
                         # The enclosing class's id, found by position, beside
                         # its package-less name, so the inherited_calls linker
@@ -3833,36 +3883,20 @@ def _extract_edges(
                 or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
                 or file_anchor
             )
-            type_name = None
-
-            # Find the type being instantiated
-            for child in node.children:
-                if child.type == "type_identifier":
-                    type_name = _node_text(child, source)
-                    if current_method is not None:
-                        lookup_result = class_resolver.lookup(type_name, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
-                            # INV-finak: skip edge if file imports an external
-                            # class with the same simple name (e.g., Logger)
-                            if _is_import_class_mismatch(
-                                type_name, lookup_result.symbol, imports,
-                                caller_file=str(file_path),
-                            ):
-                                pass  # Import points elsewhere; skip false edge
-                            else:
-                                edge = Edge.create(
-                                    src=current_method.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="instantiates",
-                                    line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_new",
-                                    resolved_by=lookup_result.resolved_by,
-                                )
-                                edges.append(edge)
-                    break
+            # ``new T(..)`` is REPORTED with the type as written (package
+            # kept, type arguments removed): which declaration ``T`` means is
+            # the shared pass's question, answered through the file's import
+            # table (ADR-0064); a run-wide lookup of the bare name bound a
+            # namesake before. A generic (``new Box<T>()``), a qualified
+            # (``new a.b.C()``) and an inner (``outer.new Inner()``) creation
+            # are reported too, where before they got no edge.
+            created = _java_created_type_name(node, source)
+            if created is not None:
+                edges.append(make_unresolved_edge(
+                    "java", current_method.id, created,
+                    node.start_point[0] + 1, PASS_ID, run.execution_id,
+                    instantiates=True,
+                ))
 
             # Track variable type for type inference
             # Check if this new expression is part of a variable assignment
@@ -3871,14 +3905,13 @@ def _extract_edges(
             # the constructor narrows it to the concrete one. The type is read
             # as written, so ``var f = new java.io.FileOutputStream(p)`` and
             # ``var xs = new ArrayList<String>()`` bind too (WI-halin).
-            created_type = _java_created_type_name(node, source)
             parent = node.parent
             if (
-                created_type is not None
+                created is not None
                 and parent is not None
                 and parent.type == "variable_declarator"
             ):
-                _bind_declarator(parent, created_type, exact=True)
+                _bind_declarator(parent, created, exact=True)
 
         # Method references: App::transform, this::process, Class::new
         # Creates a "references" edge from the enclosing method to the
@@ -3908,29 +3941,17 @@ def _extract_edges(
                 method_name = None
 
             if class_name and method_name == "new":
-                # Constructor reference: try to resolve the class
-                lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
-                if (
-                    lookup_result.found
-                    and lookup_result.symbol is not None
-                    # INV-finak: skip if import points elsewhere
-                    and not _is_import_class_mismatch(
-                        class_name, lookup_result.symbol, imports,
-                        caller_file=str(file_path),
-                    )
-                ):
-                    edge = Edge.create(
-                        src=current_method.id,
-                        dst=lookup_result.symbol.id,
-                        edge_type="instantiates",
-                        line=node.start_point[0] + 1,
-                        resolution_score=lookup_result.confidence,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="constructor_reference",
-                        resolved_by=lookup_result.resolved_by,
-                    )
-                    edges.append(edge)
+                # ``T::new`` constructs a ``T``: reported as ``new T()`` is,
+                # with the type as written (type arguments removed); the
+                # shared pass says which declaration it means. An array
+                # constructor (``int[]::new``) constructs no declared type.
+                created_ref = without_type_arguments("".join(class_name.split()))
+                if not created_ref.endswith("]"):
+                    edges.append(make_unresolved_edge(
+                        "java", current_method.id, created_ref,
+                        node.start_point[0] + 1, PASS_ID, run.execution_id,
+                        instantiates=True,
+                    ))
 
             elif class_name and method_name:
                 # Method reference: resolve ClassName.methodName
@@ -4204,8 +4225,6 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     class_symbols: dict[str, Symbol] = {}
     # Multi-value lookup for extends/implements disambiguation (INV-015)
     class_by_name: dict[str, list[Symbol]] = {}
-    # Multi-value method lookup for AMB-METHOD ambiguity guard
-    global_methods: dict[str, list[Symbol]] = {}
 
     # Position-based lookup for enclosing method and type resolution in
     # monorepos (WI-gikuk): an enclosing symbol is found by where it is
@@ -4219,9 +4238,6 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             if sym.name not in class_by_name:
                 class_by_name[sym.name] = []
             class_by_name[sym.name].append(sym)
-        elif sym.kind == "method":
-            short = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            global_methods.setdefault(short, []).append(sym)
 
     # Build per-symbol file imports for extends/implements disambiguation
     # Maps symbol ID -> file-level imports (simple_name -> fqn)
@@ -4359,21 +4375,15 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Build resolvers ONCE and share across all files — the registry is frozen
     # after Pass 1, so the suffix index only needs to be built once.
     resolver = NameResolver(global_symbols)
-    class_resolver = NameResolver(class_symbols)
-    method_resolver = ListNameResolver(
-        global_methods, ambiguity_threshold=3,
-    )
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
             global_symbols, class_symbols, pf.imports or {},
             resolver=resolver,
-            class_resolver=class_resolver,
             symbol_by_position=symbol_by_position,
             class_by_name=class_by_name,
             sym_file_imports=sym_file_imports,
-            method_resolver=method_resolver,
             class_parents=global_class_parents,
             class_fields=global_class_fields,
             static_imports=pf.static_imports or {},
@@ -4469,4 +4479,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         edges=all_edges,
         run=run,
         dependency_manifest=jvm_manifest if jvm_manifest.entries else None,
+        # Every file's imports, for the shared call resolution (ADR-0064): a
+        # file with no import still hands over an empty table, which says
+        # that its calls are reported for that pass to resolve.
+        import_scopes={
+            str(pf.path): _java_import_scope(pf.tree, pf.source) for pf in parsed_files
+        },
     )
