@@ -28,6 +28,7 @@ from pathlib import Path
 
 from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
 from hypergumbo_core.ir import Edge
+from _kotlin_linked import analyze_and_link
 from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
 
@@ -35,6 +36,14 @@ def _edges(root: Path, source: str, name: str = "A.kt") -> list[Edge]:
     root.mkdir(parents=True, exist_ok=True)
     (root / name).write_text(source)
     return analyze_kotlin(root).edges
+
+
+def _linked(root: Path, source: str, name: str = "A.kt") -> list[Edge]:
+    """``_edges`` and the edges of the call linkers: a call on a project type
+    is bound there, from the analyzer's stub (ADR-0064)."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / name).write_text(source)
+    return analyze_and_link(root).edges
 
 
 def _call(edges: list[Edge], method: str, *, line: int | None = None) -> Edge:
@@ -127,7 +136,7 @@ class TestTypedReceiverNamesItsModule:
         assert matched.qualified_name == "java.sql.Connection.commit"
 
     def test_a_project_class_method_still_resolves_in_repo(self, tmp_path: Path) -> None:
-        edges = _edges(
+        edges = _linked(
             tmp_path / "p",
             "class Helper {\n"
             "    fun run() {}\n"
@@ -147,7 +156,7 @@ class TestTypedReceiverNamesItsModule:
         """Read back from okhttp: ``val b = Request.Builder(); b.url(x)`` resolved
         to ``Builder.url`` in the old arm and went unresolved once the receiver
         carried the dotted type -- kotlin keys nested methods by the inner class."""
-        edges = _edges(
+        edges = _linked(
             tmp_path / "nest",
             "class Request {\n"
             "    class Builder {\n"
@@ -170,7 +179,7 @@ class TestTypedReceiverNamesItsModule:
         test retyped the class field ``factory`` (a ``TestValueFactory``) in a later
         one, so ``factory.newRoute()`` lost its in-repo resolution for a wrong
         module. Locals close with their function; fields stay file-wide."""
-        edges = _edges(
+        edges = _linked(
             tmp_path / "scope",
             "import java.io.File\n"
             "\n"
@@ -207,7 +216,7 @@ class TestTypedReceiverNamesItsModule:
         """Read back from okhttp and detekt: ``val r = MockResponse().setBody(x)`` and
         ``val s = Cfg(..).subConfig("a")`` were typed from the chain ROOT before;
         a stricter callee test lost 95 resolved sites. The root stays the evidence."""
-        edges = _edges(
+        edges = _linked(
             tmp_path / "chain",
             "import java.io.File\n"
             "\n"
@@ -233,8 +242,9 @@ class TestTypedReceiverNamesItsModule:
         """Read back from okhttp: ``val request = Request.Builder().url(u).build()``
         then ``request.tag()`` resolved to ``Request.tag`` before; typing the local
         ``Request.Builder`` lost 89 sites. The bare ``Request.Builder()`` keeps the
-        precise type (pinned above)."""
-        edges = _edges(
+        precise type (pinned above). Two callers: a linker makes one edge per
+        caller and target."""
+        edges = _linked(
             tmp_path / "build",
             "class Request {\n"
             "    fun tag(): String = \"t\"\n"
@@ -247,6 +257,9 @@ class TestTypedReceiverNamesItsModule:
             "fun go(u: String) {\n"
             "    val request = Request.Builder().url(u).build()\n"
             "    request.tag()\n"
+            "}\n"
+            "\n"
+            "fun go2(u: String) {\n"
             "    val multiline =\n"
             "      Request\n"
             "        .Builder()\n"
@@ -307,7 +320,9 @@ class TestTypedReceiverNamesItsModule:
         )
         edge = _call(edges, "ping")
         assert edge.dst == "kotlin:external:0-0:ping:unresolved", edge.dst
-        assert (edge.meta or {}).get("receiver_type_hint") == "Entry"
+        # The type as written: the linker looks ``Outer.Entry`` up through the
+        # file's imports (ADR-0064); its inner name alone is any ``Entry``.
+        assert (edge.meta or {}).get("receiver_type_hint") == "Outer.Entry"
 
     def test_an_unimported_bare_type_is_left_alone(self, tmp_path: Path) -> None:
         """No import, no inline path: the slot stays ``external`` and the hint stays."""

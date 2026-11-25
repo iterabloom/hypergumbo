@@ -7,15 +7,18 @@ run-wide table that keeps one class per name, so in ``a.Foo : BaseA`` and
 ``b.Foo : BaseB`` both ``super.m()`` calls walked whichever ``Foo``
 registered last and reached the same base. The class is now the one whose
 declaration node contains the call (by POSITION, core
-``enclosing_declared_symbol``), and the base's ``m`` is the one at the path
-the file imports (WI-tipoh's ``_kt_import_target``), not whichever ``Base.m``
-the name-keyed resolver kept.
+``enclosing_declared_symbol``). Since ADR-0064 the call is reported with that
+class (``enclosing_class``) and ``super_receiver``, and the inherited-calls
+linker walks the class's ancestors past its own override: the base's ``m`` is
+the one the file's imports, or the class's own package, make visible, not
+whichever ``Base.m`` a name-keyed table kept.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/kotlin.py
 from __future__ import annotations
 
 from pathlib import Path
 
+from _kotlin_linked import analyze_and_link
 from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
 _SUB = (
@@ -26,11 +29,11 @@ _SUB = (
 
 def _super_targets(root: Path) -> dict[str, str]:
     """``{caller file: callee qualified name}`` for every resolved ``super.m()``."""
-    result = analyze_kotlin(root)
+    result = analyze_and_link(root)
     by_id = {s.id: s for s in result.symbols}
     out = {}
     for e in result.edges:
-        if e.edge_type == "calls" and e.evidence_type == "ast_call_this":
+        if e.edge_type == "calls" and e.evidence_type == "ast_call_inherited":
             out[Path(by_id[e.src].path).name] = by_id[e.dst].qualified_name
     return out
 
@@ -45,8 +48,15 @@ def test_super_walks_the_bases_of_its_own_class(tmp_path: Path) -> None:
 
 
 def test_super_reaches_the_imported_base_not_a_namesake(tmp_path: Path) -> None:
+    """The walk follows the ``extends`` edge, whose base the analyzer resolves
+    from the file's import by matching it against FILE PATHS
+    (``_resolve_base_class_kotlin``): each ``Base`` is in the directory its
+    package names, as in real trees. (Two ``Base`` files at the root would both
+    reach the first ``Base`` by id; that is the inheritance edge's, not the
+    call's, and ADR-0064's batch changes no inheritance edge.)"""
     for pkg in ("x", "y"):
-        (tmp_path / f"{pkg}.kt").write_text(
+        (tmp_path / pkg).mkdir()
+        (tmp_path / pkg / "Base.kt").write_text(
             f"package {pkg}\n\nopen class Base {{\n    open fun m() {{}}\n}}\n")
     (tmp_path / "a.kt").write_text(_SUB.format(pkg="a", base_pkg="x", base="Base", cls="Foo"))
     (tmp_path / "b.kt").write_text(_SUB.format(pkg="b", base_pkg="y", base="Base", cls="Bar"))
@@ -64,12 +74,12 @@ def test_two_nested_classes_of_one_name_in_one_file_keep_their_bases(
         "        override fun m() {\n            super.m()\n        }\n    }\n}\n\n"
         "class O2 {\n    class Inner : BaseB() {\n"
         "        override fun m() {\n            super.m()\n        }\n    }\n}\n")
-    result = analyze_kotlin(tmp_path)
+    result = analyze_and_link(tmp_path)
     by_id = {s.id: s for s in result.symbols}
     pairs = {
         (by_id[e.src].qualified_name, by_id[e.dst].qualified_name)
         for e in result.edges
-        if e.edge_type == "calls" and e.evidence_type == "ast_call_this"
+        if e.edge_type == "calls" and e.evidence_type == "ast_call_inherited"
     }
     assert pairs == {("n.O1.Inner.m", "n.BaseA.m"), ("n.O2.Inner.m", "n.BaseB.m")}
 
@@ -108,7 +118,7 @@ def test_a_base_of_the_child_package_needs_no_import(tmp_path: Path) -> None:
         (tmp_path / pkg / "Foo.kt").write_text(
             f"package {pkg}\n\nclass Foo : Base() {{\n"
             "    override fun m() {\n        super.m()\n    }\n}\n")
-    result = analyze_kotlin(tmp_path)
+    result = analyze_and_link(tmp_path)
     by_id = {s.id: s for s in result.symbols}
     pairs = {
         (e.edge_type, by_id[e.src].qualified_name, by_id[e.dst].qualified_name)

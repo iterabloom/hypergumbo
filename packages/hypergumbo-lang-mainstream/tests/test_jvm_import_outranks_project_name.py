@@ -283,9 +283,9 @@ fun launch(cmd: String): Int = 0
 
 class TestKotlin:
     def _analyze(self, tmp_path: Path, caller: str):
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
-        return analyze_kotlin(_write(tmp_path, {
+        return analyze_and_link(_write(tmp_path, {
             "a/Model.kt": _KOTLIN_PROJECT, "b/Use.kt": caller}))
 
     def test_an_imported_jdk_class_is_not_the_project_class(self, tmp_path: Path) -> None:
@@ -332,11 +332,17 @@ class Use {
         assert not any(resolved for _, resolved in calls), [e.dst for e, _ in calls]
         assert calls[0][0].dst == "kotlin:org.other.Launcher:0-0:start:unresolved"
 
-    @pytest.mark.parametrize("imports", [
-        "import dev.acme.model.File\nimport dev.acme.model.launch\nimport dev.acme.model.Launcher",
-        "",
+    @pytest.mark.parametrize("imports,bound", [
+        ("import dev.acme.model.File\nimport dev.acme.model.launch\nimport dev.acme.model.Launcher",
+         True),
+        ("", False),
     ], ids=["import-of-the-project-path", "no-import"])
-    def test_the_project_symbols_still_resolve(self, tmp_path: Path, imports: str) -> None:
+    def test_the_project_symbols_still_resolve(self, tmp_path: Path, imports: str, bound: bool) -> None:
+        """Imported, the project's ``File``, ``launch`` and ``Launcher`` are the
+        callees. Not imported, they are not visible from ``dev.acme.cli`` (the
+        code would not compile against them): the calls stay unresolved, where
+        a name lookup among the run's declarations used to bind them
+        (ADR-0064)."""
         result = self._analyze(tmp_path, f"""\
 package dev.acme.cli
 
@@ -350,7 +356,8 @@ class Use {{
 """)
         for name in ("File", "launch", "start"):
             calls = _calls(result, name)
-            assert calls and all(resolved for _, resolved in calls), (name, [e.dst for e, _ in calls])
+            assert calls, (name, "reach")
+            assert any(resolved for _, resolved in calls) is bound, (name, [e.dst for e, _ in calls])
 
 
 @pytest.mark.parametrize("imported", ["org.apache.spark.util", "org.apache.spark.sql.util"])
@@ -391,9 +398,9 @@ class TestKotlinBindsTheImportedPath:
     contradicts it."""
 
     def _dsts(self, tmp_path: Path, name: str, pkg: str) -> list[str]:
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
-        result = analyze_kotlin(_write(tmp_path, {**_KOTLIN_TWO_PACKAGES, "c/Use.kt": (
+        result = analyze_and_link(_write(tmp_path, {**_KOTLIN_TWO_PACKAGES, "c/Use.kt": (
             f"package p.use\n\nimport p.{pkg}.assertThat\nimport p.{pkg}.Launcher\n\n"
             "class Use {\n    fun a(): Int = assertThat(1)\n"
             "    fun b(): Int = Launcher.start(\"x\")\n}\n")}))

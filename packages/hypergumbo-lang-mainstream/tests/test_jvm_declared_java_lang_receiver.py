@@ -72,9 +72,10 @@ _EXT = {"kotlin": "A.kt", "scala": "A.scala"}
 
 
 def _edges(tmp_path: Path, lang: str, source: str) -> dict[str, object]:
-    """``{method name: edge}`` for the calls edges of one fixture."""
+    """``{method name: edge}`` for the calls edges of one fixture (for Kotlin,
+    with the call linkers its stubs are bound by: ADR-0064)."""
     if lang == "kotlin":
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin as analyze
+        from _kotlin_linked import analyze_and_link as analyze
     else:
         from hypergumbo_lang_mainstream.scala import analyze_scala as analyze
     (tmp_path / _EXT[lang]).write_text(source)

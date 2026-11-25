@@ -21,7 +21,8 @@ The edges now follow java's spelling of the same shapes: a fully-qualified
 inline call names its owner in the module slot, ``this.field`` names the field's
 declared type, a value receiver the analyzer cannot type keeps the
 ``external`` placeholder (so the untyped-receiver disclosure names it), and
-``super.m()`` resolves through the enclosing class's declared base. A chain
+``super.m()`` reaches the enclosing class's declared base (since ADR-0064 through
+the inherited-calls linker, which the fixtures below run). A chain
 through ANOTHER object's field is such a receiver: the file-wide name table
 cannot type it without risking a wrong type in the slot.
 """
@@ -35,8 +36,8 @@ from pathlib import Path
 
 import pytest
 
+from _kotlin_linked import analyze_and_link
 from hypergumbo_core.cli import main
-from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
 
 _SRC = '''package app
@@ -71,7 +72,7 @@ def calls(tmp_path_factory: pytest.TempPathFactory) -> dict[str, set[str]]:
     repo = tmp_path_factory.mktemp("dupol")
     (repo / "App.kt").write_text(_SRC)
     by_caller: dict[str, set[str]] = {}
-    for edge in analyze_kotlin(repo).edges:
+    for edge in analyze_and_link(repo).edges:
         if edge.edge_type != "calls":
             continue
         caller = edge.src.split(":")[-2].rsplit(".", 1)[-1]
@@ -166,7 +167,7 @@ def more(tmp_path_factory: pytest.TempPathFactory) -> dict[str, set[str]]:
     repo = tmp_path_factory.mktemp("dupol_more")
     (repo / "More.kt").write_text(_MORE)
     by_caller: dict[str, set[str]] = {}
-    for edge in analyze_kotlin(repo).edges:
+    for edge in analyze_and_link(repo).edges:
         if edge.edge_type != "calls":
             continue
         caller = edge.src.split(":")[-2].rsplit(".", 1)[-1]

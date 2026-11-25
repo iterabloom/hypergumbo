@@ -992,7 +992,7 @@ class TestKotlinObjectMethodCalls:
 
     def test_object_method_call_resolved(self, tmp_path: Path) -> None:
         """Object method calls are resolved to target symbols."""
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "Service.kt"
         kt_file.write_text("""
@@ -1007,7 +1007,7 @@ fun main() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         assert result.run is not None
 
@@ -1034,8 +1034,11 @@ fun main() {
             None,
         )
         assert call_edge is not None
-        assert call_edge.evidence_type == "ast_call_static"
-        assert call_edge.confidence == 0.95
+        # ``Helper.greet()`` names its owner: the analyzer hands the call over
+        # with ``qualifier``, and the linker binds it on that type (ADR-0064).
+        assert call_edge.evidence_type == "ast_call_type_inferred"
+        assert call_edge.meta["resolved_by"] == "qualified"
+        assert call_edge.confidence == 0.85
 
 class TestKotlinVariableTypeInference:
     """Tests for type inference from constructor assignments."""
@@ -1044,7 +1047,7 @@ class TestKotlinVariableTypeInference:
         self, tmp_path: Path
     ) -> None:
         """Variable method calls resolved via constructor-based type inference."""
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -1060,7 +1063,7 @@ fun main() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         assert result.run is not None
 
@@ -1092,7 +1095,7 @@ fun main() {
 
     def test_parameter_type_inference(self, tmp_path: Path) -> None:
         """Function parameter types should enable method call resolution."""
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -1107,7 +1110,7 @@ fun process(db: Database, data: String) {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         assert result.run is not None
 
@@ -1160,7 +1163,7 @@ class TestKotlinReturnTypeInference:
         self, tmp_path: Path
     ) -> None:
         """Functions with return type annotations enable variable type inference."""
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -1178,7 +1181,7 @@ fun main() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         assert result.run is not None
 
@@ -1262,7 +1265,7 @@ fun main() {
         self, tmp_path: Path
     ) -> None:
         """Navigation calls (factory.create()) also track return types."""
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -1283,7 +1286,7 @@ fun main() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         assert result.run is not None
 
@@ -1425,7 +1428,7 @@ class Service {
             }
         The call this.svc.process() should resolve to Service.process.
         """
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         svc_file = tmp_path / "Service.kt"
         svc_file.write_text("""
@@ -1445,7 +1448,7 @@ class Controller(private val svc: Service) {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         assert result.run is not None
 
@@ -1483,7 +1486,7 @@ class Controller(private val svc: Service) {
         Generic type parameters (e.g., Repository<User>) are stripped to the
         base type (Repository) for method call resolution.
         """
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         repo_file = tmp_path / "Repository.kt"
         repo_file.write_text("""
@@ -1503,7 +1506,7 @@ class Controller(private val repo: Repository<String>) {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         list_method = next(
             (s for s in result.symbols if "list" in s.name
@@ -1646,7 +1649,7 @@ class TestKotlinLambdaCallAttribution:
 
         The call to helper() should be attributed to main, not lost.
         """
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "App.kt"
         kt_file.write_text("""
@@ -1662,7 +1665,7 @@ fun main() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         # Find symbols
         main_func = next((s for s in result.symbols if s.name == "main"), None)
@@ -1693,7 +1696,7 @@ fun main() {
 
         The call to doWork() should be attributed to caller.
         """
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "Callback.kt"
         kt_file.write_text("""
@@ -1710,7 +1713,7 @@ fun caller() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         # Find symbols
         caller_func = next((s for s in result.symbols if s.name == "caller"), None)
@@ -1743,7 +1746,7 @@ fun caller() {
                 }
             }
         """
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         kt_file = tmp_path / "Nested.kt"
         kt_file.write_text("""
@@ -1761,7 +1764,7 @@ fun outer() {
 }
 """)
 
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
 
         # Find symbols
         outer_func = next((s for s in result.symbols if s.name == "outer"), None)
@@ -1812,9 +1815,11 @@ val result = helper()
         helper_func = next((s for s in result.symbols if s.name == "helper"), None)
         assert helper_func is not None
 
+        # The call is reported for the shared linkers (ADR-0064); its caller
+        # is the file anchor either way.
         call_edges = [
             e for e in result.edges
-            if e.dst == helper_func.id and e.edge_type == "calls"
+            if (e.meta or {}).get("callee_name") == "helper" and e.edge_type == "calls"
         ]
         assert len(call_edges) == 1, [e.src for e in call_edges]
         assert call_edges[0].src.endswith(":1-1:file:file"), call_edges[0].src
@@ -2604,11 +2609,11 @@ class TestBareCallsStayInTheirType:
     """
 
     def _calls(self, tmp_path: Path, files: dict[str, str]):
-        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+        from _kotlin_linked import analyze_and_link
 
         for name, code in files.items():
             (tmp_path / name).write_text(code)
-        result = analyze_kotlin(tmp_path)
+        result = analyze_and_link(tmp_path)
         names = {s.id: s.name for s in result.symbols}
         calls = [e for e in result.edges if e.edge_type == "calls"]
         return {(names.get(e.src), names.get(e.dst)) for e in calls}, calls
