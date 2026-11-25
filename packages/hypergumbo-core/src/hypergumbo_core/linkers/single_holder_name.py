@@ -22,8 +22,12 @@ the name had one holder in 10,652 of them.
 So the name keeps ONE use, in one place, for every language whose analyzer has
 adopted the pass (its files hand over an import table,
 ``LinkerContext.import_scopes``): a call no earlier linker resolved is bound
-to the ONE method or function of the caller's language that has its name, and
-marked ``resolved_by="name"``. Several holders: unresolved.
+to the ONE declaration of the caller's language that has its name, and
+marked ``resolved_by="name"``. Several holders: unresolved. A holder is a
+METHOD for a call written on a receiver (``x.drain()``) and a FUNCTION for a
+bare call (``drain()``), as in the lookups this replaces and the sample that
+measured them: ``cd.shout()`` on an imported object is not the module-level
+function ``shout`` of the same file, whatever the name.
 
 When the name is refused although one declaration holds it
 ----------------------------------------------------------
@@ -85,8 +89,8 @@ from .registry import (
 
 PASS_ID = make_pass_id("single-holder-name-linker")
 
-#: What a holder of a name is: something a call invokes by that name.
-_HOLDER_KINDS = frozenset({"method", "function"})
+#: What a holder of a name is, by how the call is written (module docstring).
+_ON_A_RECEIVER, _BARE = "method", "function"
 
 #: Stub facts that an earlier pass has already read; each refuses the name.
 _ANSWERED_FACTS = (
@@ -97,9 +101,9 @@ _ANSWERED_FACTS = (
 _NAME_CONFIDENCE = 0.7
 
 
-def _name_to_look_up(edge: Edge, scope: ImportScope) -> str | None:
-    """The name whose one holder this stub may be bound to, or ``None`` when
-    the stub's own text refuses the name (module docstring)."""
+def _holder_to_look_up(edge: Edge, scope: ImportScope) -> tuple[str, str] | None:
+    """The (kind, name) whose one holder this stub may be bound to, or
+    ``None`` when the stub's own text refuses the name (module docstring)."""
     meta = edge.meta or {}
     if any(meta.get(fact) for fact in _ANSWERED_FACTS):
         return None
@@ -113,19 +117,20 @@ def _name_to_look_up(edge: Edge, scope: ImportScope) -> str | None:
             scope.module_kind == MODULES_ARE_FILES
             and (scope.named(head) is not None or scope.namespace(head) is not None)
         )
-        return callee if bound_to_the_repository else None
+        return (_ON_A_RECEIVER, callee) if bound_to_the_repository else None
     if meta.get("call_construct") == "method":
-        return callee
+        return _ON_A_RECEIVER, callee
     bound = scope.named(callee)
-    return bound.name if bound is not None else None
+    return (_BARE, bound.name) if bound is not None else None
 
 
 @register_linker(
     "single-holder-name-linker",
     priority=36,  # Last of the call resolvers: after method-call-recovery (35).
     description=(
-        "Binds a call no earlier pass resolved to the one method or function "
-        "of the caller's language that has its name (ADR-0064); refuses when "
+        "Binds a call no earlier pass resolved to the one method (a call on a "
+        "receiver) or function (a bare call) of the caller's language that has "
+        "its name (ADR-0064); refuses when "
         "the name has several holders or the call's own text points elsewhere."
     ),
     activation=LinkerActivation(always=True),
@@ -139,10 +144,10 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
         return LinkerResult(symbols=[], edges=new_edges, run=run)
 
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in ctx.symbols}
-    holders: dict[tuple[str, str], list[Symbol]] = {}
+    holders: dict[tuple[str, str, str], list[Symbol]] = {}
     for symbol in ctx.symbols:
-        if symbol.kind in _HOLDER_KINDS:
-            key = (call_language(symbol.language or ""), short_name(symbol.name))
+        if symbol.kind in (_ON_A_RECEIVER, _BARE):
+            key = (call_language(symbol.language or ""), symbol.kind, short_name(symbol.name))
             holders.setdefault(key, []).append(symbol)
 
     resolved_stubs: set[str] = set()
@@ -159,8 +164,8 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
         scope = ctx.import_scopes.get(caller.path) if caller is not None else None
         if caller is None or scope is None:
             continue
-        name = _name_to_look_up(edge, scope)
-        found = holders.get((call_language(caller.language or ""), name), ()) if name else ()
+        wanted = _holder_to_look_up(edge, scope)
+        found = holders.get((call_language(caller.language or ""), *wanted), ()) if wanted else ()
         if len(found) != 1 or (edge.src, found[0].id) in existing_call_pairs:
             continue
         new_edges.append(Edge.create(
