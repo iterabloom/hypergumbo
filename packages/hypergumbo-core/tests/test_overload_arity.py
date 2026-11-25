@@ -21,6 +21,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.behaviours import CALLBACK_MODIFIER, callback_stable_id
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.overload_arity import (
+    best_by_arity,
     ARITY_KEY,
     PARAMETERS_KEY,
     ArityBounds,
@@ -504,3 +505,24 @@ def test_a_default_the_declaration_cannot_tell_is_not_required() -> None:
     assert entries[1]["default"] is None
     assert bounds_of_entries(entries) == ArityBounds(1, 2)
     assert bounds_of_entries([{"name": "a", "type": None}]) == ArityBounds(1, 1)
+
+
+def test_the_overload_that_needs_the_least_help_is_preferred() -> None:
+    """Of the overloads that can take the count: every parameter given an
+    argument, before one that substitutes a default, before a variadic one or
+    one of unknown arity. Several in the first tier that holds any differ by
+    their types and all come back."""
+    exact = _sym("send", 1, _p(1))
+    defaulted = _sym("send", 2, _p(2, defaults=1))
+    variadic = _sym("send", 3, _p(1, variadic=True))
+    unknown = _sym("send", 4, None)
+    too_many = _sym("send", 5, _p(3))
+    everyone = [variadic, unknown, defaulted, too_many, exact]
+    assert best_by_arity(everyone, 1) == [exact]
+    assert best_by_arity([variadic, unknown, defaulted, too_many], 1) == [defaulted]
+    assert best_by_arity([variadic, unknown, too_many], 1) == [variadic, unknown]
+    assert best_by_arity([too_many], 1) == []
+    assert best_by_arity(everyone, None) == everyone
+    twin = _sym("send", 6, _p(1))
+    assert best_by_arity([exact, defaulted, twin], 1) == [exact, twin]
+    assert best_by_arity([variadic, defaulted, exact], 2) == [defaulted]

@@ -283,6 +283,41 @@ def narrow_by_arity(
     return kept
 
 
+def best_by_arity(
+    candidates: Sequence["Symbol"], arg_count: Optional[int], *, on_receiver: bool = False,
+) -> list["Symbol"]:
+    """The candidates a call with ``arg_count`` arguments binds to before the
+    types of its arguments are read: of the ones that can take the count
+    (:func:`narrow_by_arity`), those that need the least help to take it.
+
+    The order is the one Java (JLS 15.12.2: the phases without variable arity
+    before the phase with it), C# (a member applicable in its normal form is
+    better than one in its expanded form, and one whose parameters all have
+    arguments is better than one that substitutes a default) and Kotlin (a
+    non-vararg candidate, and one that uses no default, is more specific)
+    share:
+
+    1. every declared parameter gets an argument;
+    2. a default is substituted, and no parameter takes "any number";
+    3. a variadic parameter takes the rest, or the arity is unknown (such a
+       candidate can be neither left out nor preferred).
+
+    The first of these that holds a candidate is returned, in the order
+    given. Several in it differ by their parameter TYPES, which nothing here
+    reads. An unknown ``arg_count`` returns every candidate.
+    """
+    if arg_count is None:
+        return list(candidates)
+    tiers: tuple[list["Symbol"], list["Symbol"], list["Symbol"]] = ([], [], [])
+    for cand in candidates:
+        bounds = arity_bounds(cand, on_receiver=on_receiver)
+        if bounds is None or (bounds.maximum is None and bounds.admits(arg_count)):
+            tiers[2].append(cand)
+        elif bounds.admits(arg_count):
+            tiers[0 if bounds.maximum == arg_count else 1].append(cand)
+    return next((tier for tier in tiers if tier), [])
+
+
 @dataclass(frozen=True)
 class OverloadChoice:
     """The outcome of :func:`choose_overload`.

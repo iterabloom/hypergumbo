@@ -69,7 +69,7 @@ import time
 
 from .. import resolved_by
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..overload_arity import narrow_by_arity
+from ..overload_arity import best_by_arity
 from ..type_visibility import without_type_arguments
 from .method_call_recovery import parse_unresolved_name, short_name
 from .registry import (
@@ -160,12 +160,13 @@ def link_receiver_type_dispatch(ctx: LinkerContext) -> LinkerResult:
         )
         if not candidates:
             continue
-        # Overloads of one extension: only the ones that can take the
-        # arguments the call writes are candidates (``overload_arity``; the
-        # receiver is not among them). Without the fact every one stays.
+        # Overloads of one extension: only the ones that take the arguments
+        # the call writes with the least help are candidates
+        # (``overload_arity.best_by_arity``; the receiver is not among the
+        # arguments). Without the fact every one stays.
         argument_count = (edge.meta or {}).get("argument_count")
         if isinstance(argument_count, int):
-            admitted = {s.id for s in narrow_by_arity(
+            admitted = {s.id for s in best_by_arity(
                 [symbol_by_id[sym_id] for sym_id, _ev in candidates],
                 argument_count, on_receiver=True,
             )}

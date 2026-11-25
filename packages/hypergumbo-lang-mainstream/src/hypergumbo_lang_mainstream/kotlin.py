@@ -247,7 +247,7 @@ from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.import_scope import ImportScope
 from hypergumbo_core.type_visibility import visible_types
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.overload_arity import narrow_by_arity, parameter_entry, scoped_table_stable_id
+from hypergumbo_core.overload_arity import best_by_arity, parameter_entry, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
@@ -2635,7 +2635,7 @@ def _extract_edges_from_file(
 
         Of several (the overloads of a method), the ones that can take the
         ``argument_count`` arguments the call writes
-        (``overload_arity.narrow_by_arity`` over their ``meta["parameters"]``),
+        (``overload_arity.best_by_arity`` over their ``meta["parameters"]``),
         and of those the one declared LAST, the one taken before the count was
         read: the types of the arguments are not read (WI-tosut). None of them
         taking it is ``None``: the call is reported, for the linkers to look
@@ -2647,7 +2647,7 @@ def _extract_edges_from_file(
         declared = own_by_qualified.get(f"{owner.qualified_name}.{member}")
         if not declared or (kinds is not None and declared[-1].kind not in kinds):
             return None
-        admitted = narrow_by_arity(
+        admitted = best_by_arity(
             [d for d in declared if kinds is None or d.kind in kinds], argument_count,
         )
         return admitted[-1] if admitted else None
