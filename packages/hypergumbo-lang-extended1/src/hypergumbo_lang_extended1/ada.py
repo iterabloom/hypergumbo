@@ -545,6 +545,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                                 resolution_score=lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                resolved_by=lookup_result.resolved_by,
                             ))
                         else:
                             # External procedure (e.g., Ada.Text_IO.Put_Line)
@@ -574,6 +575,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                                 resolution_score=lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                resolved_by=lookup_result.resolved_by,
                             ))
                         else:
                             # External function

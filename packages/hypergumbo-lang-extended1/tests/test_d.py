@@ -823,3 +823,47 @@ class TestImportEdgeEndpoints:
             (here, "d:std.stdio:0-0:module:module"),  # outside the tree
             (here, util.id),                          # the module symbol, looked up
         ]
+
+
+class TestDResolvedBy:
+    """``meta["resolved_by"]`` takes the resolver's own value (audit 0030)."""
+
+    def test_import_hint_and_name(self, temp_repo: Path) -> None:
+        (temp_repo / "errors.d").write_text("""
+module errors;
+
+void error(string msg) {
+}
+
+void fatal() {
+}
+""")
+        (temp_repo / "main.d").write_text("""
+module main;
+
+import errors;
+
+void tryMain() {
+    error("something went wrong");
+    fatal();
+}
+""")
+        sub = temp_repo / "other"
+        sub.mkdir()
+        (sub / "unrelated.d").write_text("""
+module unrelated;
+
+void error(int code) {
+}
+""")
+        result = analyze_d(temp_repo)
+        calls = {
+            e.dst.split(":")[-2]: e for e in result.edges
+            if e.edge_type == "calls" and "tryMain" in e.src and e.is_resolved
+        }
+        assert {"error", "fatal"} <= set(calls)
+        # ``error`` is in two files: the import's path hint chose.
+        assert "errors.d" in calls["error"].dst
+        assert calls["error"].meta["resolved_by"] == "import"
+        # ``fatal`` is the registry's exact key: found by its name.
+        assert calls["fatal"].meta["resolved_by"] == "name"

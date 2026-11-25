@@ -50,6 +50,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -286,6 +287,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                     confidence=0.85,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    resolved_by=resolved_by.NAME,
                 ))
             else:
                 edges.append(make_unresolved_edge(

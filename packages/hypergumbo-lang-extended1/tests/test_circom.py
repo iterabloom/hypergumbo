@@ -828,3 +828,82 @@ template U() {
         assert min(e.confidence for e in dup_edges) < min(
             e.confidence for e in solo_edges
         )
+
+
+class TestCircomResolvedBy:
+    """``meta["resolved_by"]`` per route of ``resolve_callable`` (audit 0030)."""
+
+    @staticmethod
+    def _marks(result) -> dict[tuple[str, str], str]:
+        by_id = {s.id: s for s in result.symbols}
+        return {
+            (by_id[e.dst].name, by_id[e.dst].path): e.meta["resolved_by"]
+            for e in result.edges
+            if e.edge_type == "calls" and e.dst in by_id
+        }
+
+    def test_same_file_include_and_name(self, tmp_path: Path) -> None:
+        _make_circom_file(tmp_path, "lib.circom", """\
+pragma circom 2.0.0;
+template Hasher() {
+    signal input data;
+    signal output hash;
+    hash <== data * data;
+}
+""")
+        _make_circom_file(tmp_path, "far.circom", """\
+pragma circom 2.0.0;
+template Far() {
+    signal input a;
+}
+function twice(x) {
+    return x * 2;
+}
+""")
+        _make_circom_file(tmp_path, "main.circom", """\
+pragma circom 2.0.0;
+include "lib.circom";
+template Local() {
+    signal input a;
+}
+template Verifier() {
+    signal input x;
+    signal output y;
+    component h = Hasher();
+    component l = Local();
+    component f = Far();
+    var t = twice(x);
+    h.data <== x;
+    y <== h.hash;
+}
+component main = Verifier();
+""")
+        marks = self._marks(analyze_circom(tmp_path))
+        # A template of the caller's own file.
+        assert marks[("Local", "main.circom")] == "same_file"
+        assert marks[("Verifier", "main.circom")] == "same_file"
+        # Found through the include closure.
+        assert marks[("Hasher", "lib.circom")] == "import"
+        # Neither here nor included: the only one of that name in the run.
+        assert marks[("Far", "far.circom")] == "name"
+        assert marks[("twice", "far.circom")] == "name"
+
+    def test_pick_among_several_is_name(self, tmp_path: Path) -> None:
+        for name in ("a.circom", "b.circom"):
+            _make_circom_file(tmp_path, name, """\
+pragma circom 2.0.0;
+function helper(x) {
+    return x;
+}
+""")
+        _make_circom_file(tmp_path, "main.circom", """\
+pragma circom 2.0.0;
+template T() {
+    signal input x;
+    var t = helper(x);
+}
+""")
+        result = analyze_circom(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 1
+        assert calls[0].meta["resolved_by"] == "name"

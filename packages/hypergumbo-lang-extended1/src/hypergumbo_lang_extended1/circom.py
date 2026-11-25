@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, NodeId, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -411,8 +412,9 @@ class _CircomScope:
 
     def resolve_callable(
         self, name: str, path: str, kinds: frozenset[str],
-    ) -> Optional[tuple[Symbol, float]]:
-        """The definition ``name`` names from ``path``, and the match quality."""
+    ) -> Optional[tuple[Symbol, float, str]]:
+        """The definition ``name`` names from ``path``, the match quality, and
+        what scoped the choice (a ``resolved_by`` value)."""
         candidates = [s for s in self.callables.get(name, ()) if s.kind in kinds]
         if not candidates:
             return None
@@ -420,15 +422,18 @@ class _CircomScope:
         for sym in candidates:
             first_by_path.setdefault(sym.path, sym)
         if path in first_by_path:
-            return first_by_path[path], NameResolver.CONFIDENCE_EXACT
+            return first_by_path[path], NameResolver.CONFIDENCE_EXACT, resolved_by.SAME_FILE
         for included in self.closure(path):
             if included in first_by_path:
-                return first_by_path[included], NameResolver.CONFIDENCE_EXACT
+                return (
+                    first_by_path[included], NameResolver.CONFIDENCE_EXACT,
+                    resolved_by.IMPORT,
+                )
         if len(candidates) == 1:
-            return candidates[0], NameResolver.CONFIDENCE_EXACT
+            return candidates[0], NameResolver.CONFIDENCE_EXACT, resolved_by.NAME
         return candidates[-1], (
             NameResolver.CONFIDENCE_AMBIGUOUS / math.sqrt(len(candidates))
-        )
+        ), resolved_by.NAME
 
 
 def _callee_name(call: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -598,6 +603,7 @@ def _extract_edges_from_file(
                 resolution_score=resolved[1],
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                resolved_by=resolved[2],
             ))
 
     for node in iter_tree(tree.root_node):
@@ -652,6 +658,7 @@ def _extract_edges_from_file(
                         confidence=0.85,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        resolved_by=resolved[2],
                     )
                     edges.append(edge)
 

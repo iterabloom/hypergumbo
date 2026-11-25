@@ -322,3 +322,22 @@ class TestAsmCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestAsmResolvedBy:
+    """``meta["resolved_by"]`` on a resolved ``call`` (audit 0030)."""
+
+    def test_label_found_by_name_is_name(self, temp_repo: Path) -> None:
+        (temp_repo / "main.s").write_text("""
+.globl main
+main:
+    call helper
+    ret
+
+helper:
+    ret
+""")
+        result = analyze_asm(temp_repo)
+        calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+        assert len(calls) == 1
+        assert calls[0].meta["resolved_by"] == "name"

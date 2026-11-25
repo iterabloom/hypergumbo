@@ -496,3 +496,39 @@ class TestWithClauseEdgeEndpoints:
         assert [e.dst for e in result.edges if e.edge_type == "imports"] == [
             "ada:Util:0-0:module:module",
         ]
+
+
+class TestAdaResolvedBy:
+    """``meta["resolved_by"]`` on a resolved call (audit 0030, WI-hirol)."""
+
+    def test_call_found_by_name_is_name(self, temp_repo: Path) -> None:
+        """A call is looked up by its simple name in the run-wide registry;
+        the resolver's own value says ``name``."""
+        (temp_repo / "calculator.adb").write_text('''
+package body Calculator is
+   procedure Helper is
+   begin
+      null;
+   end Helper;
+
+   function Double(X : Integer) return Integer is
+   begin
+      return X * 2;
+   end Double;
+
+   procedure Main is
+      Y : Integer;
+   begin
+      Helper;
+      Y := Double(2);
+   end Main;
+end Calculator;
+''')
+        result = analyze_ada(temp_repo)
+        calls = {
+            e.dst.split(":")[-2]: e for e in result.edges
+            if e.edge_type == "calls" and e.is_resolved
+        }
+        assert {"Helper", "Double"} <= set(calls)
+        assert calls["Helper"].meta["resolved_by"] == "name"
+        assert calls["Double"].meta["resolved_by"] == "name"

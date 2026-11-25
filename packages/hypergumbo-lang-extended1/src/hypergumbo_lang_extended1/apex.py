@@ -54,6 +54,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, NodeId, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -721,17 +722,21 @@ def _extract_method_call(
 
         if target == "this" and current_class:
             call_name = f"{current_class}.{method_name}"
+            _by = resolved_by.OWN_TYPE
         elif target:
             call_name = f"{target}.{method_name}"
+            _by = resolved_by.QUALIFIED
         else:
             if current_class:
                 call_name = f"{current_class}.{method_name}"
+                _by = resolved_by.OWN_TYPE
             else:  # pragma: no cover
                 call_name = method_name
+                _by = resolved_by.NAME
 
         _add_call_edge(
             rel_path, src_id, call_name, node.start_point[0] + 1,
-            symbol_registry, run_id, edges,
+            symbol_registry, run_id, edges, _by,
         )
 
 
@@ -755,21 +760,29 @@ def _extract_constructor_call(
 
     if type_name and type_name not in APEX_BUILTINS:
         call_name = f"{type_name}.{type_name}"
+        # ``new T()``: the class is found by its name alone.
         _add_call_edge(
             rel_path, src_id, call_name, node.start_point[0] + 1,
-            symbol_registry, run_id, edges,
+            symbol_registry, run_id, edges, resolved_by.NAME,
         )
 
 
 def _add_call_edge(
     rel_path: str, src_id: NodeId, call_name: str, line: int,
     symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
+    key_by: str,
 ) -> None:
-    """Add a call edge from ``src_id`` (the caller, found by position)."""
+    """Add a call edge from ``src_id`` (the caller, found by position).
+
+    ``key_by`` is the ``resolved_by`` of a hit on ``call_name`` itself: what
+    built its ``Owner.method`` key. A hit on the short name alone is ``name``.
+    """
     dst_id = symbol_registry.get(call_name)
+    _by = key_by
     if not dst_id:
         short_name = call_name.split(".")[-1] if "." in call_name else call_name
         dst_id = symbol_registry.get(short_name)
+        _by = resolved_by.NAME
 
     if dst_id:
         confidence = 1.0
@@ -791,6 +804,7 @@ def _add_call_edge(
         evidence_type="tree_sitter",
         confidence=confidence,
         evidence_lang="apex",
+        resolved_by=_by if dst_id else None,
     )
     edges.append(edge)
 

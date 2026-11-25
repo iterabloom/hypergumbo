@@ -57,6 +57,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -170,16 +171,28 @@ def _stable_id(kind: str, rel_path: str, name: str, chain: list[str]) -> StableI
 def _resolve_target(
     name: str, program_targets: dict[str, Symbol],
     local_symbols: dict[str, Symbol], resolver: "NameResolver",
-) -> tuple[Symbol | None, float]:
-    """The PERFORM / CALL target ``name`` and its match grade: a paragraph or
-    section of the performing program first, then one of this file, then the
-    repo-wide registry (a CALLed program usually lives in another file)."""
+) -> tuple[Symbol | None, float, str]:
+    """The PERFORM / CALL target ``name``, its match grade and what scoped
+    the choice (``resolved_by``): a paragraph or section of the performing
+    program first (the program's own names, ``same_module``), then one of this
+    file (``same_file``), then the repo-wide registry (a CALLed program
+    usually lives in another file)."""
     key = name.upper()
-    own = program_targets.get(key) or local_symbols.get(key)
+    own = program_targets.get(key)
     if own is not None:
-        return own, resolver.CONFIDENCE_EXACT
+        return own, resolver.CONFIDENCE_EXACT, resolved_by.SAME_MODULE
+    own = local_symbols.get(key)
+    if own is not None:
+        return own, resolver.CONFIDENCE_EXACT, resolved_by.SAME_FILE
     result = resolver.lookup(key)
-    return result.symbol, result.confidence
+    return result.symbol, result.confidence, result.resolved_by
+
+
+def _kept_mark(edge: Edge) -> dict[str, str]:
+    """The ``resolved_by`` entry ``Edge.create`` stored in ``edge.meta``, for
+    the dict that replaces it (empty on an unresolved edge)."""
+    mark = (edge.meta or {}).get(resolved_by.RESOLVED_BY_KEY)
+    return {resolved_by.RESOLVED_BY_KEY: mark} if mark else {}
 
 
 class CobolAnalyzer(TreeSitterAnalyzer):
@@ -385,7 +398,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                         label_node = find_child_by_type(procedure_node, "label")
                         if label_node:
                             target_name = _extract_text(label_node, source).strip()
-                            target, confidence = _resolve_target(
+                            target, confidence, _by = _resolve_target(
                                 target_name, program_targets, local_symbols, resolver,
                             )
                             if target is not None:
@@ -398,6 +411,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_perform",
                                     resolution_score=confidence,
+                                    resolved_by=_by,
                                 )
                             else:  # pragma: no cover - unresolvable external paragraph
                                 edge = make_unresolved_edge(  # pragma: no cover
@@ -408,6 +422,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                             edge.meta = {
                                 "file": rel_path,
                                 "call_type": "perform",
+                                **_kept_mark(edge),
                             }
                             edges.append(edge)
 
@@ -416,7 +431,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                     string_node = find_child_by_type(call, "string")
                     if string_node:
                         target_name = _extract_text(string_node, source).strip().strip('"\'')
-                        target, confidence = _resolve_target(
+                        target, confidence, _by = _resolve_target(
                             target_name, program_targets, local_symbols, resolver,
                         )
                         if target is not None:
@@ -429,6 +444,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call",
                                 resolution_score=confidence,
+                                resolved_by=_by,
                             )
                         else:
                             edge = make_unresolved_edge(
@@ -439,6 +455,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                         edge.meta = {
                             "file": rel_path,
                             "call_type": "call",
+                            **_kept_mark(edge),
                         }
                         edges.append(edge)
 
