@@ -56,7 +56,6 @@
       "resolution_quality=typed": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/php.py": {
-      "evidence_type=ast_method_inferred": 1,
       "evidence_type=ast_method_this": 1,
       "evidence_type=ast_static_call": 1
     },

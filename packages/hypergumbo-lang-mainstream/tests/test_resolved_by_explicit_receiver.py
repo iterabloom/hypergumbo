@@ -65,7 +65,9 @@ def test_javascript_untyped_receiver_is_unresolved_and_bare_this_is_own_type(tmp
         False]
 
 
-def test_php_untyped_receiver_is_name_and_this_is_own_type(tmp_path: Path) -> None:
+def test_php_untyped_receiver_is_unresolved_and_this_is_own_type(tmp_path: Path) -> None:
+    """PHP hands a call on an untyped receiver to the shared pass (ADR-0064),
+    and the single-holder name step does not run for PHP: it was ``name``."""
     _write(tmp_path, {"Store.php": (
         "<?php\n"
         "class Store {\n"
@@ -76,7 +78,8 @@ def test_php_untyped_receiver_is_name_and_this_is_own_type(tmp_path: Path) -> No
     )})
     edges = analyze_php(tmp_path).edges
     assert _mark(edges, "Store.viaThis", "Store.persist") == "own_type"
-    assert _mark(edges, "Store.viaOther", "Store.persist") == "name"
+    assert [e.is_resolved for e in edges if e.edge_type == "calls" and e.src.endswith(":Store.viaOther:method")] == [
+        False]
 
 
 def test_lua_untyped_receiver_is_name_and_self_is_own_type(tmp_path: Path) -> None:
