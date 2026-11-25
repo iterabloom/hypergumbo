@@ -9,7 +9,10 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Interface declarations
 - Struct declarations
 - Enum declarations
-- Method declarations (inside classes/structs)
+- Method declarations (inside classes/structs); an extension method (first
+  parameter ``this T x``) records ``meta["extension_receiver"]``, ``T`` as
+  written, which the ``receiver_type_dispatch`` linker reads to bind
+  ``x.M()`` on a receiver whose ``receiver_type_hint`` names ``T``
 - Constructor declarations
 - Property declarations, whose stable_id is the ADR-0035 producer formula
   (``make_typed_stable_id`` over the declared type and the namespace/type
@@ -383,6 +386,27 @@ def _extract_param_types(
                 param_types[param_name] = param_type
 
     return param_types
+
+
+def _csharp_extension_receiver(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The type of a method's first parameter as written when that parameter
+    carries the ``this`` modifier (an extension method: ``x.M()`` on a ``T``
+    receiver calls ``static M(this T x)`` of another, static, class), else
+    None. The value is the text of the parameter's type node, modifiers such
+    as ``ref`` left off (``this ref Span<T> s`` gives ``Span<T>``), the
+    spelling Kotlin's analyzer writes for ``fun Receiver.name()``."""
+    params = node.child_by_field_name("parameters")
+    if params is None:
+        return None  # pragma: no cover - a method declares parameters
+    first = next((c for c in params.children if c.type == "parameter"), None)
+    if first is None or not any(
+        m.type == "modifier" and node_text(m, source) == "this" for m in first.children
+    ):
+        return None
+    type_node = first.child_by_field_name("type")
+    if type_node is None:
+        return None  # pragma: no cover - a ``this`` parameter has a type
+    return node_text(type_node, source)
 
 
 def _extract_csharp_signature(
@@ -1603,6 +1627,12 @@ def _extract_parsed_symbols(
                 meta = None
                 if annotations:
                     meta = {"annotations": annotations}
+                # An extension method (``static R M(this T x, ...)``): its
+                # receiver's type as written, which the receiver-type dispatch
+                # linker matches against a call's ``receiver_type_hint``.
+                receiver_type = _csharp_extension_receiver(node, source)
+                if receiver_type is not None:
+                    meta = {**(meta or {}), "extension_receiver": receiver_type}
 
                 # Extract signature
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
