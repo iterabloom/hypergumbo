@@ -74,7 +74,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
     "java": ("right", "right", "right", "right", "unresolved", "n/a", "order:unresolved/right", "right",
              "unresolved"),
     "javascript": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved",
-                   "order:decoy/right", "right", "picked"),
+                   "order:decoy/right", "right", "unresolved"),
     "kotlin": ("right", "unresolved", "right", "unresolved", "unresolved", "n/a", "right", "right",
                "unresolved"),
     "lua": ("unresolved", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right",
@@ -95,7 +95,7 @@ MATRIX: dict[str, tuple[str, ...]] = {
     "swift": ("right", "right", "right", "right", "unresolved", "n/a", "order:decoy/right", "right",
               "unresolved"),
     "typescript": ("right", "unresolved", "right", "unresolved", "unresolved", "unresolved", "right", "right",
-                   "picked"),
+                   "unresolved"),
 }
 
 #: Every guess in ``MATRIX`` and the open item that owns it. INV-jutog states
@@ -109,7 +109,6 @@ GUESSES: dict[tuple[str, str], str] = {
        "scope_ext")},
     ("java", "import"): "WI-mugon",
     ("javascript", "import"): "WI-lizis",
-    ("javascript", "scope_ext"): "INV-zabud",
     **{("lua", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
     **{("objc", shape): "WI-mokul" for shape in ("var", "chain", "ctor", "inherited", "amb_ext", "amb_param",
        "scope_own", "scope_ext")},
@@ -119,7 +118,6 @@ GUESSES: dict[tuple[str, str], str] = {
     **{("rust", shape): "INV-zabud" for shape in ("scope_own", "scope_ext")},
     ("scala", "scope_ext"): "INV-zabud",
     ("swift", "import"): "WI-nuvov",
-    ("typescript", "scope_ext"): "INV-zabud",
 }
 
 #: Declarations of the program an analyzer emits no symbol for. Objective-C: a
