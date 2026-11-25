@@ -639,6 +639,12 @@ _MRO_WALKERS: dict[str, Callable[
     "go": _walk_insertion_order,
     "rust": _walk_insertion_order,
     "php": _walk_single_then_interfaces,
+    # Kotlin: one superclass, then interfaces (which may carry default
+    # implementations). Its analyzer has stamped ``enclosing_class`` on the
+    # bare calls it withholds since INV-fahub and said this linker resolves
+    # the inherited ones; until ADR-0064's batch 5a no walker was registered
+    # for it, so nothing did.
+    "kotlin": _walk_single_then_interfaces,
     "javascript": _walk_single_then_interfaces,
     "typescript": _walk_single_then_interfaces,
     "csharp": _walk_single_then_interfaces,

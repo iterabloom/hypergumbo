@@ -789,3 +789,34 @@ def test_a_bare_call_inside_a_class_falls_to_the_table_after_its_own_members() -
     (edge,) = link_inherited_calls(ctx).edges
     assert (edge.dst, edge.meta["resolved_by"]) == (helper.id, "same_module")
     assert edge.derived_from[0] == first.id
+
+
+def test_kotlin_has_a_hierarchy_walker() -> None:
+    """The Kotlin analyzer withholds a bare call that is not its own class's
+    member and stamps ``enclosing_class`` for this linker to walk; without a
+    walker registered for Kotlin nothing walked it. A bare ``save()`` in
+    ``Child : Base`` reaches ``Base.save``: the superclass first, then the
+    interfaces, as for Java."""
+    base = _decl("class", "app", "Base", "app/Base.kt", lines=(1, 9))
+    save = Symbol(
+        id="kotlin:app/Base.kt:3-5:Base.save:method", name="Base.save", kind="method",
+        language="kotlin", path="app/Base.kt", qualified_name="app.Base.save",
+        span=Span(start_line=3, end_line=5, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+    child = _decl("class", "app", "Child", "app/Child.kt", lines=(1, 30))
+    caller = Symbol(
+        id="kotlin:app/Child.kt:10-20:Child.run:method", name="Child.run", kind="method",
+        language="kotlin", path="app/Child.kt", qualified_name="app.Child.run",
+        span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+    extends = Edge.create(
+        src=child.id, dst=base.id, edge_type="extends", line=1, origin="test",
+        origin_run_id="test-run", evidence_type="ast_inheritance",
+    )
+    stub = make_unresolved_edge("kotlin", caller.id, "save", 12, "test-pass", "test-run",
+                                enclosing_class="Child")
+    ctx = LinkerContext(repo_root=Path("/"), symbols=[base, save, child, caller], edges=[extends, stub])
+    (edge,) = link_inherited_calls(ctx).edges
+    assert (edge.dst, edge.meta["resolved_by"]) == (save.id, "own_type")
