@@ -116,7 +116,8 @@ edge with a wrong one in three languages (the first `db` in the file typed every
 constructed on the line above its call included) and bound a call nothing in the repository
 answers in ten (C# and Groovy among them, which also bind such a call by name alone). An
 unresolved call says nothing false; a call bound to a method of a type the caller never held
-does.
+does. The general rule this became, "unresolved beats a guess", and the shared pass that is to
+apply it are [ADR-0064](0064-shared-call-resolution.md) (Proposed 2026-11-25).
 
 **Which analyzers.** The Scope column above is per language. Python, Go, Swift, C++ and Perl
 showed no leak in the same probe, each scoped by its own means; Java and Kotlin scoped locals

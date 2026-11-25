@@ -2,8 +2,15 @@
 # 7. Import Tracking for Cross-File Call Resolution
 
 Date: 2026-01-22
-Updated: 2026-03-19
+Updated: 2026-11-25
 Status: Accepted
+
+> A successor is proposed. [ADR-0064](0064-shared-call-resolution.md) (shared call resolution,
+> Proposed 2026-11-25) would replace this ADR's §Decision, the per-analyzer alias map passed to
+> `resolver.lookup()` as a path hint, with a per-file import table that a shared pass reads, one
+> language at a time. Until a language's batch lands, this ADR describes what is built for it;
+> no new analyzer is to be written to this pattern. Measured on 2026-11-25: a qualified call to
+> an imported function is right in 4 of 13 fixture languages that have one.
 
 ## Context
 

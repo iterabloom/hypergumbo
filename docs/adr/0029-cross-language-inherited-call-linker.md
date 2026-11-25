@@ -132,6 +132,7 @@ A follow-on META (filed after PR-5 closes) covers "Inherited-call parity across 
 
 - `~/puluf-plan.md` — canonical campaign plan (Alternative B post-WI-puluf design discussion).
 - ADR-3bbb: linker subcategory restoration (Infrastructure subcategory).
+- [ADR-0064](0064-shared-call-resolution.md) (Proposed 2026-11-25): shared call resolution, which would widen this ADR's pattern (analyzers emit an unresolved edge with hints, a linker decides) from the hierarchy walk to receiver typing and name resolution; this linker's walk is a component of it.
 - ADR-0023: edge-type axis (`includes` is on the `relationship` axis).
 - ADR-0028: evidence-type axis (`ast_call_inherited` and `ast_includes` on the `inference_pathway` axis).
 - Tracker:
