@@ -1,0 +1,22 @@
+- op: create  # d800
+  at: '2026-11-25T02:16:47Z'  # d800
+  by: agent  # d800
+  actor: jgstern_agent  # d800
+  clock: 1  # d800
+  nonce: d800  # d800
+  data:  # d800
+    kind: work_item  # d800
+    title: "Edge.meta['binding'] has no reader: delete it or fold it into the resolution mark"  # d800
+    status: todo_hard  # d800
+    priority: 4  # d800
+    parent:  # d800
+    tags:  # d800
+    - call_graph  # d800
+    - analysis_quality  # d800
+    - call_matrix  # d800
+    isbefore: []  # d800
+    duplicate_of: []  # d800
+    not_duplicate_of: []  # d800
+    pr_ref:  # d800
+    description: "WHAT. Edge.meta[\"binding\"] ('explicit_import' from elixir.py, 'dot_import' from go.py, on unresolved call edges)\nhas no reader in packages/*/src or scripts/ (grep 2026-11-25 for \"binding\" as a key: zero hits outside its two\nproducers and its axis_meta_keys entry). It says how a bare call's outside module was identified, which is the\nquestion the resolution mark answers for in-repository targets.\n\nDECIDE: delete it, or fold it into the mark when the mark is extended to edges whose target is an identified\noutside module (audit docs/audits/0030, pair 10, keep-with-trigger). Not checked: a reader outside the repository."  # d800
+    fields: {}  # d800

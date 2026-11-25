@@ -1,0 +1,22 @@
+- op: create  # feb7
+  at: '2026-11-25T02:16:41Z'  # feb7
+  by: agent  # feb7
+  actor: jgstern_agent  # feb7
+  clock: 1  # feb7
+  nonce: feb7  # feb7
+  data:  # feb7
+    kind: work_item  # feb7
+    title: "The 'strong match' pair (exact, path_hint) is copied in two places and nobody decided where caller_file belongs"  # feb7
+    status: todo_hard  # feb7
+    priority: 3  # feb7
+    parent:  # feb7
+    tags:  # feb7
+    - call_graph  # feb7
+    - analysis_quality  # feb7
+    - call_matrix  # feb7
+    isbefore: []  # feb7
+    duplicate_of: []  # feb7
+    not_duplicate_of: []  # feb7
+    pr_ref:  # feb7
+    description: "WHAT. Two analyzers and one shared helper decide whether a resolver match is strong by comparing\nLookupResult.match_type against the pair (\"exact\", \"path_hint\"): analyze/base.py defer_bare_method_call, and\ngo.py:1016. `caller_file` (the one candidate defined in the caller's own file, added by WI-jomik) is in neither\ncopy, so a bare call whose only same-named candidate in the caller's file is a method of ANOTHER class is treated\nas a weak match and deferred, while kotlin.py:2852 separately rewrites an `exact` hit with no import behind it to\n`suffix` before asking. Nobody decided whether `caller_file` is strong evidence for a cross-class method.\n\nFOUND BY audit docs/audits/0030 (2026-11-25), silent bug 4. NOT EXAMINED: whether the current behaviour is right;\nno fixture was run. The vocabulary itself (seven values declared only in a docstring) gets constants with the\nresolution mark; this item is the question the constants do not answer.\n\nDONE WHEN the strong set is declared once in symbol_resolution.py beside the constants, both copies read it, and a\ntest states, with a fixture per value, which match types bind a bare call to another class's method."  # feb7
+    fields: {}  # feb7

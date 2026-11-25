@@ -1,0 +1,22 @@
+- op: create  # c302
+  at: '2026-11-25T07:12:22Z'  # c302
+  by: agent  # c302
+  actor: jgstern_agent  # c302
+  clock: 1  # c302
+  nonce: c302  # c302
+  data:  # c302
+    kind: work_item  # c302
+    title: "Shared name lookup answers on an exact key before it reads the import hint, and returns the first of several path matches"  # c302
+    status: todo_hard  # c302
+    priority: 2  # c302
+    parent:  # c302
+    tags:  # c302
+    - call_graph  # c302
+    - analysis_quality  # c302
+    - call_matrix  # c302
+    isbefore: []  # c302
+    duplicate_of: []  # c302
+    not_duplicate_of: []  # c302
+    pr_ref:  # c302
+    description: "STATEMENT\nA shared name lookup that is handed a hint (an import path, a qualifier) reads the hint before it answers, and when several declarations match it says so (ambiguous) instead of returning one of them.\n\nOBSERVED (read in the code while stamping resolved_by, 2026-11-25; line numbers at the mark PR's head)\n1. analyze/base.py `register_symbol`: `global_symbols[symbol.name] = symbol`. One declaration per name for the whole run; the last one registered wins. Every exact hit of a NameResolver built over that table is \"the last-registered declaration of that name\". Analyzers that reach it: commonlisp, cuda, elm, haskell, julia, nix, glsl, hlsl, wgsl, starlark, fortran, clojure, dart, erlang (bare calls), and c (see the c item).\n2. symbol_resolution.py `NameResolver.lookup` (~line 655): an exact key is returned BEFORE `path_hint` is read. An import alias (clojure `u/helper`, elm `U.helper`, haskell `M.f`, julia `P.f`, erlang -import, starlark load, zig import alias, ada rename, a TypeScript namespace import `ns.f()`) therefore never chooses among same-named candidates when the bare name is a key. Seen: a clojure fixture's `u/helper` bound by exact name, not through its alias; ada `T.Show` with `T renames Util.Text` bound by registration order.\n3. symbol_resolution.py `_lookup_suffix` (~776-785), comment \"Return first match from either stage\": several path matches return the first, labelled `path_hint`. Stage 1 matches the hint as a substring of the FILE PATH, stage 2 as a substring of the registry key; both come back `path_hint` and a caller cannot tell them apart.\n\nWHY IT MATTERS FOR THE MARK\n`LookupResult.resolved_by` maps `path_hint` to `import`. Because of 3, some `import` marks (and cpp's `qualified` for `X::m()`) name a nearness match on a path, or a pick among several. Because of 2, some `name` marks are calls the source text scoped by an import. The census cannot separate these populations until the lookup reports which stage matched and how many matched.\n\nTHE MARK ITSELF DEPENDS ON FILE ORDER (seen 2026-11-25, D fixture of test_d.py::TestDResolvedBy): `error` is declared in errors.d and in other/unrelated.d, main.d imports errors and calls error(). The edge reaches errors.d's in either order, but its mark is `name` when errors.d is read last (the exact key answers before the hint is read) and `import` otherwise. Same call, same target, two marks. Reproduce: run that test with pathlib.Path.rglob forced ascending, then descending (~/hypergumbo_lab_notebook/resolution_mark_11252026/hg_order_plugin.py, HG_RGLOB_ORDER=asc|desc, `-p hg_order_plugin`).\nDIRECT-CALL TESTS READ FILES IN FILESYSTEM ORDER: an analyzer called directly on a directory (no file index installed) enumerates with rglob, unsorted, so a test of a two-file fixture can pass on one machine and fail on another.\n\nSIZE: not measured. No fixture of the call-resolution matrix isolates 2 or 3.\n\nFIX SHAPE (for the shared pass, step 4): the lookup takes the hint first; an exact key that the hint does not confirm is a name-only match; more than one match is ambiguous with the candidates kept; the result says which stage matched. Not a patch to each analyzer.\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/common/RESULTS.md (C1-C3), mainA/RESULTS.md (12, closest fit), mainB/FINAL_REPORT.md (3)."  # c302
+    fields: {}  # c302
