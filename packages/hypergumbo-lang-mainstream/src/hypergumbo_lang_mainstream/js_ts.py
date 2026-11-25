@@ -8261,11 +8261,10 @@ def _extract_edges(
                                             origin_run_id=run.execution_id,
                                             evidence_type="ast_method_inferred",
                                             resolution_score=lookup_result.confidence,
-                                            resolved_by=resolved_by_for_bare_call(
-                                                _sym.kind, _sym.name,
-                                                lookup_result.resolved_by,
-                                                _enclosing_type,
-                                            ),
+                                            # ``obj.m()`` on an untyped receiver
+                                            # that is not ``this``: found by its
+                                            # name, whoever owns the method.
+                                            resolved_by=lookup_result.resolved_by,
                                         )
                                         edges.append(edge)
                                         edge_added = True

@@ -36,7 +36,9 @@ then admitted because the match was unique is ``name``. One exception, in one
 helper (:func:`hypergumbo_core.analyze.base.resolved_by_for_bare_call`): a
 bare call whose candidate is a method of the caller's own enclosing type is
 ``own_type`` whatever lookup produced the candidate, because that is the
-language's implicit-receiver rule.
+language's implicit-receiver rule. A call on an explicit receiver that is not
+``self`` / ``this`` never gets that treatment: found by name on an untyped
+receiver, it is ``name`` even when the method belongs to the caller's type.
 
 A nearness heuristic with no language rule behind it (same directory, same
 npm package, nearest line) scopes nothing: the value is ``name``.

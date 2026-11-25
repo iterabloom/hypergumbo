@@ -1388,6 +1388,12 @@ def resolved_by_for_bare_call(
     lookup produced the candidate. Anything else keeps ``lookup_resolved_by``,
     the value the lookup itself gives (``LookupResult.resolved_by``, or
     ``same_file`` for a hit in the file's own table).
+
+    ONLY FOR A BARE CALL, or one whose receiver is ``self`` / ``this``. Several
+    analyzers send ``obj.m()`` on an untyped receiver down the same lookup
+    path and bind it when ``m`` is a method of the enclosing type; nothing
+    says ``obj`` is the enclosing object, so such a site passes the lookup's
+    own value and does not call this.
     """
     if candidate_kind == "method" and _is_method_of(
         candidate_name, enclosing_type, separator,

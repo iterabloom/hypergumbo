@@ -651,9 +651,14 @@ def _extract_edges_from_tree(
                         if lookup_result.found and _sym is not None:
                             dst_id = _sym.id
                             resolution_score = lookup_result.confidence
-                            _by = resolved_by_for_bare_call(
-                                _sym.kind, _sym.name,
-                                lookup_result.resolved_by, container,
+                            # ``a.b()`` names a receiver, so only a bare
+                            # call can be the enclosing container's own.
+                            _by = (
+                                lookup_result.resolved_by if field_node
+                                else resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.resolved_by, container,
+                                )
                             )
                         else:
                             # Create placeholder ID for unresolved call
