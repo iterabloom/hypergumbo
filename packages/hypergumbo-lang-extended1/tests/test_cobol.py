@@ -356,3 +356,67 @@ class TestCobolCallerAndTargetByPosition:
             # INIT-PARA is three lines below its own program's MAIN-PARA; the
             # other program's is nine lines away.
             assert dst.span.start_line - src.span.start_line == 3, (src.span, dst.span)
+
+
+class TestCobolResolvedBy:
+    """``meta["resolved_by"]`` per route of ``_resolve_target`` (audit 0030)."""
+
+    def test_program_file_and_run_routes(self, tmp_path: Path) -> None:
+        (tmp_path / "main.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAIN-PROG.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           PERFORM INIT-PARA.
+           CALL 'HELPER-PROG'.
+           CALL 'OTHER-PROG'.
+           STOP RUN.
+       INIT-PARA.
+           DISPLAY "INIT".
+       END PROGRAM MAIN-PROG.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HELPER-PROG.
+       PROCEDURE DIVISION.
+       H-PARA.
+           DISPLAY "H".
+       END PROGRAM HELPER-PROG.
+""")
+        (tmp_path / "other.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. OTHER-PROG.
+       PROCEDURE DIVISION.
+       O-PARA.
+           DISPLAY "O".
+""")
+        result = analyze_cobol(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        marks = {
+            by_id[e.dst].name: e.meta for e in result.edges
+            if e.edge_type == "calls" and e.dst in by_id
+        }
+        # A paragraph of the performing program.
+        assert marks["INIT-PARA"] == {
+            "file": "main.cob", "call_type": "perform", "resolved_by": "same_module",
+        }
+        # Another program of the same file.
+        assert marks["HELPER-PROG"] == {
+            "file": "main.cob", "call_type": "call", "resolved_by": "same_file",
+        }
+        # A program of another file, through the run-wide resolver.
+        assert marks["OTHER-PROG"] == {
+            "file": "main.cob", "call_type": "call", "resolved_by": "name",
+        }
+
+    def test_unresolved_call_keeps_its_meta(self, tmp_path: Path) -> None:
+        (tmp_path / "main.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAIN-PROG.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           CALL 'NOWHERE'.
+           STOP RUN.
+""")
+        result = analyze_cobol(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 1
+        assert calls[0].meta == {"file": "main.cob", "call_type": "call"}

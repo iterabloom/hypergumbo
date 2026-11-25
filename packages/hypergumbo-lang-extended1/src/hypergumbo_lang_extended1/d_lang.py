@@ -784,6 +784,7 @@ def _resolve_and_emit_call_edge(
             resolution_score=lookup_result.confidence,
             origin=PASS_ID,
             origin_run_id=run_id,
+            resolved_by=lookup_result.resolved_by,
         ))
     else:
         # External function (e.g., writeln from std.stdio)

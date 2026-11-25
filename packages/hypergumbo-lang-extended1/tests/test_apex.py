@@ -926,3 +926,55 @@ def test_every_call_endpoint_is_an_id(tmp_path: Path) -> None:
     assert {by_id[e.src].name for e in calls} == {"A.f"}
     assert sorted(e.dst in by_id for e in calls) == [False, True]
     assert non_id_edge_endpoints(result.symbols, result.edges) == []
+
+
+class TestApexResolvedBy:
+    """``meta["resolved_by"]`` per route of ``_add_call_edge`` (audit 0030)."""
+
+    def test_each_route_carries_its_value(self, tmp_path: Path) -> None:
+        make_apex_file(tmp_path, "Acct.cls", """
+public class Acct {
+    public void save() {
+        this.validate();
+        check();
+        Helper.run();
+        Helper h = new Helper();
+        h.go();
+        Missing.thing();
+    }
+    public void validate() {
+    }
+    public void check() {
+    }
+}
+""")
+        make_apex_file(tmp_path, "Helper.cls", """
+public class Helper {
+    public static void run() {
+    }
+    public Helper() {
+    }
+}
+""")
+        make_apex_file(tmp_path, "Go.cls", """
+public class go {
+}
+""")
+        result = analyze_apex(tmp_path)
+        calls = {
+            e.dst.split(":")[-2]: e for e in result.edges if e.edge_type == "calls"
+        }
+        # this.validate() and a bare check(): the key is built from the
+        # enclosing class.
+        assert calls["Acct.validate"].meta["resolved_by"] == "own_type"
+        assert calls["Acct.check"].meta["resolved_by"] == "own_type"
+        # Helper.run(): the call site names the owner.
+        assert calls["Helper.run"].meta["resolved_by"] == "qualified"
+        # new Helper(): the class is found by its name.
+        assert calls["Helper.Helper"].meta["resolved_by"] == "name"
+        # h.go(): ``h.go`` is no key, the short name ``go`` hits a class.
+        assert calls["go"].meta["resolved_by"] == "name"
+        # Missing.thing(): no target, no mark.
+        missing = calls["Missing.thing"]
+        assert missing.confidence == 0.6
+        assert "resolved_by" not in (missing.meta or {})
