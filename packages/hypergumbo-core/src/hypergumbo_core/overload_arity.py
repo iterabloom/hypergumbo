@@ -283,8 +283,20 @@ def narrow_by_arity(
     return kept
 
 
+def declared_around(candidates: Sequence["Symbol"], path: str, line: int) -> Optional[str]:
+    """The id of the candidate whose declaration holds ``line`` of ``path``:
+    the caller, when a call is written inside one of the overloads it may
+    reach (for :func:`best_by_arity`'s ``caller_id``)."""
+    for cand in candidates:
+        span = cand.span
+        if cand.path == path and span is not None and span.start_line <= line <= span.end_line:
+            return cand.id
+    return None
+
+
 def best_by_arity(
     candidates: Sequence["Symbol"], arg_count: Optional[int], *, on_receiver: bool = False,
+    caller_id: Optional[str] = None,
 ) -> list["Symbol"]:
     """The candidates a call with ``arg_count`` arguments binds to before the
     types of its arguments are read: of the ones that can take the count
@@ -304,7 +316,12 @@ def best_by_arity(
 
     The first of these that holds a candidate is returned, in the order
     given. Several in it differ by their parameter TYPES, which nothing here
-    reads. An unknown ``arg_count`` returns every candidate.
+    reads; ``caller_id`` (the symbol the call is written in) is then left out
+    when another remains: among overloads that take the call equally well,
+    one calling its own name is delegating to a sibling (``f(String... xs)``
+    calling ``f(-1, -1, null, xs)``), and a call to itself is drawn only when
+    nothing else can take it. An unknown ``arg_count`` returns every
+    candidate.
     """
     if arg_count is None:
         return list(candidates)
@@ -315,7 +332,8 @@ def best_by_arity(
             tiers[2].append(cand)
         elif bounds.admits(arg_count):
             tiers[0 if bounds.maximum == arg_count else 1].append(cand)
-    return next((tier for tier in tiers if tier), [])
+    best = next((tier for tier in tiers if tier), [])
+    return [c for c in best if c.id != caller_id] or best
 
 
 @dataclass(frozen=True)

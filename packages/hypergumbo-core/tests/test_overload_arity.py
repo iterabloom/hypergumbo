@@ -22,6 +22,7 @@ from hypergumbo_core.behaviours import CALLBACK_MODIFIER, callback_stable_id
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.overload_arity import (
     best_by_arity,
+    declared_around,
     ARITY_KEY,
     PARAMETERS_KEY,
     ArityBounds,
@@ -526,3 +527,20 @@ def test_the_overload_that_needs_the_least_help_is_preferred() -> None:
     twin = _sym("send", 6, _p(1))
     assert best_by_arity([exact, defaulted, twin], 1) == [exact, twin]
     assert best_by_arity([variadic, defaulted, exact], 2) == [defaulted]
+
+
+def test_among_equal_overloads_the_caller_itself_is_left_out() -> None:
+    """``f(String... xs)`` calling ``f(-1, -1, null, xs)``: both variadic
+    overloads take four arguments; the one the call is written in is the
+    caller, delegating to its sibling. Alone, or when it takes the call
+    better than any sibling, it stays."""
+    narrow = _sym("f", 10, _p(0, variadic=True))
+    wide = _sym("f", 20, _p(3, variadic=True))
+    assert best_by_arity([wide, narrow], 4) == [wide, narrow]
+    assert best_by_arity([wide, narrow], 4, caller_id=narrow.id) == [wide]
+    assert best_by_arity([narrow], 4, caller_id=narrow.id) == [narrow]
+    exact = _sym("f", 30, _p(1))
+    assert best_by_arity([exact, narrow], 1, caller_id=exact.id) == [exact]
+    assert declared_around([wide, narrow], "a.x", 10) == narrow.id
+    assert declared_around([wide, narrow], "a.x", 15) is None
+    assert declared_around([wide, narrow], "b.x", 10) is None

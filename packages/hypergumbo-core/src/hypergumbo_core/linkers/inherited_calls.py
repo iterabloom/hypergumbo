@@ -1601,7 +1601,9 @@ def _try_resolve(
     method_short = _extract_method_short_name(callee_short)
     argument_count = (edge.meta or {}).get("argument_count")
     if isinstance(argument_count, int):
-        method_index = _admitting(method_index, {callee_short, method_short}, argument_count)
+        method_index = _admitting(
+            method_index, {callee_short, method_short}, argument_count, edge.src,
+        )
 
     # Site 3 (most specific): inherited-field-receiver + enclosing_class.
     if inherited_field_receiver and enclosing_class:
@@ -1662,7 +1664,7 @@ def _try_resolve(
 
 
 def _admitting(
-    index: _TypeHierarchyIndex, names: set[str], argument_count: int,
+    index: _TypeHierarchyIndex, names: set[str], argument_count: int, caller_id: str,
 ) -> _TypeHierarchyIndex:
     """The method index for ONE call: the methods of ``names`` that can take
     ``argument_count`` arguments (``overload_arity``: the parameters a method
@@ -1675,8 +1677,9 @@ def _admitting(
     overloads. Of a type's overloads that do take the count, only the ones
     that need the least help to take it stay (``best_by_arity``: every
     parameter given an argument, before a default, before a variadic one);
-    among those the walkers keep the one the index lists last, as before:
-    the types of the arguments are not read (WI-tosut).
+    among those, the caller itself left out when another remains, the
+    walkers keep the one the index lists last, as before: the types of the
+    arguments are not read (WI-tosut).
     """
     narrowed: dict[str, list[tuple[str, Symbol]]] = {}
     for name in names:
@@ -1686,7 +1689,7 @@ def _admitting(
         narrowed[name] = [
             (class_id, method)
             for class_id, methods in by_class.items()
-            for method in best_by_arity(methods, argument_count)
+            for method in best_by_arity(methods, argument_count, caller_id=caller_id)
         ]
     return _TypeHierarchyIndex(symbol_by_id=index.symbol_by_id, methods_by_short_name=narrowed)
 

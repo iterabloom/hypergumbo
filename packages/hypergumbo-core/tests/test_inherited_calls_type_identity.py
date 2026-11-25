@@ -1076,3 +1076,19 @@ def test_an_overload_whose_parameters_all_get_arguments_beats_a_wider_one() -> N
     assert target(1) == exact.id
     assert target(2) == defaulted.id
     assert target(3) == variadic.id
+
+
+def test_a_call_to_its_own_name_from_an_overload_goes_to_the_sibling_that_fits_as_well() -> None:
+    """Two overloads take two arguments equally well, and the call is written
+    in one of them (``this.send(a, b)``): the other is the callee."""
+    owner = _decl("class", "net", "Channel", "net/Channel.kt", lines=(1, 40))
+    first = _with_parameters(_decl("method", "net", "Channel.send", "net/Channel.kt", lines=(3, 6)), "a", "b")
+    second = _with_parameters(_decl("method", "net", "Channel.send", "net/Channel.kt", lines=(8, 12)), "x", "y")
+    symbols = [owner, first, second]
+    for caller, other in ((second, first), (first, second)):
+        stub = make_unresolved_edge(
+            "kotlin", caller.id, "send", caller.span.start_line + 1, "test-pass", "test-run",
+            enclosing_class="Channel", call_construct="method", argument_count=2,
+        )
+        (edge,) = _named_link(symbols, stub, ImportScope(own_namespace="net"), caller.path)
+        assert edge.dst == other.id
