@@ -1,0 +1,21 @@
+- op: create  # 5ff8
+  at: '2026-11-25T14:29:42Z'  # 5ff8
+  by: agent  # 5ff8
+  actor: jgstern_agent  # 5ff8
+  clock: 1  # 5ff8
+  nonce: 5ff8  # 5ff8
+  data:  # 5ff8
+    kind: work_item  # 5ff8
+    title: "An ancestor that is a partial type: the hierarchy walk visits one part only (2 wrong base.M() edges on Dapper)"  # 5ff8
+    status: todo_hard  # 5ff8
+    priority: 2  # 5ff8
+    parent:  # 5ff8
+    tags:  # 5ff8
+    - analysis_quality  # 5ff8
+    - shared_call_resolution  # 5ff8
+    isbefore: []  # 5ff8
+    duplicate_of: []  # 5ff8
+    not_duplicate_of: []  # 5ff8
+    pr_ref:  # 5ff8
+    description: "STATEMENT: the declarations of one type (one qualified name, one arity, C# partial) are one node in the inherited-calls walk: parents and methods merged. OBSERVED: an extends edge lands on one part; the walk does not visit the others, then reaches an interface at the same depth: base.AddParameters in Dapper HidingBag is bound to IDynamicParameters.AddParameters (WRONG, 2 edges), 4 base.SetPolicyContext lost, and round 4's outerHandlingANE.Wrap stays unbound. A sibling hop is not enough (the interface still ranks first): canonicalise part ids in the inheritance index and the method index.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # 5ff8
+    fields: {}  # 5ff8

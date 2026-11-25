@@ -1,0 +1,22 @@
+- op: create  # 2f5a
+  at: '2026-11-25T09:57:09Z'  # 2f5a
+  by: agent  # 2f5a
+  actor: jgstern_agent  # 2f5a
+  clock: 1  # 2f5a
+  nonce: 2f5a  # 2f5a
+  data:  # 2f5a
+    kind: work_item  # 2f5a
+    title: "Linkers of one priority group share the accumulating edge and symbol lists while siblings still run: what a linker sees can depend on thread timing"  # 2f5a
+    status: todo_hard  # 2f5a
+    priority: 3  # 2f5a
+    parent:  # 2f5a
+    tags:  # 2f5a
+    - analysis_quality  # 2f5a
+    - cross_language_linkers  # 2f5a
+    - determinism  # 2f5a
+    isbefore: []  # 2f5a
+    duplicate_of: []  # 2f5a
+    not_duplicate_of: []  # 2f5a
+    pr_ref:  # 2f5a
+    description: "STATEMENT\nWhat a linker sees of the graph does not depend on thread timing: every linker of one priority group reads the same symbols and edges, the ones accumulated before the group started.\n\nOBSERVED (read in the code 2026-11-25, dev 0d3c12ff4; NOT reproduced as a differing output)\nlinkers/registry.py, run_all_linkers: for a priority group of more than one linker, each linker's LinkerContext is built with `symbols=accum_symbols, edges=accum_edges`, the SAME list objects (lines ~1099-1113), and the results are collected inside the `with ThreadPoolExecutor` block: `accum_edges.extend(result.edges)` / `accum_symbols.extend(result.symbols)` run as soon as the first-submitted future returns, while later-submitted siblings may still be running (lines ~1118-1135). The comment above the group says \"Snapshot accumulated state for this priority group\"; no copy is made.\nA sibling that is still iterating `ctx.edges` or building an index when the extend happens sees the earlier sibling's edges; one that finished its read sooner does not. Which happens is decided by scheduling. The collection ORDER is fixed (submission order, WI-sadod), so the accumulated lists end up the same; what can differ is what a slower sibling computed from a list that grew under it.\n\nWHY IT MAY MATTER\nA linker that counts, deduplicates against existing edges (the resolved-calls (src, dst) sets of inherited_calls and receiver_type_dispatch are examples of the pattern, though those two are alone in their groups today) or matches unresolved stubs could emit a different set from run to run. The registry's rule that `depends_on` must name a lower priority group says siblings are meant to be independent; this makes them independent in what they are GIVEN too.\n\nFIX SHAPE: give every linker of a group the same snapshot (a copy, or the lists as they were with the extends deferred until the pool has drained).\n\nNOT CHECKED: which groups have more than one linker on a real run and whether any of them reads edges a sibling emits; no run-to-run difference was looked for.\nSource: ~/hypergumbo_lab_notebook/pilot_11252026/shared.md section 7; the code as cited."  # 2f5a
+    fields: {}  # 2f5a
