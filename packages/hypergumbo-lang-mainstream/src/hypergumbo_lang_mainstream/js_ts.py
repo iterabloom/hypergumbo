@@ -168,9 +168,14 @@ it sits in, or by a file's table of short names: those were the guesses.
 - **Member calls** (``obj.m()``): ``this.m()`` binds the enclosing class's
   member declared in this file (``own_type``); otherwise, and for
   ``super.m()`` (``super_receiver``), the stub carries the enclosing class's
-  name and id for the shared pass's ancestor walk. A receiver typed by a
-  constructor-injected property (``this.prop``), a ``new``, a parameter
-  annotation or a declared return type binds the type's member when this
+  name and id for the shared pass's ancestor walk. A class EXPRESSION
+  (``ns.K = class {...}``) owns its ``this`` too: its own member, found by
+  position, is ``own_type``; there is no class symbol to start a walk at, so
+  anything else is the placeholder. A receiver typed by a member of the
+  enclosing class (``this.prop``: what ``_class_member_types`` says the
+  class declares or assigns it), a ``new``, a parameter annotation, a
+  declarator annotation (``const x: T``, which wins over its value) or a
+  declared return type binds the type's member when this
   file declares the type (``receiver_type``), and otherwise carries
   ``receiver_type_hint`` (``ns.K`` for ``new ns.K()`` through a repository
   namespace binding). A namespace or default binding of a repository file
@@ -328,7 +333,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
@@ -347,7 +352,7 @@ from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.import_scope import MODULES_ARE_FILES, ImportScope
-from hypergumbo_core.type_visibility import declaring_files
+from hypergumbo_core.type_visibility import declaring_files, without_type_arguments
 from hypergumbo_core.linkers.js_module import SpecifierResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -4718,6 +4723,151 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+#: A class: a declaration, or a class expression (``ns.K = class {...}``,
+#: ``module.exports = class K {...}``), which owns its ``this`` the same way.
+_JS_CLASS_NODES = ("class_declaration", "abstract_class_declaration", "class")
+
+#: A function that rebinds ``this``: an assignment inside it is not the
+#: class's (an arrow function keeps the class's ``this``).
+_JS_THIS_REBINDING = frozenset({
+    "function_declaration", "generator_function_declaration",
+    "function_expression", "function", "generator_function",
+})
+
+#: What ``_member_type_value`` says of ``null`` / ``undefined``: no type, and
+#: no disagreement either (``this.x = null`` before ``this.x = new T()``).
+_NO_VALUE = ""
+
+
+def _enclosing_class_node(node: "tree_sitter.Node") -> "tree_sitter.Node | None":
+    """The innermost class, declaration or expression, around ``node``."""
+    current = node.parent
+    while current is not None and current.type not in _JS_CLASS_NODES:
+        current = current.parent
+    return current
+
+
+def _annotation_type(annotation: "tree_sitter.Node | None", source: bytes) -> str | None:
+    """The type a TypeScript annotation (``: T``) writes, as written: ``T``,
+    ``ns.T``, ``T<A>``; ``T | null`` / ``T | undefined`` is ``T``. None for
+    anything else (a primitive, a union of types, an object or function
+    type)."""
+    if annotation is None or annotation.type != "type_annotation":
+        return None
+    written = [c for c in annotation.named_children if c.type != "comment"]
+    if len(written) != 1:  # pragma: no cover - the grammar gives one type
+        return None
+    typ = written[0]
+    if typ.type == "union_type":
+        named = [
+            c for c in typ.named_children
+            if _node_text(c, source) not in ("null", "undefined")
+        ]
+        if len(named) != 1 or len(typ.named_children) == 1:
+            return None
+        typ = named[0]
+    if typ.type in ("type_identifier", "nested_type_identifier", "generic_type"):
+        return _node_text(typ, source)
+    return None
+
+
+def _class_member_types(
+    cls: "tree_sitter.Node", source: bytes, is_namespace: "Callable[[str], bool]",
+) -> dict[str, str]:
+    """What type each instance member of the class ``cls`` holds, as written:
+    THE place ``this.x``'s type is decided, for every way a class gives it one.
+
+    Declared: a field annotation (``x: T``, ``private x: T``) or a parameter
+    property (``constructor(private x: T)``, ``readonly x: T``). A declared
+    type is the member's type, whatever is assigned to it.
+    Assigned: a field initializer (``x = new T()``) and every ``this.x =
+    <value>`` in an instance method (or an arrow function inside one; a
+    ``function`` rebinds ``this`` and is not read), where a value has a type
+    when it is ``new T()``, ``new ns.T()`` through a namespace binding of the
+    file (``is_namespace``), or a parameter of that method typed ``T``.
+    Without a declaration the member has a type only when every assignment
+    gives it the same one (``null`` and ``undefined`` aside); one value with
+    no type, or two types, and it has none. Static members are not read: an
+    instance's ``this`` does not reach them.
+    """
+    body = cls.child_by_field_name("body")
+    declared: dict[str, set[str]] = {}
+    assigned: dict[str, list[str | None]] = {}
+
+    def value_type(value: "tree_sitter.Node", params: dict[str, str]) -> str | None:
+        if value.type == "null" or (value.type == "undefined"):
+            return _NO_VALUE
+        if value.type == "identifier":
+            return params.get(_node_text(value, source))
+        if value.type != "new_expression":
+            return None
+        made = value.child_by_field_name("constructor")
+        if made is not None and made.type == "identifier":
+            return _node_text(made, source)
+        head = made.child_by_field_name("object") if made is not None and made.type == "member_expression" else None
+        if head is not None and head.type == "identifier" and is_namespace(_node_text(head, source)):
+            return _node_text(made, source)
+        return None
+
+    def assignments(fn_body: "tree_sitter.Node", params: dict[str, str]) -> None:
+        stack = [(fn_body, params)]
+        while stack:
+            node, in_scope = stack.pop()
+            if node.type in _JS_THIS_REBINDING or node.type in _JS_CLASS_NODES:
+                continue
+            if node.type == "arrow_function":
+                in_scope = {}
+            if node.type == "assignment_expression":
+                left = node.child_by_field_name("left")
+                right = node.child_by_field_name("right")
+                target = left.child_by_field_name("object") if left is not None and left.type == "member_expression" else None
+                prop = left.child_by_field_name("property") if target is not None else None  # type: ignore[union-attr]
+                if target is not None and target.type == "this" and prop is not None and right is not None:
+                    assigned.setdefault(_node_text(prop, source), []).append(value_type(right, in_scope))
+            stack.extend((child, in_scope) for child in node.children)
+
+    for member in body.named_children if body is not None else ():
+        if any(c.type == "static" for c in member.children):
+            continue
+        if member.type in ("public_field_definition", "field_definition"):
+            name = member.child_by_field_name("name") or member.child_by_field_name("property")
+            if name is None or name.type != "property_identifier":
+                continue
+            typ = _annotation_type(member.child_by_field_name("type"), source)
+            if typ is not None:
+                declared.setdefault(_node_text(name, source), set()).add(typ)
+            value = member.child_by_field_name("value")
+            if value is not None and value.type == "arrow_function":
+                assignments(value, {})
+            elif value is not None:
+                assigned.setdefault(_node_text(name, source), []).append(value_type(value, {}))
+        elif member.type == "method_definition":
+            fn_body = member.child_by_field_name("body")
+            params = _extract_param_types(member, source)
+            if _find_name_in_children(member, source) == "constructor":
+                for param in member.child_by_field_name("parameters").named_children:  # type: ignore[union-attr]
+                    pattern = param.child_by_field_name("pattern")
+                    typ = _annotation_type(param.child_by_field_name("type"), source)
+                    if (
+                        pattern is not None and pattern.type == "identifier" and typ is not None
+                        and any(c.type in ("accessibility_modifier", "readonly") for c in param.children)
+                    ):
+                        declared.setdefault(_node_text(pattern, source), set()).add(typ)
+            if fn_body is not None:
+                for child in fn_body.children:
+                    assignments(child, params)
+    types: dict[str, str] = {}
+    for member_name in set(declared) | set(assigned):
+        if member_name in declared:
+            if len(declared[member_name]) == 1:
+                types[member_name] = next(iter(declared[member_name]))
+            continue
+        values = {v for v in assigned[member_name] if v != _NO_VALUE}
+        if len(values) == 1 and None not in values:
+            types[member_name] = str(values.pop())
+    return types
+
+
 def jsts_method_kind(node: "tree_sitter.Node") -> str:
     """The kind slot of a ``method_definition``: ``getter``, ``setter`` or
     ``method``, from a ``get`` / ``set`` child.
@@ -7646,11 +7796,33 @@ def _extract_edges(
     # in-repo resolution). Only catalogued constructors land here. Scoped the
     # same way.
     var_ctor_modules = ScopedVarTypes()
-    # ``this.<name>`` receivers: what a CONSTRUCTOR parameter was typed, for the
-    # whole file. ``constructor(private cats: CatsService)`` declares a
-    # property, and a plain constructor parameter is by convention assigned to
-    # one of its name; any other function's parameter types no property.
-    property_types: dict[str, str] = {}
+    # ``this.<name>`` receivers: what each class says its members hold
+    # (``_class_member_types``), read once per class.
+    member_types: dict[tuple[int, int], dict[str, str]] = {}
+
+    def _this_member_type(site: "tree_sitter.Node", member: str) -> str | None:
+        cls = _enclosing_class_node(site)
+        if cls is None:
+            return None
+        key = (cls.start_byte, cls.end_byte)
+        if key not in member_types:
+            member_types[key] = _class_member_types(
+                cls, source, lambda alias: scope.namespace(alias) is not None,
+            )
+        return member_types[key].get(member)
+
+    def _class_expression_member(cls: "tree_sitter.Node", member: str) -> Symbol | None:
+        """The method ``member`` of the class expression ``cls``, found by
+        position: its symbol is named ``member`` alone (no class symbol is
+        made for a class expression)."""
+        found = [
+            (symbol_by_position or {}).get((
+                str(file_path), m.start_point[0] + 1 + line_offset, m.start_point[1],
+            ))
+            for m in cls.child_by_field_name("body").named_children  # type: ignore[union-attr]
+            if m.type == "method_definition" and _find_name_in_children(m, source) == member
+        ]
+        return found[0] if len(found) == 1 else None
 
     for node in iter_tree(tree.root_node):
         var_types.close_scopes_before(node)
@@ -7687,16 +7859,9 @@ def _extract_edges(
             "generator_function_declaration", "generator_function",
         ):
             param_types = _extract_param_types(node, source)
-            _name_node = node.child_by_field_name("name")
-            _is_constructor = (
-                node.type == "method_definition" and _name_node is not None
-                and _node_text(_name_node, source) == "constructor"
-            )
             # Parameter types, for method call resolution inside the function.
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
-                if _is_constructor:
-                    property_types[param_name] = param_type
 
         # Call expressions
         elif node.type == "call_expression":
@@ -7966,7 +8131,11 @@ def _extract_edges(
                                 ret_name = _extract_jsts_return_type_name(
                                     callee.signature
                                 )
-                                if ret_name and node.parent and node.parent.type == "variable_declarator":
+                                if (
+                                    ret_name and node.parent
+                                    and node.parent.type == "variable_declarator"
+                                    and node.parent.child_by_field_name("type") is None
+                                ):
                                     # Check return type is a known class
                                     class_result = class_resolver.lookup(ret_name)
                                     if class_result.found:
@@ -8018,7 +8187,14 @@ def _extract_edges(
                             ))
 
                     if method_name:
-                        current_class_name = _get_class_context(node, source)
+                        # The innermost class owns ``this``; a class
+                        # EXPRESSION has no class symbol, so its members are
+                        # found by position (``_class_expression_member``).
+                        _class_node = _enclosing_class_node(node)
+                        _in_expression = _class_node is not None and _class_node.type == "class"
+                        current_class_name = (
+                            None if _in_expression else _get_class_context(node, source)
+                        )
                         obj_name = _node_text(obj_node, source) if obj_node and obj_node.type == "identifier" else None
                         edge_added = False
 
@@ -8073,6 +8249,30 @@ def _extract_edges(
                                 edges.append(_stub)
                             edge_added = True
 
+                        # Case 1, a class expression's own member
+                        # (``ns.K = class { go() { this.m(); } }``). One it
+                        # does not declare goes out on the placeholder below:
+                        # there is no class symbol to start a walk at.
+                        elif (
+                            obj_node is not None and obj_node.type == "this"
+                            and _in_expression
+                            and (_expr_member := _class_expression_member(
+                                _class_node, method_name,  # type: ignore[arg-type]
+                            )) is not None
+                        ):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=_expr_member.id,
+                                edge_type="calls",
+                                line=_line,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_this",
+                                resolution_score=_JS_ROUTE_SCORE_EXACT,
+                                resolved_by=resolved_by.OWN_TYPE,
+                            ))
+                            edge_added = True
+
                         # Case 1b: this.property.method() via constructor injection
                         # Handles NestJS/Angular patterns like this.catsService.create()
                         # where catsService is a constructor-injected dependency
@@ -8086,9 +8286,14 @@ def _extract_edges(
                                 elif mc.type == "property_identifier":
                                     property_name = _node_text(mc, source)
                             # If we have this.propertyName and propertyName has a known type
-                            if this_node and property_name and property_name in property_types:
-                                type_class_name = property_types[property_name]
-                                callee = _member_of_file_type(type_class_name, method_name)
+                            type_class_name = (
+                                _this_member_type(node, property_name)
+                                if this_node and property_name else None
+                            )
+                            if type_class_name is not None:
+                                callee = _member_of_file_type(
+                                    without_type_arguments(type_class_name), method_name,
+                                )
                                 if callee is not None:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -8616,7 +8821,10 @@ def _extract_edges(
             # Check if this new_expression is part of a variable assignment
             if class_name and node.parent:
                 parent = node.parent
-                if parent.type == "variable_declarator":
+                if (
+                    parent.type == "variable_declarator"
+                    and parent.child_by_field_name("type") is None
+                ):
                     # Find variable name
                     for pc in parent.children:
                         if pc.type == "identifier":
@@ -8812,6 +9020,13 @@ def _extract_edges(
         # the assignment arm above. Not a callback registration, so taint does
         # not walk it: storing a function is not calling it.
         elif node.type == "variable_declarator":
+            # ``const x: T = ...``: the type the declaration writes is the
+            # local's type, whatever the value (``new`` and a declared return
+            # type below type only an unannotated declarator).
+            _declared = _annotation_type(node.child_by_field_name("type"), source)
+            _declared_name = node.child_by_field_name("name")
+            if _declared is not None and _declared_name is not None and _declared_name.type == "identifier":
+                var_types[_node_text(_declared_name, source)] = _declared
             value_node = node.child_by_field_name("value")
             if value_node is not None and value_node.type == "identifier":
                 _emit_value_reference(node, value_node, "function_reference")
