@@ -4825,10 +4825,11 @@ def _extract_edges_from_file(
                                 qualifier.split("::", 1)[0] if qualifier is not None
                                 else callee_name if inner.type == "identifier" else None
                             )
-                            if followed or (_bound_head is not None and (
+                            _bound_in_tree = followed or (_bound_head is not None and (
                                 import_scope.named(_bound_head) is not None
                                 or import_scope.namespace(_bound_head) is not None
-                            )):
+                            ))
+                            if _bound_in_tree:
                                 # The import table binds it to a file of this tree: no
                                 # library module is named, whatever the ``use`` path spells
                                 # (``crate_b::helper`` is a crate of this workspace), and the
@@ -4853,8 +4854,13 @@ def _extract_edges_from_file(
                                 or ext_ref is not None
                                 or callee_name not in _RUST_GENERIC_TRAIT_METHODS
                                 or (
-                                    qualifier is not None
-                                    and not _rust_type_is_external(qualifier, use_aliases, crates)
+                                    # ``select_by::SelectBy::new()`` after ``mod
+                                    # select_by;``: the table binds the owner's head
+                                    # to a file of the tree, whatever the path spells.
+                                    qualifier is not None and (
+                                        _bound_in_tree
+                                        or not _rust_type_is_external(qualifier, use_aliases, crates)
+                                    )
                                 )
                                 or (
                                     receiver_hint is not None

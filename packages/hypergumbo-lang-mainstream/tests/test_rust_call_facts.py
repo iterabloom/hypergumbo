@@ -681,3 +681,10 @@ def test_a_denylisted_name_on_a_library_type_is_still_withheld(tmp_path: Path) -
     }
     assert _calls(tmp_path / "a", files, "run") == []
     assert _stub(_calls(tmp_path / "b", files, "open")) == {"callee_name": "new", "qualifier": "Conn"}
+    # An owner reached through a child module the table binds (``mod db;``)
+    # is the tree's too, although the path does not start at ``crate``.
+    files["src/lib.rs"] = "pub mod db;\npub fn make() { let _c = db::Conn::new(); }\n"
+    del files["src/main_mod.rs"]
+    assert _stub(_calls(tmp_path / "c", files, "make")) == {
+        "callee_name": "new", "qualifier": "db::Conn",
+    }
