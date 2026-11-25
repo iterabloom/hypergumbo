@@ -210,6 +210,7 @@ from hypergumbo_core.ir import (
     make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
@@ -3217,6 +3218,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
+                                    resolved_by=resolved_by.OWN_TYPE,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -3274,6 +3276,7 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_static",
+                                resolved_by=resolved_by.QUALIFIED,
                             )
                             edges.append(edge)
                             edge_added = True
@@ -3432,6 +3435,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
+                                    resolved_by=resolved_by.QUALIFIED,
                                 )
                                 edges.append(edge)  # pragma: no cover
                                 edge_added = True  # pragma: no cover
@@ -3855,6 +3859,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_new",
+                                    resolved_by=lookup_result.resolved_by,
                                 )
                                 edges.append(edge)
                     break
@@ -3923,6 +3928,7 @@ def _extract_edges(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="constructor_reference",
+                        resolved_by=lookup_result.resolved_by,
                     )
                     edges.append(edge)
 
