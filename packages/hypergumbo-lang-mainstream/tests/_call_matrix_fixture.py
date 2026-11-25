@@ -288,18 +288,41 @@ def ts(R, D, B, S, dl, split=False, third=False):
 
 
 # ---------------------------------------------------------------- java
-def java(R, D, B, S, dl):
-    def cls(n, m, v, ext=""):
-        return f"class {n}{ext} {{\n    int {m}() {{ return {v}; }}\n}}\n"
-    ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2))
-    pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
-    main = f"""package app;
+def java(R, D, B, S, dl, split=False, third=False):
+    def cls(n, m, v, ext="", pub=""):
+        return f"{pub}class {n}{ext} {{\n    {pub}int {m}() {{ return {v}; }}\n}}\n"
+    def spare(pub=""):
+        return f"{pub}class Spare {{\n    {pub}int execute() {{ return 2; }}\n\n    {pub}int ping() {{ return 2; }}\n}}\n"
+    def util(pkg, v):
+        return f"package {pkg};\n\npublic class Util {{\n    public static int helper() {{ return {v}; }}\n}}\n"
+    dec = ("zdecoy" if dl else "adecoy")
+    files = {"util/Util.java": util("util", 1), f"{dec}/Util.java": util(dec, 2)}
+    if third:
+        files[f"{dec}/spare/Util.java"] = util(f"{dec}.spare", 2)
+    if split:
+        # A file's name is its public class's, so the PACKAGE carries the side:
+        # the right classes in ``model``, the decoys in the decoy package, whose
+        # directory sorts after (``zdecoy``) or before (``adecoy``) every right
+        # one. Main imports R and Child.
+        def unit(pkg, text):
+            return f"package {pkg};\n\n{text}"
+        files |= {f"model/{R}.java": unit("model", cls(R, "execute", 1, pub="public ")),
+                  f"{dec}/{D}.java": unit(dec, cls(D, "execute", 2, pub="public ")),
+                  f"model/{B}.java": unit("model", cls(B, "ping", 1, pub="public ")),
+                  "model/Child.java": unit("model", f"public class Child extends {B} {{}}\n"),
+                  f"{dec}/{S}.java": unit(dec, cls(S, "ping", 2, pub="public "))}
+        if third:
+            files[f"{dec}/Spare.java"] = unit(dec, spare("public "))
+        classes = f"import model.{R};\nimport model.Child;\n"
+    else:
+        ex = order(dl, cls(R, "execute", 1), cls(D, "execute", 2) + (spare() if third else ""))
+        pg = order(dl, cls(B, "ping", 1) + f"class Child extends {B} {{}}\n", cls(S, "ping", 2))
+        classes = f"\n{ex}\n{pg}"
+    files["app/Main.java"] = f"""package app;
 
 import ext.Lib;
 import util.Util;
-
-{ex}
-{pg}
+{classes}
 public class Main {{
     static {R} get_db() {{
         return new {R}();
@@ -333,12 +356,13 @@ public class Main {{
     static void via_import() {{
         Util.helper();
     }}
+
+    static void via_qual() {{
+        util.Util.helper();
+    }}
 }}
 """
-    dec = ("zdecoy" if dl else "adecoy")
-    return {"app/Main.java": main,
-            "util/Util.java": "package util;\n\npublic class Util {\n    public static int helper() { return 1; }\n}\n",
-            f"{dec}/Util.java": f"package {dec};\n\npublic class Util {{\n    public static int helper() {{ return 2; }}\n}}\n"}
+    return files
 
 
 # ---------------------------------------------------------------- kotlin
