@@ -249,6 +249,31 @@ def test_every_type_symbol_says_how_many_type_parameters_it_takes(tmp_path: Path
     assert plain.meta["base_classes"] == ["Base"] and plain.meta["annotations"]
 
 
+# ------------------------------------------------------ extension methods
+
+def test_an_extension_method_records_its_receivers_type_as_written(tmp_path: Path) -> None:
+    result = analyze_csharp(_write(tmp_path, {
+        "Ext.cs": (
+            "static class Ext {\n"
+            "    [Pure] public static void Open(this IDbConnection cnn, int timeout) {}\n"
+            "    public static void Fill<T>(this ref Span<T> span) {}\n"
+            "    public static void Name(this Acme.Data.Conn? conn) {}\n"
+            "    public static void Plain(IDbConnection cnn) {}\n"
+            "    public static void None() {}\n"
+            "    public void Instance(int x, IDbConnection cnn) {}\n"
+            "}\n"
+        ),
+    }))
+    receivers = {s.name: (s.meta or {}).get("extension_receiver")
+                  for s in result.symbols if s.kind == "method"}
+    assert receivers == {
+        "Ext.Open": "IDbConnection", "Ext.Fill": "Span<T>", "Ext.Name": "Acme.Data.Conn?",
+        "Ext.Plain": None, "Ext.None": None, "Ext.Instance": None,
+    }
+    opened = next(s for s in result.symbols if s.name == "Ext.Open")
+    assert opened.meta["annotations"]
+
+
 # --------------------------------------------------- explicit receivers
 
 def test_a_receiver_of_known_type_in_another_file_carries_the_type(tmp_path: Path) -> None:
@@ -526,6 +551,41 @@ def test_end_to_end_base_call_in_an_override_reaches_the_parents_method(tmp_path
     })
     assert _resolved(data, "Child.Run", "Run") == [("App.Base.Run", "own_type")]
     assert _resolved(data, "Child.Run", "Stop") == []
+
+
+def test_end_to_end_an_extension_method_on_a_typed_receiver(tmp_path: Path) -> None:
+    """Dapper's shape: ``cnn.TryOpenAsync()`` on an ``IDbConnection``
+    parameter reaches ``static TryOpenAsync(this IDbConnection cnn)`` of
+    another class and file; the same name declared as an instance method of
+    an unrelated type, and an extension on another type, are not reached. A
+    receiver of no known type reaches nothing."""
+    data = _map(tmp_path, {
+        "Data/IDbConnection.cs": "namespace Data { public interface IDbConnection { } }\n",
+        "Data/Extensions.cs": (
+            "namespace Data { public static class Extensions {\n"
+            "    public static void TryOpenAsync(this IDbConnection cnn) {}\n"
+            "    public static void TryOpenAsync(this Stray s, int x) {}\n"
+            "} }\n"
+        ),
+        "Data/Stray.cs": "namespace Data { public class Stray { public void Close() {} } }\n",
+        "Data/Other.cs": "namespace Data { public class Other { public void TryOpenAsync() {} } }\n",
+        "App/Main.cs": (
+            "using Data;\n"
+            "namespace App { public class Main {\n"
+            "    public void Run(IDbConnection cnn) { cnn.TryOpenAsync(); }\n"
+            "    public void Untyped() { var cnn = Factory.Make(); cnn.TryOpenAsync(); }\n"
+            "} }\n"
+        ),
+    })
+    nodes = {n["id"]: n for n in data["nodes"]}
+    reached = [
+        (nodes[e["dst"]]["qualified_name"], nodes[e["dst"]]["span"]["start_line"],
+         e["meta"].get("resolved_by"), e["meta"].get("evidence_type"))
+        for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved") and e["dst"] in nodes
+        and nodes.get(e["src"], {}).get("name") in ("Main.Run", "Main.Untyped")
+    ]
+    assert reached == [("Data.Extensions.TryOpenAsync", 2, "receiver_type", "ast_call_extension")]
 
 
 def test_end_to_end_an_untyped_local_stays_unresolved(tmp_path: Path) -> None:
