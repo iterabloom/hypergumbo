@@ -65,6 +65,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Mapping, Sequence
 
+from . import resolved_by
 from .import_scope import MODULES_ARE_FILES
 
 if TYPE_CHECKING:
@@ -207,9 +208,35 @@ def visible_types(
     through a file that re-exports it (``declaring_files``); without it a
     re-exported name is not found. See the module docstring for the rules and
     the three answers."""
+    return visible_declarations(
+        written, caller_qualified_name, scope, candidates_named,
+        caller_path=caller_path, scopes=scopes,
+    )[0]
+
+
+def visible_declarations(
+    written: str,
+    caller_qualified_name: str | None,
+    scope: "ImportScope",
+    candidates_named: Callable[[str], Sequence["Symbol"]],
+    caller_path: str | None = None,
+    scopes: Mapping[str, "ImportScope"] | None = None,
+) -> tuple[list["Symbol"] | None, str | None]:
+    """``visible_types``' answer, and WHICH RULE gave it, as the
+    ``resolved_by`` value a bind made on it carries: ``same_module`` (the
+    caller's own package or namespace, or an enclosing one), ``import`` (an
+    explicit binding, an alias, a wildcard, a namespace binding),
+    ``qualified`` (the call site wrote the owner: a rooted or a dotted name),
+    ``same_file`` (a declaration of the caller's own file, in a language
+    whose imports name files). ``None`` when nothing was found or the rule
+    could not apply. The candidates need not be types: a function called by a
+    bare name is looked up the same way."""
+    found: list["Symbol"] | None
     if scope.module_kind == MODULES_ARE_FILES:
-        return _by_file(written, caller_path, scope, candidates_named, scopes or {})
-    return _by_declared_name(written, caller_qualified_name, scope, candidates_named)
+        found, by = _by_file(written, caller_path, scope, candidates_named, scopes or {})
+    else:
+        found, by = _by_declared_name(written, caller_qualified_name, scope, candidates_named)
+    return found, (by if found else None)
 
 
 def _by_declared_name(
@@ -217,7 +244,7 @@ def _by_declared_name(
     caller_qualified_name: str | None,
     scope: "ImportScope",
     candidates_named: Callable[[str], Sequence["Symbol"]],
-) -> list["Symbol"] | None:
+) -> tuple[list["Symbol"] | None, str]:
     name, rooted = _written_name(written)
     head, _, rest = name.partition(".")
     alias = None if rooted else scope.named(head)
@@ -225,22 +252,26 @@ def _by_declared_name(
         name = ".".join(part for part in (dotted(alias.module), alias.name, rest) if part)
     candidates = candidates_named(name.rpartition(".")[2])
     if any(not c.qualified_name for c in candidates):
-        return None
+        return None, resolved_by.NAME
     declared: dict[str, list["Symbol"]] = {}
     for candidate in candidates:
         declared.setdefault(dotted(candidate.qualified_name or ""), []).append(candidate)
-    if rooted or alias is not None:
-        return list(declared.get(name, ()))
+    if rooted:
+        return list(declared.get(name, ())), resolved_by.QUALIFIED
+    if alias is not None:
+        return list(declared.get(name, ())), resolved_by.IMPORT
 
     for enclosing in _enclosing_scopes(caller_qualified_name):
         found = declared.get(f"{enclosing}.{name}" if enclosing else name)
         if found:
-            return list(found)
+            # The call site wrote an owner (``Db.Conn``): the scope walk only
+            # placed that owner. A bare name is the caller's own package's.
+            return list(found), resolved_by.QUALIFIED if rest else resolved_by.SAME_MODULE
 
     supplied: list["Symbol"] = []
     for module in scope.wildcard_modules:
         supplied += declared.get(f"{dotted(module)}.{name}", ())
-    return supplied
+    return supplied, resolved_by.IMPORT
 
 
 def _by_file(
@@ -249,7 +280,7 @@ def _by_file(
     scope: "ImportScope",
     candidates_named: Callable[[str], Sequence["Symbol"]],
     scopes: Mapping[str, "ImportScope"],
-) -> list["Symbol"]:
+) -> tuple[list["Symbol"], str]:
     def declares(file: str, wanted: str) -> bool:
         return any(c.path == file for c in candidates_named(wanted))
 
@@ -266,16 +297,16 @@ def _by_file(
     if not owner:
         own = [c for c in candidates_named(head) if c.path == caller_path]
         if own:
-            return own
+            return own, resolved_by.SAME_FILE
         bound = scope.named(head)
         if bound is not None:
-            return declared(bound.module, bound.name)
+            return declared(bound.module, bound.name), resolved_by.IMPORT
         supplied: list["Symbol"] = []
         for module in scope.wildcard_modules:
             supplied += [c for c in declared(module, head) if c not in supplied]
-        return supplied
+        return supplied, resolved_by.IMPORT
     # ``owner`` is looked up WHOLE: a namespace binding is keyed by the path
     # as the file writes it, one segment (``db``) or several (``crate.db``,
     # which the Rust analyzer records for a path it followed to a file).
-    module = scope.namespace(owner)
-    return declared(module, head) if module is not None else []
+    bound_file = scope.namespace(owner)
+    return (declared(bound_file, head) if bound_file is not None else []), resolved_by.IMPORT
