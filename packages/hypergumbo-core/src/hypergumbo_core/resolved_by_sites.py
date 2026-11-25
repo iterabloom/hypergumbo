@@ -12,7 +12,11 @@ under ``packages/*/src`` whose ``edge_type`` is a call-family literal
 (``calls``, ``instantiates``), or a conditional between literals one of which
 is, must pass ``resolved_by=``. Exempt: a site that passes the literal
 ``is_resolved=False`` (it builds an edge that leaves the repository, and
-``Edge.create`` refuses the mark there). A site whose ``edge_type`` is any
+``Edge.create`` refuses the mark there). A site that builds an edge to a
+placeholder without that literal (the Erlang logger expansion, a minted
+stdlib symbol) passes ``resolved_by=None`` with a comment saying so: the
+keyword is what this check reads, so the absence is a statement rather than
+an omission. A site whose ``edge_type`` is any
 other expression is not judged: seventeen such sites exist, most of them
 passing a parameter that is never a call-family type, and the run-time side
 of the promise (a resolved call edge with no mark) is what the census over

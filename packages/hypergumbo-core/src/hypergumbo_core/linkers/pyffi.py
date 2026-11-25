@@ -433,10 +433,9 @@ def link_pyffi(
                     meta={"bridge_kind": "ffi"},
                     # derived-from endpoints: the dst is a minted stdlib placeholder
                     derived_from=[src_sym.id],
-                    # The placeholder is outside the repository, so finalize's
-                    # verdict removes this mark; it is passed because every
-                    # call-family creation site states one.
-                    resolved_by=resolved_by.KEY_MATCH,
+                    # A minted stdlib placeholder: no in-repository target
+                    # was chosen.
+                    resolved_by=None,
                 ))
             else:
                 # Non-stdlib call with repo-local C symbol. INV-zuhub: multi-value
