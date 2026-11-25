@@ -57,6 +57,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -438,17 +439,21 @@ _PONY_CALLABLE_NODES: frozenset[str] = frozenset({"constructor", "method", "beha
 
 def _resolve_callee(
     name: str, file_table: dict[str, Symbol], symbol_registry: dict[str, str],
-) -> Optional[str]:
-    """This file's declaration of ``name`` first, then the repository's.
+) -> tuple[Optional[str], str]:
+    """This file's declaration of ``name`` first, then the repository's, with
+    what scoped the choice (``resolved_by``).
 
     The registry keeps ONE symbol per name, and every Pony program declares
     ``actor Main`` with ``new create``, so a bare ``helper()`` in one program
     resolved into another's ``Main.helper`` when the registry kept that one.
+    ``Type.method`` as written names its owner (``qualified``) in either
+    table; a bare name is this file's (``same_file``) or the run's (``name``).
     """
+    qualified = "." in name
     local = file_table.get(name)
     if local is not None:
-        return local.id
-    return symbol_registry.get(name)
+        return local.id, resolved_by.QUALIFIED if qualified else resolved_by.SAME_FILE
+    return symbol_registry.get(name), resolved_by.QUALIFIED if qualified else resolved_by.NAME
 
 
 def _extract_call_edge(
@@ -488,7 +493,7 @@ def _extract_call_edge(
     src = enclosing.id if enclosing is not None else make_file_id("pony", rel_path)
 
     # Try to resolve the target
-    resolved_id = _resolve_callee(callee_name, file_table, symbol_registry)
+    resolved_id, _by = _resolve_callee(callee_name, file_table, symbol_registry)
 
     # Also try type.method format if we have a type
     if not resolved_id and len(parts) == 2:
@@ -500,6 +505,7 @@ def _extract_call_edge(
         # declares ``actor Main``), never this one's.
         own = file_table.get(f"{current_type}.{callee_name}")
         resolved_id = own.id if own is not None else None
+        _by = resolved_by.OWN_TYPE
 
     if resolved_id:
         return Edge.create(
@@ -511,6 +517,7 @@ def _extract_call_edge(
             origin_run_id=run_id,
             evidence_type="static",
             evidence_lang="pony",
+            resolved_by=_by,
         )
     else:
         return make_unresolved_edge(

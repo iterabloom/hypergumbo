@@ -169,6 +169,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -747,6 +748,8 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                 evidence_type="verilog_instantiation",
                 meta=edge_meta,
                 origin_run_id=run.execution_id,
+                # The run's design units of that name (module preferred).
+                resolved_by=resolved_by.NAME if resolved is not None else None,
             ))
 
         edges.extend(self._call_edges(tree, source, rel_path, file_symbols, run))
@@ -783,7 +786,10 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         for node in call_nodes:
             target = _call_target(node, source)
-            callee = self._resolve_call(target, _scope_path(node), declared, imports) if target else None
+            callee, _by = (
+                self._resolve_call(target, _scope_path(node), declared, imports)
+                if target else (None, None)
+            )
             if callee is None:
                 continue
             caller = enclosing_declared_symbol(node, index, _CALL_SOURCE_NODE_TYPES)
@@ -795,6 +801,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
+                resolved_by=_by,
             ))
         return edges
 
@@ -804,8 +811,11 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
         path: list["tree_sitter.Node"],
         declared: dict[tuple[int, ...], dict[str, list[Symbol]]],
         imports: dict[tuple[int, ...], list[tuple[str, Optional[str]]]],
-    ) -> Optional[Symbol]:
-        """The task or function a call names, or ``None``.
+    ) -> tuple[Optional[Symbol], Optional[str]]:
+        """The task or function a call names, or ``None``, and what scoped the
+        choice (``resolved_by``: ``qualified``, ``own_type``, ``lexical_scope``
+        for an enclosing scope's own declaration, ``import`` for an imported
+        one).
 
         ``pkg::f`` / ``C::m``: the one ``f`` a package (else a class) of that
         name declares, in any file. ``this.m``: the ``m`` the innermost scope
@@ -820,12 +830,13 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
         if qualifier is not None:
             return _only(
                 scoped.get(("package", qualifier, name)) or scoped.get(("class", qualifier, name))
-            )
+            ), resolved_by.QUALIFIED
         if on_this:
-            return _only(declared.get(_scope_key(path), {}).get(name))
+            return _only(declared.get(_scope_key(path), {}).get(name)), resolved_by.OWN_TYPE
         for depth in range(len(path), -1, -1):
             key = _scope_key(path[:depth])
             found = declared.get(key, {}).get(name)
+            _by = resolved_by.LEXICAL_SCOPE
             if not found:
                 items = imports.get(key, ())
                 found = [
@@ -835,11 +846,12 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                     sym for package, member in items if member is None
                     for sym in scoped.get(("package", package, name), ())
                 ]
+                _by = resolved_by.IMPORT
             if found:
-                return _only(found)
+                return _only(found), _by
             if depth and any(child.type == "extends" for child in path[depth - 1].children):
-                return None
-        return None
+                return None, None
+        return None, None
 
     def post_process(
         self,

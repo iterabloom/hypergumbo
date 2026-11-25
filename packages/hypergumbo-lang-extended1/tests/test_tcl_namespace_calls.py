@@ -128,3 +128,39 @@ def test_namespace_import_brings_the_proc_into_the_importing_namespace(
     assert dst[26] == procs["util::helper"]   # client imported ::util::helper
     # A pattern import (with an option before it) beats the global proc too.
     assert dst[51] == procs["util::helper"]
+
+
+def test_resolved_by_names_each_step_of_the_lookup(tmp_path: Path) -> None:
+    """``meta["resolved_by"]`` per step of ``_resolve_callee`` (audit 0030)."""
+    (tmp_path / "main.tcl").write_text(_SOURCE)
+    result = analyze_tcl(tmp_path)
+    mark = {
+        e.line: (e.meta or {}).get("resolved_by")
+        for e in result.edges if e.edge_type == "calls"
+    }
+    assert mark[6] == "same_module"    # helper inside util: util::helper
+    assert mark[17] == "qualified"     # util::helper 1
+    assert mark[18] == "qualified"     # ::util::helper 3
+    assert mark[39] == "qualified"     # sub::go read in app
+    assert mark[21] == "name"          # helper from a global proc
+    assert mark[31] == "name"          # plain imports nothing: ::helper
+    assert mark[26] == "import"        # namespace import ::util::helper
+    assert mark[51] == "import"        # namespace import ::util::*
+    assert mark[20] is None            # missing::thing stays a stand-in
+
+
+def test_resolved_by_of_the_registry_fallback_is_name(tmp_path: Path) -> None:
+    """A bare word no namespace rule finds falls back to the registry key of
+    the word: a name lookup."""
+    (tmp_path / "main.tcl").write_text("""\
+proc util::other {y} {
+    return $y
+}
+proc main {} {
+    other 1
+}
+""")
+    result = analyze_tcl(tmp_path)
+    calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+    assert len(calls) == 1
+    assert calls[0].meta["resolved_by"] == "name"

@@ -1136,3 +1136,59 @@ endmodule
     assert summary["dead_candidates"] == 2
     # ``top`` and the two exported package functions.
     assert summary["seed_count"] == 3
+
+
+def test_resolved_by_names_each_route_of_the_call_lookup(tmp_path):
+    """``meta["resolved_by"]`` per route of ``_resolve_call`` and on a module
+    instantiation (audit 0030)."""
+    result = _analyze(tmp_path, {
+        "rtl/pkg.sv": """\
+package pkg;
+  function automatic int add(int a, int b); return a + b; endfunction
+  function automatic int twice(int a); return add(a, a); endfunction
+  function automatic int zero(); return 0; endfunction
+endpackage
+class C;
+  static function int m(int x); return x; endfunction
+  function int helper(int x); return x; endfunction
+  function int run(int x); return this.helper(x); endfunction
+endclass
+""",
+        "rtl/use.sv": """\
+module q(input int a, output int y);
+  assign y = pkg::add(a, 1) + C::m(a);
+endmodule
+module hdr import pkg::add; (input int a, output int y);
+  assign y = add(a, 1);
+endmodule
+module body(input int a, output int y);
+  import pkg::*;
+  function int twice(int x); return x; endfunction
+  assign y = twice(a) + zero();
+endmodule
+module top(input int a, output int y);
+  q u0(.a(a), .y(y));
+  nothere u1(.a(a));
+endmodule
+""",
+    })
+    by_id = {s.id: s for s in result.symbols}
+
+    def mark(edge_type, src, dst):
+        found = [
+            e for e in result.edges if e.edge_type == edge_type
+            and by_id.get(e.src) is not None and by_id[e.src].name == src
+            and (by_id[e.dst].name if e.dst in by_id else e.dst.split(":")[-2]) == dst
+        ]
+        assert len(found) == 1, (src, dst, found)
+        return (found[0].meta or {}).get("resolved_by")
+
+    assert mark("calls", "q", "add") == "qualified"
+    assert mark("calls", "q", "m") == "qualified"
+    assert mark("calls", "run", "helper") == "own_type"
+    assert mark("calls", "twice", "add") == "lexical_scope"
+    assert mark("calls", "body", "twice") == "lexical_scope"
+    assert mark("calls", "hdr", "add") == "import"
+    assert mark("calls", "body", "zero") == "import"
+    assert mark("instantiates", "top", "q") == "name"
+    assert mark("instantiates", "top", "nothere") is None

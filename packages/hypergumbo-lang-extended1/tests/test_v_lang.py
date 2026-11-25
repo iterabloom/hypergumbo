@@ -544,3 +544,24 @@ def test_a_call_inside_a_v_method_starts_on_the_method(tmp_path: Path) -> None:
     twice = next(s for s in result.symbols if s.name == "twice")
     assert any(e.src == twice.id for e in result.edges if e.edge_type == "calls")
     assert [e.src for e in result.edges if e.edge_type == "calls" and e.src not in by_id] == []
+
+
+class TestVResolvedBy:
+    """``meta["resolved_by"]`` on a resolved call (audit 0030)."""
+
+    def test_call_found_in_run_registry_is_name(self, tmp_path: Path) -> None:
+        (tmp_path / "main.v").write_text("""module main
+
+fn helper() int {
+    return 1
+}
+
+fn main() {
+    helper()
+}
+""")
+        result = analyze_v(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls" and e.is_resolved]
+        assert len(calls) == 1
+        assert "helper" in calls[0].dst
+        assert calls[0].meta["resolved_by"] == "name"

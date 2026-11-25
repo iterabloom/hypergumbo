@@ -69,6 +69,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     find_child_by_type,
     make_symbol_id,
@@ -646,9 +647,14 @@ def _extract_edges_from_tree(
                         # interpolates in the ast_call_direct band; a
                         # placeholder target is unresolved (ADR-0037).
                         resolution_score: float | None = None
+                        _by: str | None = None
                         if lookup_result.found and _sym is not None:
                             dst_id = _sym.id
                             resolution_score = lookup_result.confidence
+                            _by = resolved_by_for_bare_call(
+                                _sym.kind, _sym.name,
+                                lookup_result.resolved_by, container,
+                            )
                         else:
                             # Create placeholder ID for unresolved call
                             dst_id = f"zig:{rel_path}:0-0:{call_name}:function"
@@ -663,6 +669,7 @@ def _extract_edges_from_tree(
                             evidence_type="ast_call_direct",
                             resolution_score=resolution_score,
                             is_resolved=resolution_score is not None,
+                            resolved_by=_by,
                         )
                         edges.append(edge)
 

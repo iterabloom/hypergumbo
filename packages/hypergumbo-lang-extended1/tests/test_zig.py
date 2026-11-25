@@ -822,3 +822,32 @@ class TestZigEnclosingByPosition:
             for e in result.edges if e.edge_type == "calls"
         }
         assert pairs == {("A.go", "helperA"), ("B.go", "helperB")}
+
+
+class TestZigResolvedBy:
+    """``meta["resolved_by"]`` on a bound call (audit 0030)."""
+
+    def test_own_struct_method_and_name(self, tmp_path: Path) -> None:
+        (tmp_path / "util.zig").write_text("pub fn helper() void {}\n")
+        (tmp_path / "main.zig").write_text("""const util = @import("util.zig");
+
+const S = struct {
+    fn run(self: S) void {
+        go();
+    }
+    fn go(self: S) void {}
+};
+
+pub fn main() void {
+    util.helper();
+}
+""")
+        result = analyze_zig(tmp_path)
+        marks = {
+            e.dst.split(":")[-2]: e.meta["resolved_by"]
+            for e in result.edges if e.edge_type == "calls" and e.is_resolved
+        }
+        # A bare call to a method of the enclosing struct.
+        assert marks["S.go"] == "own_type"
+        # The registry's exact key: found by its name.
+        assert marks["helper"] == "name"

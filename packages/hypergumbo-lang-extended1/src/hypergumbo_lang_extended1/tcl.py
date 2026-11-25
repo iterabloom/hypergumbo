@@ -50,6 +50,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, NodeId, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -257,7 +258,7 @@ def _iter_nodes(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
 def _resolve_callee(
     word: str, scope: str, global_symbols: dict[str, Symbol],
     imports: tuple[dict[tuple[str, str], str], dict[str, list[str]]],
-) -> Optional[Symbol]:
+) -> tuple[Optional[Symbol], str]:
     """The proc a call of ``word`` from a proc in namespace ``scope`` runs.
 
     Tcl's order: a name first in the caller's namespace (where an imported
@@ -267,19 +268,34 @@ def _resolve_callee(
     registry key of the word as written (without a leading ``::``), the
     analyzer's lookup before namespaces were read, which an import in
     another file, ``namespace path`` or ``interp alias`` can make right.
+
+    Returned with what scoped the choice (``resolved_by``): a name written
+    with ``::`` names its namespace (``qualified``); a bare word found in the
+    caller's namespace is ``same_module``, through a ``namespace import``
+    ``import``, in the global namespace or the fallback registry ``name``.
     """
     named, wildcard = imports
-    candidates = [_qualified(scope, word)]
-    if "::" not in word:
+    qualified = "::" in word
+    candidates = [(
+        _qualified(scope, word),
+        resolved_by.QUALIFIED if qualified
+        else resolved_by.SAME_MODULE if scope else resolved_by.NAME,
+    )]
+    if not qualified:
         if (scope, word) in named:
-            candidates.append(named[(scope, word)])
-        candidates.extend(f"{ns}::{word}" for ns in wildcard.get(scope, ()))
-    candidates.append(_qualified("", word))
-    for name in candidates:
+            candidates.append((named[(scope, word)], resolved_by.IMPORT))
+        candidates.extend(
+            (f"{ns}::{word}", resolved_by.IMPORT) for ns in wildcard.get(scope, ())
+        )
+    candidates.append((
+        _qualified("", word),
+        resolved_by.QUALIFIED if qualified else resolved_by.NAME,
+    ))
+    for name, by in candidates:
         found = global_symbols.get(_ABSOLUTE + name)
         if found is not None:
-            return found
-    return global_symbols.get(_qualified("", word))
+            return found, by
+    return global_symbols.get(_qualified("", word)), resolved_by.NAME
 
 
 # Tcl built-in commands that should not generate call edges
@@ -525,7 +541,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 callee_name = _callee_word(word)
 
                 if word and callee_name and callee_name not in _BUILTINS:
-                    callee_sym = _resolve_callee(word, scope, global_symbols, imports)
+                    callee_sym, _by = _resolve_callee(word, scope, global_symbols, imports)
                     if callee_sym is not None:
                         edge = Edge.create(
                             src=caller_id,
@@ -536,6 +552,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
                             evidence_lang="tcl",
+                            resolved_by=_by,
                         )
                     else:
                         # WI-nigah Tier 2: split namespace-qualified callee at
