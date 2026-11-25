@@ -1280,6 +1280,41 @@ runs can find prior work:
   `docs/audits/0027-entry-point-kinds.md`; evidence
   `~/hypergumbo_lab_notebook/fast_smart_test_build_11172026/audit/`.
 
+- **2026-11-25 — how a call's target was chosen (`call-target-resolution`).**
+  Trigger: an owner ruling (2026-11-24: mark how every edge was resolved,
+  count, then decide what a name-only match is worth) and the cadence hook
+  (255 commits against a threshold of 72). **Confirmed, with one leg
+  refuted.** "By what evidence was this call's target chosen" was written in
+  seven places: receiver-flavoured `evidence_type` values, `resolution_quality`,
+  the outcome half of `receiver`, `binding`, a grade inside `confidence`, the
+  shared resolvers' `match_type` (which never left the resolver), and one
+  analyzer's route constants. None was total. A method bound through a typed
+  receiver had six spellings across ten analyzers. On 28 repositories 39,223
+  of 95,105 resolved call edges said nothing, and 14,273 of those had another
+  in-repository symbol of the same name and kind.
+
+  Two lessons. **Read the producer before folding a flag.** The first draft
+  folded `disambiguation_fallback` into the new mark as "resolved by name
+  alone"; its producers set it from `len(candidates) > 1`, so it says a pick
+  was made, which is the one thing the mark was designed not to hold. The
+  fold would have pinned 36 sites of a flag another invariant wants more
+  of. **Keep the derivable out of the vocabulary.** The mark names what
+  scoped the search (`import`, `same_file`, `name`, ...); how many candidates
+  there were is counted from the nodes, so "picked by declaration order" is
+  `same_file` crossed with a count, not a value.
+
+  Silent bug: the magnet detector excludes every evidence type but two as
+  "receiver characterised", and `ast_method_inferred`, stamped on a method
+  found by name on an untyped receiver, is 7,668 edges it cannot see.
+
+  Built with the audit, no behaviour change: `Edge.meta["resolved_by"]`,
+  declared in `hypergumbo_core/resolved_by.py`, passed at every call-family
+  creation site (`scripts/check-resolved-by-sites`), with the older spellings
+  pinned per file to shrink only. Filed: WI-hirol (the mark), WI-gilip (the
+  folds, per language), WI-topit (the detector), WI-dolib, WI-marig. Full
+  write-up: `docs/audits/0030-call-target-resolution.md`; evidence
+  `~/hypergumbo_lab_notebook/resolution_mark_11252026/`.
+
 ## Relationship to other playbooks
 
 - **Structural Fix and Scope Expansion Protocol** — used when fixing a

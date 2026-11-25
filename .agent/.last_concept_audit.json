@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "c54c3f52a5dfa8897e9d249d764576fa27ec7235",
-  "last_audit_iso_date": "2026-11-21T01:32:53.257556-05:00",
-  "suspect_domain": "entry-point-kinds",
-  "audits_run": 22
+  "last_audit_sha": "05b2501ae99b8da95a665b2e22708fd3a69bb77d",
+  "last_audit_iso_date": "2026-11-24T21:40:54.140138-05:00",
+  "suspect_domain": "call-target-resolution",
+  "audits_run": 23
 }
