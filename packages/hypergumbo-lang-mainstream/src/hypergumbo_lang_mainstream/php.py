@@ -97,6 +97,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 from hypergumbo_core.discovery import classify_dot_php_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, StableId, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core import resolved_by
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     find_matching_paren,
@@ -105,6 +106,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     ancestor_labels,
     defer_bare_method_call,
+    resolved_by_for_bare_call,
     defer_unresolved_tie,
     iter_tree,
     make_file_id,
@@ -1593,6 +1595,10 @@ def _extract_edges(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
+                            resolved_by=resolved_by_for_bare_call(
+                                _sym.kind, _sym.name,
+                                lookup_result.resolved_by, _enclosing_type,
+                            ),
                         )
                         edges.append(edge)
                     else:
@@ -1635,6 +1641,7 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_method_this",
+                                resolved_by=resolved_by.OWN_TYPE,
                             )
                             edges.append(edge)
                     else:
@@ -1663,6 +1670,10 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_method_inferred",
+                                resolved_by=resolved_by_for_bare_call(
+                                    _sym.kind, _sym.name,
+                                    lookup_result.resolved_by, current_class_name,
+                                ),
                             )
                             edges.append(edge)
                         else:
@@ -1684,8 +1695,10 @@ def _extract_edges(
 
                     # Handle self:: and static::
                     current_class_name = _enclosing_type_name(node, source)
+                    _by = resolved_by.QUALIFIED
                     if class_name in ("self", "static") and current_class_name:
                         class_name = current_class_name
+                        _by = resolved_by.OWN_TYPE
 
                     # Resolve class alias if present
                     resolved_class = use_aliases.get(class_name, class_name)
@@ -1702,6 +1715,7 @@ def _extract_edges(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_static_call",
+                            resolved_by=_by,
                         )
                         edges.append(edge)
 
@@ -1726,6 +1740,7 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_new",
+                                resolved_by=lookup_result.resolved_by,
                             )
                             edges.append(edge)
                         break
