@@ -8236,13 +8236,21 @@ def _extract_edges(
                             if current_class_name else None
                         )
 
-                        # Case 1: this.method(), super.method()
+                        # Case 1: this.method(), super.method(). A class
+                        # expression's own member is found by position; one
+                        # it does not declare goes out on the placeholder
+                        # below: there is no class symbol to walk from.
                         if (
                             obj_node is not None and obj_node.type in ("this", "super")
-                            and _own_class is not None
+                            and (_own_class is not None or _in_expression)
                         ):
                             _own_member = (
-                                _member_of(_own_class, method_name)
+                                (
+                                    _member_of(_own_class, method_name) if _own_class is not None
+                                    else _class_expression_member(
+                                        _class_node, method_name,  # type: ignore[arg-type]
+                                    )
+                                )
                                 if obj_node.type == "this" else None
                             )
                             if _own_member is not None:
@@ -8257,7 +8265,8 @@ def _extract_edges(
                                     resolution_score=_JS_ROUTE_SCORE_EXACT,
                                     resolved_by=resolved_by.OWN_TYPE,
                                 ))
-                            else:
+                                edge_added = True
+                            elif _own_class is not None:
                                 # Inherited, or written on the parent: the
                                 # walk starts at exactly this class (its id,
                                 # found by position), at its parents for
@@ -8272,31 +8281,7 @@ def _extract_edges(
                                 if _stub.meta is not None:
                                     _stub.meta["enclosing_class_id"] = _own_class.id
                                 edges.append(_stub)
-                            edge_added = True
-
-                        # Case 1, a class expression's own member
-                        # (``ns.K = class { go() { this.m(); } }``). One it
-                        # does not declare goes out on the placeholder below:
-                        # there is no class symbol to start a walk at.
-                        elif (
-                            obj_node is not None and obj_node.type == "this"
-                            and _in_expression
-                            and (_expr_member := _class_expression_member(
-                                _class_node, method_name,  # type: ignore[arg-type]
-                            )) is not None
-                        ):
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=_expr_member.id,
-                                edge_type="calls",
-                                line=_line,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_method_this",
-                                resolution_score=_JS_ROUTE_SCORE_EXACT,
-                                resolved_by=resolved_by.OWN_TYPE,
-                            ))
-                            edge_added = True
+                                edge_added = True
 
                         # Case 1b: this.property.method() via constructor injection
                         # Handles NestJS/Angular patterns like this.catsService.create()
