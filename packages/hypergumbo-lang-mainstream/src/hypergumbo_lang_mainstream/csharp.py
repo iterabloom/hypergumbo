@@ -65,17 +65,22 @@ How It Works
 1. Check if tree-sitter-c-sharp is available
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
+   - Pass 1: Parse all files, extract all symbols into global registry, and
+     read each file's ``using`` directives once (``_csharp_usings``): the
+     table handed to the linkers in ``AnalysisResult.import_scopes``
+     (ADR-0064, piece b), the stable-id type names and the base hints
    - Pass 2: Detect calls, instantiations, using directives and method-group
-     references, and resolve against global symbol registry
-     - A call the registry cannot place (a framework call such as
-       ``File.ReadAllText``), or one withheld by the 3+-candidate ambiguity
-       guard, is still emitted as an unresolved edge; its module slot is the
-       receiver only when that names a type (``_csharp_unresolved_module``),
-       else ``external``.
-     - A bare call that resolves only to a DIFFERENT class's method on
-       short-name evidence is deferred with ``enclosing_class`` for the
-       ``inherited_calls`` linker (INV-fahub).
+     references
+     - A call is bound here only on C#'s own evidence in this file: the
+       enclosing type's own method (``own_type``) or a method of the
+       receiver's known type (``receiver_type``). Every other call is
+       emitted unresolved with the facts the shared pass reads
+       (``receiver_type_hint``, ``qualifier``, ``enclosing_class``; see
+       ``_extract_edges_from_file``), and ``inherited_calls`` decides from
+       the file's table; neither the file's short-name table nor a run-wide
+       lookup of the callee's name binds a call (ADR-0064). An unresolved
+       call's module slot is the receiver only when that names a type
+       (``_csharp_unresolved_module``), else ``external``.
      - A call, object creation or method-group reference is credited to the
        member whose declaration contains it, found by POSITION
        (``_CSHARP_MEMBER_BODY_NODES``, INV-midag): a method, constructor,
@@ -116,14 +121,16 @@ one type with one spelling in the hash, the keyword.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
+import re
+from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.import_scope import ImportScope
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core import resolved_by
-from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     normalize_with_type_parameters,
     find_matching_paren,
@@ -132,9 +139,6 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis as _BaseFileAnalysis,
     TreeSitterAnalyzer,
     ancestor_labels,
-    defer_bare_method_call,
-    resolved_by_for_bare_call,
-    defer_unresolved_tie,
     find_child_by_type,
     iter_tree,
     enclosing_declared_symbol,
@@ -673,7 +677,6 @@ def _track_csharp_return_type(
     node: "tree_sitter.Node",
     source: bytes,
     var_types: dict[str, str],
-    local_symbols: dict[str, "Symbol"],
 ) -> None:
     """Track variable type from a resolved method's return type annotation.
 
@@ -681,13 +684,19 @@ def _track_csharp_return_type(
     with signature ``() ServiceClient``, this sets ``var_types["client"] = "ServiceClient"``
     so that subsequent ``client.Fetch()`` resolves via type inference.
 
+    The callee is always a declaration of the caller's own file (the only
+    calls this analyzer binds), so the return type is written in the caller's
+    scope; where that type is declared does not matter here: a call on the
+    variable whose method this file does not hold carries the type to the
+    linker as ``receiver_type_hint``.
+
     The invocation_expression AST in C# has the parent chain:
     ``equals_value_clause > variable_declarator > identifier``.
     """
     if resolved_sym.kind != "method":
         return  # pragma: no cover - callers resolve to methods
     ret_name = _extract_csharp_return_type_name(resolved_sym.signature)
-    if not ret_name or ret_name not in local_symbols:
+    if not ret_name:
         return
     parent = node.parent
     if not parent:
@@ -815,6 +824,12 @@ def _get_csharp_enclosing_namespace(
     return ".".join(chain) if chain else None
 
 
+#: The symbol kinds this analyzer emits for a type declaration.
+_CSHARP_TYPE_SYMBOL_KINDS: frozenset[str] = frozenset({
+    "class", "record", "interface", "struct", "enum",
+})
+
+
 #: Type declarations a C# member or nested type can sit in.
 _CSHARP_TYPE_DECLS: frozenset[str] = frozenset({
     "class_declaration", "interface_declaration", "struct_declaration",
@@ -864,60 +879,98 @@ def _make_csharp_qualified_name(
     return sep.join(parts)
 
 
-def _extract_using_aliases(
-    tree: "tree_sitter.Tree",
-    source: bytes,
-) -> dict[str, str]:
-    """Extract using directive aliases from a parsed C# tree.
+class _CSharpUsings(NamedTuple):
+    """What one file's ``using`` directives say, read in ONE walk
+    (:func:`_csharp_usings`), in the shapes three readers need.
 
-    Maps type names to their full namespace paths for disambiguation:
-    - using System.Collections.Generic; -> Generic: System.Collections.Generic
-    - using MyApp.Services; -> Services: MyApp.Services
-    - using Svc = MyApp.Services; -> Svc: MyApp.Services
-
-    Returns dict mapping local alias/name -> full namespace path.
+    - ``namespaces``, ``type_aliases``: a ``using N;`` and a ``using A = X.Y;``
+      whose target is a qualified name, ``using static`` left out (WI-pivap).
+      Read by the stable-id type names (:func:`_csharp_type_names`) and the
+      base hints the inheritance linker reads (:func:`_csharp_base_hints`).
+    - ``path_hints``: local name to a dotted path, the shape the run-wide
+      ``NameResolver`` takes as a path hint; read by the ``new T()`` lookup
+      only (``using A.B.C;`` gives ``C``, ``using static`` is not told apart).
+    - ``scope``: the table handed to the linkers (ADR-0064, piece b).
     """
-    aliases: dict[str, str] = {}
 
+    namespaces: list[str]
+    type_aliases: dict[str, str]
+    path_hints: dict[str, str]
+    scope: ImportScope
+
+
+#: A dotted path of identifiers: what an alias target must be to name a type
+#: or namespace the table can point at (a tuple alias, C# 12, is not one).
+_DOTTED_PATH = re.compile(r"@?[A-Za-z_]\w*(\.@?[A-Za-z_]\w*)*")
+
+
+def _strip_type_arguments(text: str) -> str:
+    """``A.B<C<D>>.E`` -> ``A.B.E``: every balanced ``<...>`` removed, and a
+    leading ``global::`` (the global namespace, already where a full name
+    starts)."""
+    out: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth = max(depth - 1, 0)
+        elif depth == 0:
+            out.append(ch)
+    stripped = "".join(out).replace(" ", "")
+    return stripped[len("global::"):] if stripped.startswith("global::") else stripped
+
+
+def _csharp_usings(tree: "tree_sitter.Tree", source: bytes) -> _CSharpUsings:
+    """Every ``using`` directive of a file, read once (see :class:`_CSharpUsings`).
+
+    The table (``scope``): ``using N;`` and ``global using N;`` bring every
+    type of namespace ``N`` into scope (``add_open_wildcard``); an alias
+    ``using A = X.Y.Z;`` names one type or namespace (``add_named(module=
+    "X.Y", name="Z", alias="A")``, ``module=""`` for ``using A = B;``), its
+    type arguments dropped. ``using static X.T;`` brings T's static MEMBERS
+    into scope by bare name, which the table cannot say: nothing is recorded
+    for it, and a bare call to such a member stays unresolved.
+    """
+    namespaces: list[str] = []
+    type_aliases: dict[str, str] = {}
+    path_hints: dict[str, str] = {}
+    scope = ImportScope()
     for node in iter_tree(tree.root_node):
         if node.type != "using_directive":
             continue
-
-        # Check if this is an aliased using (has = child)
-        # Structure: using_directive { identifier, =, qualified_name }
-        has_equals = any(child.type == "=" for child in node.children)
-
-        if has_equals:
-            # Handle 'using Alias = Namespace.Type;' (aliased using)
-            # First identifier is the alias, qualified_name is the path
-            alias_node = find_child_by_type(node, "identifier")
-            path_node = find_child_by_type(node, "qualified_name")
-            if alias_node and path_node:
-                alias = node_text(alias_node, source)
-                full_path = node_text(path_node, source)
-                if alias and full_path:
-                    aliases[alias] = full_path
+        static = any(c.type == "static" for c in node.children)
+        qualified = find_child_by_type(node, "qualified_name")
+        first_id = find_child_by_type(node, "identifier")
+        equals = next((i for i, c in enumerate(node.children) if c.type == "="), None)
+        if equals is not None:
+            if first_id is None or equals + 1 >= len(node.children):
+                continue  # pragma: no cover - the grammar names an alias and its target
+            alias = node_text(first_id, source)
+            if qualified is not None:
+                path_hints[alias] = node_text(qualified, source)
+                if not static:
+                    type_aliases[alias] = node_text(qualified, source)
+            target = _strip_type_arguments(node_text(node.children[equals + 1], source))
+            module, _, name = target.rpartition(".")
+            if _DOTTED_PATH.fullmatch(target) is None:
+                # Not a type or namespace path (a tuple): the alias still
+                # shadows, and names nothing the repository declares.
+                module, name = "", target
+            scope.add_named(module=module, name=name, alias=alias)
             continue
-
-        # Handle regular 'using Namespace.Type;'
-        name_node = find_child_by_type(node, "qualified_name")
-        if name_node:
-            full_path = node_text(name_node, source)
-            if full_path and "." in full_path:
-                # Last segment is the imported name
-                name = full_path.rsplit(".", 1)[-1]
-                if name:
-                    aliases[name] = full_path
+        if qualified is not None:
+            full_path = node_text(qualified, source)
+            if "." in full_path:
+                path_hints[full_path.rsplit(".", 1)[-1]] = full_path
+        elif first_id is not None:
+            path_hints[node_text(first_id, source)] = node_text(first_id, source)
+        target_node = qualified or first_id
+        if static or target_node is None:
             continue
-
-        # Handle simple 'using Namespace;'
-        id_node = find_child_by_type(node, "identifier")
-        if id_node:
-            name = node_text(id_node, source)
-            if name:
-                aliases[name] = name
-
-    return aliases
+        namespaces.append(node_text(target_node, source))
+        scope.add_open_wildcard(_strip_type_arguments(node_text(target_node, source)))
+    return _CSharpUsings(namespaces, type_aliases, path_hints, scope)
 
 
 def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -955,36 +1008,6 @@ def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
     return base_classes
 
 
-def _csharp_using_scope(
-    tree: "tree_sitter.Tree", source: bytes,
-) -> tuple[list[str], dict[str, str]]:
-    """``(namespaces, type_aliases)`` a file's ``using`` directives bring in.
-
-    WI-pivap. ``using System;`` / ``using System.IO;`` import a NAMESPACE, so a
-    bare base names a type of one of them (or of the file's own namespace
-    chain); ``using Alias = X.Y.Z;`` names one type. ``using static`` imports
-    members, not types, and is skipped.
-    """
-    namespaces: list[str] = []
-    aliases: dict[str, str] = {}
-    for node in iter_tree(tree.root_node):
-        if node.type != "using_directive":
-            continue
-        if any(c.type == "static" for c in node.children):
-            continue
-        target = find_child_by_type(node, "qualified_name") or None
-        if any(c.type == "=" for c in node.children):
-            alias = find_child_by_type(node, "identifier")
-            if alias is not None and target is not None:
-                aliases[node_text(alias, source)] = node_text(target, source)
-            continue
-        if target is None:
-            target = find_child_by_type(node, "identifier")
-        if target is not None:
-            namespaces.append(node_text(target, source))
-    return namespaces, aliases
-
-
 #: The node types that declare a type name in a C# file.
 _CSHARP_TYPE_DECLARATION_NODES = frozenset({
     "class_declaration", "struct_declaration", "interface_declaration",
@@ -1008,13 +1031,15 @@ _CSHARP_KEYWORD_TYPES: dict[str, str] = {
 }
 
 
-def _csharp_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames:
+def _csharp_type_names(
+    tree: "tree_sitter.Tree", source: bytes, usings: _CSharpUsings,
+) -> FileTypeNames:
     """What the file's ``using`` directives make a type name mean (WI-palus,
     scheme v17), and which spelling of a built-in type is hashed (WI-juzom,
     scheme v19).
 
     Bound: each alias, ``using Str = System.String;`` (and ``global using``),
-    to what it names (:func:`_csharp_using_scope`), so ``Str`` and
+    to what it names (:func:`_csharp_usings`), so ``Str`` and
     ``System.String`` hash alike, and ``Gen.List`` under ``using Gen =
     System.Collections.Generic;`` is ``System.Collections.Generic.List``. A
     ``using System;`` imports a namespace and binds no other name the file
@@ -1027,7 +1052,7 @@ def _csharp_type_names(tree: "tree_sitter.Tree", source: bytes) -> FileTypeNames
     ``String`` the file declares keeps its name. Declared: every type the file
     declares.
     """
-    namespaces, aliases = _csharp_using_scope(tree, source)
+    namespaces, aliases = usings.namespaces, usings.type_aliases
     declared = set()
     for node in iter_tree(tree.root_node):
         if node.type in _CSHARP_TYPE_DECLARATION_NODES:
@@ -1067,8 +1092,10 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
     rel_path: str,
-) -> FileAnalysis:
-    """Extract symbols from a single C# file.
+) -> tuple[FileAnalysis, Optional[ImportScope]]:
+    """Extract symbols from a single C# file, and the table of its ``using``
+    directives (:func:`_csharp_usings`; ``None`` for a file that could not be
+    read).
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
@@ -1086,11 +1113,12 @@ def _extract_symbols_from_file(
         tree = parser.parse(source)
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
-        return FileAnalysis()
+        return FileAnalysis(), None
     record_partial_parse(run, rel_path, tree)  # WI-bulaz
+    usings = _csharp_usings(tree, source)
     # WI-palus: every type a stable id hashes is written through the aliases.
-    with resolving_type_names(_csharp_type_names(tree, source)):
-        return _extract_parsed_symbols(file_path, source, tree, run, rel_path)
+    with resolving_type_names(_csharp_type_names(tree, source, usings)):
+        return _extract_parsed_symbols(file_path, source, tree, run, rel_path, usings), usings.scope
 
 
 def _extract_parsed_symbols(
@@ -1099,6 +1127,7 @@ def _extract_parsed_symbols(
     tree: "tree_sitter.Tree",
     run: AnalysisRun,
     rel_path: str,
+    usings: _CSharpUsings,
 ) -> FileAnalysis:
     """The symbols of one parsed C# file (:func:`_extract_symbols_from_file`)."""
 
@@ -1109,11 +1138,8 @@ def _extract_parsed_symbols(
     # make_typed_stable_id's containing slot below.
     file_stable_id = make_file_stable_id("csharp", normalize_path(rel_path))
 
-    # Extract using aliases for disambiguation
-    using_aliases = _extract_using_aliases(tree, source)
-    using_namespaces, using_type_aliases = _csharp_using_scope(tree, source)
-
-    analysis = FileAnalysis(import_aliases=using_aliases)
+    using_namespaces, using_type_aliases = usings.namespaces, usings.type_aliases
+    analysis = FileAnalysis(import_aliases=usings.path_hints)
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the declared name from a declaration node.
@@ -1751,6 +1777,79 @@ def _csharp_unresolved_module(
     return "external"
 
 
+#: A declaration of a local name inside a function, by the field that names
+#: it (a ``variable_declarator`` and a lambda's ``implicit_parameter`` are
+#: read apart): what makes ``x`` in ``x.M()`` a variable and not a type.
+_CSHARP_LOCAL_NAME_FIELDS: dict[str, str] = {
+    "parameter": "name", "foreach_statement": "left",
+    "catch_declaration": "name", "declaration_pattern": "name",
+    "declaration_expression": "name",
+}
+
+
+def _declared_local_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The local names ``node`` declares: a variable (``var x``, ``Foo x``,
+    ``var (a, b)``), a parameter (of a member, a local function or a lambda),
+    a ``foreach`` / ``catch`` / pattern / ``out var`` variable. Empty for any
+    other node. Each is a declaration by the grammar, so a name found here IS
+    a variable; a variable this misses is only not known to be one."""
+    if node.type == "implicit_parameter":
+        return [node_text(node, source)]
+    if node.type == "variable_declarator":
+        tuple_pattern = find_child_by_type(node, "tuple_pattern")
+        names = (
+            [c for c in tuple_pattern.children if c.type == "identifier"]
+            if tuple_pattern is not None
+            else _find_children_by_type(node, "identifier")[:1]
+        )
+        return [node_text(n, source) for n in names]
+    field = _CSHARP_LOCAL_NAME_FIELDS.get(node.type)
+    named = node.child_by_field_name(field) if field is not None else None
+    if named is not None and named.type == "identifier":
+        return [node_text(named, source)]
+    return []
+
+
+def _local_function_in_scope(
+    node: "tree_sitter.Node", name: str, source: bytes,
+) -> bool:
+    """Whether a local function called ``name`` is visible at ``node``: one
+    declared in a block (or a top-level statement) that encloses ``node``. C#
+    makes a local function visible throughout its block, before its
+    declaration too, and it hides a member of the same name. A local function
+    has no symbol, so such a call is to nothing the graph holds."""
+    current = node.parent
+    while current is not None and current.type not in _CSHARP_TYPE_DECLS:
+        for child in current.children:
+            if child.type == "global_statement" and child.named_children:
+                child = child.named_children[0]
+            if child.type == "local_function_statement":
+                declared = child.child_by_field_name("name")
+                if declared is not None and node_text(declared, source) == name:
+                    return True
+        current = current.parent
+    return False
+
+
+def _dotted_receiver(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The receiver as a dotted name when it can name a type or a namespace
+    path (``Util``, ``Ns.Util``, ``List<int>`` as ``List``), else None (a
+    call, ``this``, an indexer, a literal ...)."""
+    if node.type == "identifier":
+        return node_text(node, source)
+    if node.type == "generic_name":
+        head = find_child_by_type(node, "identifier")
+        return node_text(head, source) if head is not None else None
+    if node.type == "member_access_expression":
+        expression = node.child_by_field_name("expression")
+        name = node.child_by_field_name("name")
+        if expression is None or name is None or name.type != "identifier":
+            return None
+        owner = _dotted_receiver(expression, source)
+        return f"{owner}.{node_text(name, source)}" if owner else None
+    return None
+
+
 def _resolve_member_chain(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1852,10 +1951,10 @@ def _extract_edges_from_file(
     run: AnalysisRun,
     resolver: NameResolver | None = None,
     using_aliases: dict[str, str] | None = None,
-    method_resolver: ListNameResolver | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
     global_ctors: dict[str, list[Symbol]] | None = None,
     file_symbols: list[Symbol] | None = None,
+    type_name_counts: dict[str, int] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -1864,10 +1963,35 @@ def _extract_edges_from_file(
     Type inference tracks types from:
     - Constructor calls: var db = new Database() -> db has type Database
     - Method/constructor parameters: void Process(Database db) -> db has type Database
+    - Fields, and a call this file resolves whose declared return type is a
+      type name: var db = GetDb() -> db has the type GetDb returns
+
+    A CALL IS BOUND HERE ONLY ON EVIDENCE C# ITSELF USES (ADR-0064): the
+    enclosing type's own method in this file (``own_type``), and a method of
+    the receiver's known type in this file (``receiver_type``). Anything else
+    is emitted unresolved WITH the facts the shared pass reads, and the
+    ``inherited_calls`` linker decides from the file's ``using`` table
+    (``AnalysisResult.import_scopes``) and the caller's namespaces:
+
+    - a receiver of known type: ``receiver_type_hint``, the type as written;
+    - a receiver that names a type or a namespace path (``Util.Helper()``,
+      ``Ns.Util.Helper()``) and is no variable or member known here:
+      ``qualifier``, the receiver as written;
+    - a bare call, ``this.M()``, ``base.M()``: ``enclosing_class``, unless a
+      local function or a local variable of that name is in scope (then it
+      calls nothing the graph holds).
+
+    Neither the file's short-name table nor a run-wide lookup of the callee's
+    name is a reason to bind a call any more: a name looked up among every
+    declaration was wrong about half the time when the name had a second
+    holder (ADR-0064, the sample). ``new T()`` (R10 to R12) is unchanged but
+    for one rule: a type found by name alone is not bound when the run holds
+    more than one type of that name (``type_name_counts``).
 
     Args:
-        using_aliases: Optional dict mapping type names to namespace paths for disambiguation.
+        using_aliases: Local name -> dotted path, the ``new T()`` lookup's path hint.
         field_type_registry: Aggregated class→{field→type} map for chained field resolution.
+        type_name_counts: Type name -> how many types of the run declare it.
     """
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per name.
@@ -1880,6 +2004,8 @@ def _extract_edges_from_file(
         using_aliases = {}
     if global_ctors is None:  # pragma: no cover - defensive default
         global_ctors = {}
+    if type_name_counts is None:  # pragma: no cover - defensive default
+        type_name_counts = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -1895,26 +2021,94 @@ def _extract_edges_from_file(
     # parameter closes with the member, local function or lambda that binds it
     # (``ScopedVarTypes``, INV-zabud); a field is bound for the file.
     var_types = ScopedVarTypes()
+    # Every local name declared so far in the open functions, typed or not
+    # (``_declared_local_names``): a receiver or a bare callee of that name is
+    # a variable, never a type or a member.
+    declared_locals = ScopedVarTypes()
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
-        """Extract the method name being called from an invocation expression."""
-        # Find the expression being invoked (function part before argument_list)
-        for child in node.children:
-            if child.type == "member_access_expression":
-                # e.g., Console.WriteLine or obj.Method
-                # Get the last identifier (the method name)
-                identifiers = _find_children_by_type(child, "identifier")
-                if identifiers:
-                    return node_text(identifiers[-1], source)
-            elif child.type == "identifier":
-                # Direct function call
-                return node_text(child, source)
-        return None  # pragma: no cover - defensive
+        """The name of the method an invocation calls: the member's name of
+        ``x.M()`` (``M`` of ``x.M<T>()`` too), the identifier of ``M()``;
+        None for any other callee (``x?.M()``, ``M<T>()``)."""
+        function = node.child_by_field_name("function")
+        if function is not None and function.type == "member_access_expression":
+            name = function.child_by_field_name("name")
+            if name is not None and name.type == "generic_name":
+                name = find_child_by_type(name, "identifier")
+            return node_text(name, source) if name is not None else None
+        if function is not None and function.type == "identifier":
+            return node_text(function, source)
+        return None
+
+    def bind(
+        caller: Symbol, call: "tree_sitter.Node", callee: Symbol,
+        mark: str, meta: dict[str, object],
+    ) -> None:
+        """A resolved call edge, and the type its result gives a variable."""
+        edges.append(Edge.create(
+            src=caller.id,
+            dst=callee.id,
+            edge_type="calls",
+            line=call.start_point[0] + 1,
+            evidence_type="ast_call",
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            meta=meta,
+            resolved_by=mark,
+        ))
+        _track_csharp_return_type(callee, call, source, var_types)
+
+    def file_target(call: "tree_sitter.Node") -> Optional[Symbol]:
+        """The declaration of this file a call reaches on C#'s own evidence:
+        a bare / ``this.`` call to the enclosing type's method, or a call on a
+        receiver of known type to that type's method. (``base.M()`` never
+        reaches the enclosing type's own ``M``.)"""
+        callee = get_callee_name(call)
+        function = call.child_by_field_name("function")
+        receiver = (
+            function.child_by_field_name("expression")
+            if function is not None and function.type == "member_access_expression"
+            else None
+        )
+        if callee is None or (receiver is not None and receiver.type == "base"):
+            return None
+        if receiver is None or receiver.type == "this":
+            enclosing = _get_enclosing_class(call, source)
+            return local_symbols.get(f"{enclosing}.{callee}") if enclosing else None
+        owner = receiver_type(receiver)
+        return local_symbols.get(f"{owner}.{callee}") if owner else None
+
+    def receiver_type(receiver: "tree_sitter.Node") -> Optional[str]:
+        """The receiver's type as the source writes it, when this file knows
+        it: a typed variable, parameter or field (``var_types``), ``this._f``,
+        ``new T(...)``, or a call this file resolves whose declared return
+        type is a type name (``GetDb().Execute()``)."""
+        if receiver.type == "identifier":
+            return var_types.get(node_text(receiver, source))
+        if receiver.type == "member_access_expression":
+            owner = receiver.child_by_field_name("expression")
+            name = receiver.child_by_field_name("name")
+            if owner is not None and owner.type == "this" and name is not None:
+                return var_types.get(node_text(name, source))
+            return None
+        if receiver.type == "object_creation_expression":
+            created = receiver.child_by_field_name("type")
+            return node_text(created, source) if created is not None else None
+        if receiver.type == "invocation_expression":
+            called = file_target(receiver)
+            if called is not None and called.kind == "method":
+                return _extract_csharp_return_type_name(called.signature)
+        return None
 
     for node in iter_tree(tree.root_node):
         var_types.close_scopes_before(node)
+        declared_locals.close_scopes_before(node)
         if node.type in _CSHARP_VARIABLE_SCOPE_NODES:
             var_types.open_scope(node)
+            declared_locals.open_scope(node)
+        if declared_locals.scope_end is not None:
+            for local_name in _declared_local_names(node, source):
+                declared_locals[local_name] = ""
         # Using directive
         if node.type == "using_directive":
             # Get the namespace being imported
@@ -1975,294 +2169,112 @@ def _extract_edges_from_file(
                 or enclosing_declared_symbol(node, decl_index, _CSHARP_TYPE_BODY_NODES)
                 or file_anchor
             )
-            if current_function is not None:
-                # An explicit receiver identifier (``Helper`` in ``Helper.Foo()``)
-                # is captured inside the member_access branch below; initialize it
-                # here so the shared fallback path (which also handles genuinely
-                # BARE calls, where no receiver exists) can safely read it for the
-                # INV-fahub magnet gate.
-                receiver_name = None
-                # Check for member_access_expression (receiver.method() pattern)
-                member_access = find_child_by_type(node, "member_access_expression")
-                if member_access:
-                    # Try chained field resolution: this._a._b.Method()
-                    # The receiver (everything except the final identifier) is
-                    # walked through the field_type_registry to resolve the type.
-                    if field_type_registry:
-                        chain_ids = _find_children_by_type(member_access, "identifier")
-                        if chain_ids:
-                            method_name_chain = node_text(chain_ids[-1], source)
-                            receiver_node = find_child_by_type(
-                                member_access, "member_access_expression"
-                            )
-                            if receiver_node:
-                                enclosing_cls = _get_enclosing_class(node, source)
-                                resolved_type = _resolve_member_chain(
-                                    receiver_node, source,
-                                    field_type_registry, enclosing_cls,
-                                )
-                                if resolved_type and method_name_chain:
-                                    qname = f"{resolved_type}.{method_name_chain}"
-                                    if qname in local_symbols:
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=local_symbols[qname].id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="ast_call",
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            meta={"call_construct": "method", "receiver": "field_chain"},
-                                            resolved_by=resolved_by.RECEIVER_TYPE,
-                                        ))
-                                        _track_csharp_return_type(
-                                            local_symbols[qname], node, source,
-                                            var_types, local_symbols,
-                                        )
-                                        continue
-                                    lookup = resolver.lookup(qname, caller_path=_caller_path)
-                                    if lookup.found and lookup.symbol is not None:
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=lookup.symbol.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="ast_call",
-                                            resolution_score=lookup.confidence,
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            meta={"call_construct": "method", "receiver": "field_chain"},
-                                            resolved_by=resolved_by.RECEIVER_TYPE,
-                                        ))
-                                        _track_csharp_return_type(
-                                            lookup.symbol, node, source,
-                                            var_types, local_symbols,
-                                        )
-                                        continue
+            callee_name = get_callee_name(node)
+            if callee_name is None:
+                continue
+            line = node.start_point[0] + 1
+            enclosing_cls = _get_enclosing_class(node, source)
+            function = node.child_by_field_name("function")
+            receiver = (
+                function.child_by_field_name("expression")
+                if function is not None and function.type == "member_access_expression"
+                else None
+            )
 
-                    # Extract receiver and method name
-                    identifiers = _find_children_by_type(member_access, "identifier")
-                    receiver_name = None
-                    method_name = None
-                    if len(identifiers) >= 2:
-                        receiver_name = node_text(identifiers[0], source)
-                        method_name = node_text(identifiers[-1], source)
-                    elif len(identifiers) == 1:
-                        # Nested: this._field.Method() — inner is
-                        # member_access_expression(this, _field)
-                        method_name = node_text(identifiers[0], source)
-                        inner = find_child_by_type(
-                            member_access, "member_access_expression"
-                        )
-                        if inner:
-                            inner_ids = _find_children_by_type(
-                                inner, "identifier"
-                            )
-                            this_node = find_child_by_type(inner, "this")
-                            if this_node and inner_ids:
-                                receiver_name = node_text(
-                                    inner_ids[-1], source
-                                )
-                    if receiver_name and method_name:
+            # A bare call, ``this.M()``, ``base.M()``: the enclosing type's own
+            # method in this file; else the linker walks the type's ancestors
+            # from the caller's own type (ADR-0029). A local function or a
+            # local variable of that name hides every member: the call reaches
+            # nothing the graph holds. ``base.M()`` calls the BASE type's M,
+            # never the enclosing type's own (the override it is usually
+            # written in): where the own type declares M no fact the shared
+            # pass reads says "start at the parent", so that call stays
+            # unresolved; where it does not, the walk from the own type is the
+            # walk from its base.
+            if receiver is None or receiver.type in ("this", "base"):
+                hidden = receiver is None and (
+                    callee_name in declared_locals
+                    or _local_function_in_scope(node, callee_name, source)
+                )
+                own = (
+                    local_symbols.get(f"{enclosing_cls}.{callee_name}")
+                    if enclosing_cls and not hidden else None
+                )
+                if own is not None and receiver is not None and receiver.type == "base":
+                    hidden = True
+                    own = None
+                if own is not None:
+                    bind(current_function, node, own, resolved_by.OWN_TYPE,
+                         {"call_construct": "method"})
+                else:
+                    edges.append(make_unresolved_edge(
+                        "csharp", current_function.id, callee_name, line,
+                        PASS_ID, run.execution_id,
+                        enclosing_class=None if hidden else enclosing_cls,
+                    ))
+                continue
 
-                        # Try type inference: receiver.method() -> ClassName.method
-                        if receiver_name in var_types:
-                            class_name = var_types[receiver_name]
-                            qualified_name = f"{class_name}.{method_name}"
-                            if qualified_name in local_symbols:
-                                callee = local_symbols[qualified_name]
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=callee.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method", "resolution_quality": "type_inferred"},
-                                    resolved_by=resolved_by.RECEIVER_TYPE,
-                                ))
-                                _track_csharp_return_type(
-                                    callee, node, source, var_types, local_symbols
-                                )
-                                continue
-                            else:
-                                # Use type's import path for disambiguation
-                                import_hint = using_aliases.get(class_name)
-                                lookup_result = resolver.lookup(qualified_name, path_hint=import_hint, caller_path=_caller_path)
-                                if lookup_result.found and lookup_result.symbol is not None:
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=lookup_result.symbol.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        evidence_type="ast_call",
-                                        resolution_score=lookup_result.confidence,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        meta={"call_construct": "method", "resolution_quality": "type_inferred"},
-                                        resolved_by=resolved_by.RECEIVER_TYPE,
-                                    ))
-                                    _track_csharp_return_type(
-                                        lookup_result.symbol, node, source,
-                                        var_types, local_symbols,
-                                    )
-                                    continue
+            # An explicit receiver. The module slot keeps its old spelling: a
+            # receiver identifier (``this._f``'s field) when it names a type.
+            receiver_name: Optional[str] = None
+            if receiver.type == "identifier":
+                receiver_name = node_text(receiver, source)
+            elif receiver.type == "member_access_expression":
+                owner = receiver.child_by_field_name("expression")
+                field_name = receiver.child_by_field_name("name")
+                if owner is not None and owner.type == "this" and field_name is not None:
+                    receiver_name = node_text(field_name, source)
+            unresolved_module = _csharp_unresolved_module(
+                receiver_name, var_types, local_symbols, enclosing_cls,
+            )
 
-                # Fallback to original simple name resolution
-                callee_name = get_callee_name(node)
-                if callee_name:
-                    # AMB-METHOD guard: when 3+ classes define the same
-                    # method name, suppress the edge to avoid false positives.
-                    _unresolved_module = _csharp_unresolved_module(
-                        receiver_name, var_types, local_symbols,
-                        _get_enclosing_class(node, source),
-                    )
-                    if method_resolver is not None:
-                        if method_resolver.too_ambiguous(callee_name):
-                            # 3+ method candidates: no BINDING (the guard is
-                            # right), but the call still happened, so it is
-                            # emitted unresolved (INV-bamij).
-                            edges.append(make_unresolved_edge(
-                                "csharp", current_function.id, callee_name,
-                                node.start_point[0] + 1, PASS_ID,
-                                run.execution_id,
-                                module_hint=_unresolved_module,
-                                call_construct=(
-                                    "method" if receiver_name else None
-                                ),
-                            ))
-                            continue
-                    # Check local symbols first. ``local_symbols`` holds every
-                    # method under its bare name too, last one in the file
-                    # winning, so prefer the scope's own ``Type.callee``; a bare
-                    # call's short-name hit on another type's method is the
-                    # INV-fahub magnet and goes to the guarded resolver path
-                    # below (WI-zukat: otherwise ``Helper()`` in a record would
-                    # bind to an ``Other.Helper`` declared after it).
-                    _local_scope = receiver_name or _get_enclosing_class(node, source)
-                    local_callee: Optional[Symbol] = (
-                        local_symbols.get(f"{_local_scope}.{callee_name}")
-                        if _local_scope else None
-                    )
-                    # ``Helper.Process()`` names its owner; a bare call found
-                    # under the enclosing type is the implicit receiver.
-                    _by = resolved_by.QUALIFIED if receiver_name else resolved_by.OWN_TYPE
-                    if local_callee is None and callee_name in local_symbols:
-                        _short = local_symbols[callee_name]
-                        if receiver_name or not defer_bare_method_call(
-                            _short.kind, _short.name, "suffix", _local_scope,
-                        ):
-                            local_callee = _short
-                            # The file's bare-name table, last declaration
-                            # winning: nothing but the file scoped it.
-                            _by = resolved_by_for_bare_call(
-                                _short.kind, _short.name,
-                                resolved_by.SAME_FILE, _local_scope,
-                            )
-                    if local_callee is not None:
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=local_callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="ast_call",
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            meta={"call_construct": "method"},
-                            resolved_by=_by,
-                        ))
-                        _track_csharp_return_type(
-                            local_callee, node, source, var_types, local_symbols
-                        )
-                    # Check global symbols via resolver
-                    else:
-                        import_hint = using_aliases.get(callee_name)
-                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
-                            # INV-fahub: resolving a bare / implicit-``this`` call
-                            # to a DIFFERENT class's ``method`` on a weak short-name
-                            # suffix match is the magnet (dozens of call sites -> one
-                            # arbitrary ``Owner.method``). ``get_callee_name`` drops
-                            # the receiver, so this fallback is shared by BARE calls
-                            # (``Foo()`` / ``this.Foo()`` — no receiver) and by
-                            # class-qualified static calls (``Helper.Process()`` —
-                            # ``receiver_name`` names the owning type). Compare the
-                            # resolved owner against the call's scope: the explicit
-                            # receiver when present (an explicit qualified call is not
-                            # a magnet), else the enclosing type (implicit ``this``).
-                            # A genuine cross-scope suffix match is withheld with the
-                            # enclosing class stamped so the inherited_calls Site-1
-                            # walker can later recover a real inherited implicit-
-                            # ``this`` call; free/non-method targets and same-scope
-                            # (incl. cross-file ``partial``) methods still bind.
-                            _sym = lookup_result.symbol
-                            _enclosing_type = _get_enclosing_class(node, source)
-                            _scope_type = receiver_name or _enclosing_type
-                            if defer_bare_method_call(
-                                _sym.kind, _sym.name,
-                                lookup_result.match_type, _scope_type,
-                            ):
-                                edges.append(make_unresolved_edge(
-                                    "csharp", current_function.id, callee_name,
-                                    node.start_point[0] + 1, PASS_ID,
-                                    run.execution_id,
-                                    module_hint=import_hint or "external",
-                                    dst_ref=(
-                                        ExternalRef(
-                                            lang="csharp",
-                                            module_path=import_hint,
-                                            name=callee_name,
-                                        )
-                                        if import_hint else None
-                                    ),
-                                    enclosing_class=_enclosing_type,
-                                ))
-                            else:
-                                _scoped_by = resolved_by_for_bare_call(
-                                    _sym.kind, _sym.name,
-                                    lookup_result.resolved_by, _scope_type,
-                                )
-                                if receiver_name and _scoped_by == resolved_by.OWN_TYPE:
-                                    # ``Helper.Process()``: the owner is named
-                                    # at the call site, not implied.
-                                    _scoped_by = resolved_by.QUALIFIED
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=_sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method"},
-                                    resolved_by=_scoped_by,
-                                ))
-                                _track_csharp_return_type(
-                                    _sym, node, source,
-                                    var_types, local_symbols,
-                                )
-                        else:
-                            # INV-bamij (csharp): the resolver placed the
-                            # name nowhere -- a framework call such as
-                            # ``File.ReadAllText`` -- and it is still emitted,
-                            # unresolved, so external calls do not vanish.
-                            edges.append(make_unresolved_edge(
-                                "csharp", current_function.id, callee_name,
-                                node.start_point[0] + 1, PASS_ID,
-                                run.execution_id,
-                                module_hint=_unresolved_module,
-                                call_construct=(
-                                    "method" if receiver_name else None
-                                ),
-                                # A tie among methods is not guessed (WI-jomik):
-                                # it is deferred exactly as a weak pick is.
-                                enclosing_class=(
-                                    _get_enclosing_class(node, source)
-                                    if defer_unresolved_tie(lookup_result) else None
-                                ),
-                            ))
+            # The receiver's type: a field chain from ``this`` (R1), else what
+            # this file knows of the receiver (R3).
+            known_type: Optional[str] = None
+            meta: dict[str, object] = {"call_construct": "method"}
+            if receiver.type == "member_access_expression" and field_type_registry:
+                known_type = _resolve_member_chain(
+                    receiver, source, field_type_registry, enclosing_cls,
+                )
+                if known_type is not None:
+                    meta["receiver"] = "field_chain"
+            if known_type is None:
+                known_type = receiver_type(receiver)
+                meta["resolution_quality"] = "type_inferred"
+            if known_type is not None:
+                target = local_symbols.get(f"{known_type}.{callee_name}")
+                if target is not None:
+                    bind(current_function, node, target, resolved_by.RECEIVER_TYPE, meta)
+                else:
+                    edges.append(make_unresolved_edge(
+                        "csharp", current_function.id, callee_name, line,
+                        PASS_ID, run.execution_id,
+                        module_hint=unresolved_module,
+                        receiver_type_hint=_strip_type_arguments(known_type),
+                        call_construct="method",
+                    ))
+                continue
+
+            # No type known. A receiver that can name a type or a namespace
+            # path is handed over as written; the linker binds it only if a
+            # type of that name is visible from the caller. A name this file
+            # knows as a variable, or as a member of the enclosing type, is
+            # not a type: the call stays unresolved with no owner.
+            qualifier = _dotted_receiver(receiver, source)
+            if qualifier is not None:
+                head = qualifier.split(".", 1)[0]
+                if (
+                    head in var_types or head in declared_locals
+                    or f"{enclosing_cls}.{head}" in local_symbols
+                ):
+                    qualifier = None
+            edges.append(make_unresolved_edge(
+                "csharp", current_function.id, callee_name, line,
+                PASS_ID, run.execution_id,
+                module_hint=unresolved_module,
+                call_construct="method",
+                qualifier=qualifier,
+            ))
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
@@ -2341,7 +2353,16 @@ def _extract_edges_from_file(
                     # Use import path for disambiguation
                     import_hint = using_aliases.get(type_name)
                     lookup_result = resolver.lookup(type_name, path_hint=import_hint, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    if (
+                        lookup_result.found and lookup_result.symbol is not None
+                        # Found by its name alone, and another type of the run
+                        # has that name: which one the file means is not known
+                        # here (no declaration index), and a pick is a guess.
+                        and not (
+                            lookup_result.resolved_by == resolved_by.NAME
+                            and type_name_counts.get(type_name, 0) > 1
+                        )
+                    ):
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=lookup_result.symbol.id,
@@ -2625,6 +2646,10 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
 
         # Pass 1: Extract all symbols
         file_analyses: dict[Path, FileAnalysis] = {}
+        # What each file's ``using`` directives bind (ADR-0064, piece b), by
+        # the path ``Symbol.path`` spells; every file read gets one, an empty
+        # one too: its presence says this analyzer hands its calls over.
+        import_scopes: dict[str, ImportScope] = {}
         files_skipped = 0
 
         for cs_file in find_csharp_files(repo_root):
@@ -2636,7 +2661,9 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             # find_csharp_files(repo_root) is ABSOLUTE; folding it would make
             # stable_ids location-dependent (the absolute-path regression trap).
             rel_path = str(cs_file.relative_to(repo_root))
-            analysis = _extract_symbols_from_file(cs_file, parser, run, rel_path)
+            analysis, import_scope = _extract_symbols_from_file(cs_file, parser, run, rel_path)
+            if import_scope is not None:
+                import_scopes[str(cs_file)] = import_scope
             if analysis.symbols:
                 # WI-lutob: this override bypasses the base analyze()'s shape_id
                 # auto-stamp loop; stamp it here from node_for_symbol.
@@ -2647,8 +2674,9 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
 
         # Build global symbol registry
         global_symbols: dict[str, Symbol] = {}
-        # AMB-METHOD: multi-value method registry for ambiguity guard
-        global_methods: dict[str, list[Symbol]] = {}
+        # How many types of the run share each name: a ``new T()`` found by
+        # name alone is not bound when T has a namesake (R12).
+        type_name_counts: dict[str, int] = {}
         # WI-mivav: multi-value ctor registry (global_symbols collapses
         # overloads); keyed by the `Type.Type` name so the object-creation site
         # can pick the arity-matching overload.
@@ -2656,9 +2684,8 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
-                if symbol.kind == "method":
-                    short = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-                    global_methods.setdefault(short, []).append(symbol)
+                if symbol.kind in _CSHARP_TYPE_SYMBOL_KINDS:
+                    type_name_counts[symbol.name] = type_name_counts.get(symbol.name, 0) + 1
                 elif symbol.kind == "constructor":
                     global_ctors.setdefault(symbol.name, []).append(symbol)
 
@@ -2673,7 +2700,6 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
 
         # Pass 2: Extract edges
         resolver = NameResolver(global_symbols)
-        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
 
@@ -2683,10 +2709,10 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             edges = _extract_edges_from_file(
                 cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
                 using_aliases=analysis.import_aliases,
-                method_resolver=method_resolver,
                 field_type_registry=field_type_registry,
                 global_ctors=global_ctors,
                 file_symbols=analysis.symbols,
+                type_name_counts=type_name_counts,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
@@ -2711,6 +2737,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             symbols=all_symbols,
             edges=all_edges,
             run=run,
+            import_scopes=import_scopes,
         )
 
 
