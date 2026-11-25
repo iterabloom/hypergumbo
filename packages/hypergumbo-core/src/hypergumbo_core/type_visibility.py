@@ -37,8 +37,10 @@ because its declarations carry no namespace:
 4. ``ns.Name`` with ``ns`` a namespace binding (``import * as ns``, ``use
    crate::db;``): the declaration ``Name`` of that file.
 
-Nothing else is visible: a global, a library type and a name re-exported
-through another file all come back empty.
+A file that an import names and that does not declare the name is followed
+to the file that does (``declaring_files``: a barrel ``index.ts``, a crate's
+``pub use``), when the caller passes every file's table. Nothing else is
+visible: a global and a library type come back empty.
 
 The answer is a list: empty when no declaration of that name is visible from
 here (the name is then a type of a library, or of nothing: it must not be
@@ -49,8 +51,7 @@ it did before.
 
 WHAT THIS DOES NOT DO. It does not hold an index: the caller supplies a
 function from a short name to the declarations of the kinds and language it
-wants. It does not follow a re-export (``export {a} from './b'``, ``pub
-use``): the binding then names a file that does not declare the name.
+wants.
 It does not tell a generic type from a non-generic one of the same name
 (``Policy`` and ``Policy<TResult>`` have one qualified name): the caller
 does, with ``written_arity`` and what its declarations record.
@@ -60,7 +61,7 @@ derived class) are not searched.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Mapping, Sequence
 
 from .import_scope import MODULES_ARE_FILES
 
@@ -138,22 +139,74 @@ def _enclosing_scopes(caller_qualified_name: str | None) -> list[str]:
     return [".".join(parts[:n]) for n in range(len(parts), 0, -1)] + [""]
 
 
+#: How many files a name is followed through before the search gives up: a
+#: re-export chain longer than this is not code a person wrote.
+_FOLLOW_DEPTH = 8
+
+
+def declaring_files(
+    module: str,
+    name: str,
+    declares: Callable[[str, str], bool],
+    scopes: Mapping[str, "ImportScope"],
+) -> list[tuple[str, str]]:
+    """Where ``name``, imported from the file ``module``, is DECLARED: the
+    ``(file, name)`` pairs reached by following re-exports.
+
+    An import names a file. That file declares the name (``declares(file,
+    name)``: the caller says what counts, a type or a function), or passes it
+    on: an explicit re-export or its own import of it
+    (``ImportScope.exported``), under whatever name it has there; else every
+    module it passes on wholesale (``export * from``, ``pub use m::*``) is
+    asked. A barrel file ``index.ts`` and a crate's ``lib.rs`` are the usual
+    cases. One pair is the answer; several are a tie (two wildcards supply
+    the name); none means the name is not declared in the repository, or the
+    file passing it on handed over no table.
+    """
+    found: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def follow(file: str, wanted: str, depth: int) -> None:
+        if (file, wanted) in seen or depth > _FOLLOW_DEPTH:
+            return
+        seen.add((file, wanted))
+        if declares(file, wanted):
+            if (file, wanted) not in found:
+                found.append((file, wanted))
+            return
+        scope = scopes.get(file)
+        if scope is None or scope.module_kind != MODULES_ARE_FILES:
+            return
+        explicit = scope.exported(wanted)
+        if explicit is not None:
+            follow(explicit.module, explicit.name, depth + 1)
+            return
+        for passed_on in scope.passed_on_modules:
+            follow(passed_on, wanted, depth + 1)
+
+    follow(module, name, 0)
+    return found
+
+
 def visible_types(
     written: str,
     caller_qualified_name: str | None,
     scope: "ImportScope",
     candidates_named: Callable[[str], Sequence["Symbol"]],
     caller_path: str | None = None,
+    scopes: Mapping[str, "ImportScope"] | None = None,
 ) -> list["Symbol"] | None:
     """The declarations ``written`` can mean for a caller named
     ``caller_qualified_name`` in the file ``caller_path`` whose imports are
     ``scope``. ``candidates_named(short)`` supplies the declarations with a
     given short name, of the kinds and language the caller wants: the name
     looked for is not always the one written (an alias names a type whose own
-    name is different). See the module docstring for the rules and the three
-    answers."""
+    name is different). ``scopes``: every file's table, for following a name
+    through a file that re-exports it (``declaring_files``); without it a
+    re-exported name is not found. See the module docstring for the rules and
+    the three answers."""
     if scope.module_kind == MODULES_ARE_FILES:
-        return _by_file(written, caller_path, scope, candidates_named)
+        return _by_file(written, caller_path, scope, candidates_named, scopes or {})
     return _by_declared_name(written, caller_qualified_name, scope, candidates_named)
 
 
@@ -193,7 +246,19 @@ def _by_file(
     caller_path: str | None,
     scope: "ImportScope",
     candidates_named: Callable[[str], Sequence["Symbol"]],
+    scopes: Mapping[str, "ImportScope"],
 ) -> list["Symbol"]:
+    def declares(file: str, wanted: str) -> bool:
+        return any(c.path == file for c in candidates_named(wanted))
+
+    def declared(module: str, wanted: str) -> list["Symbol"]:
+        """The declarations ``wanted`` of ``module`` means, re-exports followed."""
+        return [
+            c
+            for file, original in declaring_files(module, wanted, declares, scopes)
+            for c in candidates_named(original) if c.path == file
+        ]
+
     name, _ = _written_name(written)
     head, _, rest = name.partition(".")
     if not rest:
@@ -202,10 +267,12 @@ def _by_file(
             return own
         bound = scope.named(head)
         if bound is not None:
-            return [c for c in candidates_named(bound.name) if c.path == bound.module]
-        wildcard_files = set(scope.wildcard_modules)
-        return [c for c in candidates_named(head) if c.path in wildcard_files]
+            return declared(bound.module, bound.name)
+        supplied: list["Symbol"] = []
+        for module in scope.wildcard_modules:
+            supplied += [c for c in declared(module, head) if c not in supplied]
+        return supplied
     module = scope.namespace(head)
     if module is None or "." in rest:
         return []
-    return [c for c in candidates_named(rest) if c.path == module]
+    return declared(module, rest)
