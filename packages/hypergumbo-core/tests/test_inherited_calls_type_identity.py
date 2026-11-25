@@ -1,0 +1,157 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""A typed receiver's type is a declaration, not a name (ADR-0064).
+
+``inherited_calls`` Site 2 looks a method up on the receiver's type. The type
+reaches it as a NAME on the unresolved edge (``receiver_type_hint``), and
+until a file's import table said otherwise the name was looked up among every
+class of the language: one namesake bound, two refused. With the table
+(``LinkerContext.import_scopes``) the linker asks which declaration the name
+means from the caller's place (``type_visibility.visible_types``): the one it
+means is bound even when a namesake exists, and a name that means no
+declaration of the repository from there is not bound to a namesake at all.
+
+A file with no table keeps the name lookup, so a language whose analyzer has
+not adopted the table does not move.
+"""
+# covers: packages/hypergumbo-core/src/hypergumbo_core/linkers/inherited_calls.py
+# covers: packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py
+from __future__ import annotations
+
+from pathlib import Path
+
+from hypergumbo_core.analyze.base import make_unresolved_edge
+from hypergumbo_core.import_scope import ImportScope
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.linkers.inherited_calls import link_inherited_calls
+from hypergumbo_core.linkers.registry import LinkerContext
+
+CALLER_FILE = "web/Handler.cs"
+
+
+def _sym(kind: str, name: str, qualified: str | None, path: str, lines: tuple[int, int]) -> Symbol:
+    return Symbol(
+        id=f"csharp:{path}:{lines[0]}-{lines[1]}:{name}:{kind}", name=name, kind=kind,
+        language="csharp", path=path, qualified_name=qualified,
+        span=Span(start_line=lines[0], end_line=lines[1], start_col=0, end_col=0),
+        origin="test", origin_run_id="test-run",
+    )
+
+
+def _type_with_method(namespace: str | None, type_name: str, method: str, path: str) -> list[Symbol]:
+    """A class and one method of it, in ``path``."""
+    qualified = f"{namespace}.{type_name}" if namespace else None
+    return [
+        _sym("class", type_name, qualified, path, (1, 9)),
+        _sym("method", f"{type_name}.{method}", f"{qualified}.{method}" if qualified else None,
+             path, (3, 5)),
+    ]
+
+
+def _caller() -> Symbol:
+    return _sym("method", "Handler.Get", "App.Web.Handler.Get", CALLER_FILE, (10, 20))
+
+
+def _stub(caller: Symbol, callee: str, **facts: str) -> Edge:
+    return make_unresolved_edge(
+        "csharp", caller.id, callee, 12, "test-pass", "test-run", **facts,
+    )
+
+
+def _scope(*usings: str) -> ImportScope:
+    scope = ImportScope()
+    for namespace in usings:
+        scope.add_open_wildcard(namespace)
+    return scope
+
+
+def _link(symbols: list[Symbol], stub: Edge, scope: ImportScope | None) -> list[Edge]:
+    ctx = LinkerContext(
+        repo_root=Path("/"), symbols=symbols, edges=[stub],
+        import_scopes={} if scope is None else {CALLER_FILE: scope},
+    )
+    return link_inherited_calls(ctx).edges
+
+
+def _two_conns() -> tuple[list[Symbol], Symbol, Symbol]:
+    wanted = _type_with_method("App.Db", "Conn", "Execute", "db/Conn.cs")
+    namesake = _type_with_method("Legacy", "Conn", "Execute", "legacy/Conn.cs")
+    return [*wanted, *namesake], wanted[1], namesake[1]
+
+
+def test_without_a_table_two_namesakes_are_refused_as_before() -> None:
+    symbols, _, _ = _two_conns()
+    caller = _caller()
+    assert _link([*symbols, caller], _stub(caller, "Execute", receiver_type_hint="Conn"), None) == []
+
+
+def test_the_table_settles_which_namesake_the_file_means() -> None:
+    symbols, wanted, _ = _two_conns()
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Conn")
+    (edge,) = _link([*symbols, caller], stub, _scope("App.Db"))
+    assert edge.dst == wanted.id
+    assert edge.is_resolved
+    assert edge.meta["resolved_by"] == "receiver_type"
+    assert edge.derived_from[0] == stub.id
+
+
+def test_a_lone_namesake_the_file_cannot_see_is_not_bound() -> None:
+    """One ``Conn`` in the repository, in a namespace the caller's file does
+    not import: the name means a library's type here. Without the table the
+    lone namesake is bound; with it, nothing is."""
+    lone = _type_with_method("Legacy", "Conn", "Execute", "legacy/Conn.cs")
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Conn")
+    assert [e.dst for e in _link([*lone, caller], stub, None)] == [lone[1].id]
+    assert _link([*lone, caller], stub, _scope("System.Data")) == []
+
+
+def test_a_name_two_usings_both_supply_is_refused() -> None:
+    symbols, _, _ = _two_conns()
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Conn")
+    assert _link([*symbols, caller], stub, _scope("App.Db", "Legacy")) == []
+
+
+def test_a_type_of_the_callers_own_namespace_needs_no_using() -> None:
+    near = _type_with_method("App.Web", "Conn", "Execute", "web/Conn.cs")
+    far = _type_with_method("Legacy", "Conn", "Execute", "legacy/Conn.cs")
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Conn")
+    (edge,) = _link([*near, *far, caller], stub, _scope())
+    assert edge.dst == near[1].id
+
+
+def test_a_qualifier_names_the_type_and_the_edge_says_so() -> None:
+    """``Util.Helper()``: the call names its owner. The same lookup settles
+    which ``Util``; the mark is ``qualified``, not ``receiver_type``."""
+    wanted = _type_with_method("App.Tools", "Util", "Helper", "tools/Util.cs")
+    namesake = _type_with_method("Legacy", "Util", "Helper", "legacy/Util.cs")
+    caller = _caller()
+    stub = _stub(caller, "Helper", qualifier="Util")
+    assert stub.meta["qualifier"] == "Util"
+    (edge,) = _link([*wanted, *namesake, caller], stub, _scope("App.Tools"))
+    assert edge.dst == wanted[1].id
+    assert edge.meta["resolved_by"] == "qualified"
+
+    full = _stub(caller, "Helper", qualifier="Legacy.Util")
+    (edge,) = _link([*wanted, *namesake, caller], full, _scope("App.Tools"))
+    assert edge.dst == namesake[1].id
+
+
+def test_a_qualifier_is_not_read_in_a_file_with_no_table() -> None:
+    """The fact is new with the table; a file without one has no producer of
+    it, and nothing is inferred from it there."""
+    wanted = _type_with_method("App.Tools", "Util", "Helper", "tools/Util.cs")
+    caller = _caller()
+    assert _link([*wanted, caller], _stub(caller, "Helper", qualifier="Util"), None) == []
+
+
+def test_candidates_with_no_qualified_name_keep_the_name_lookup() -> None:
+    """A producer that records no qualified names cannot be judged by
+    visibility: the table changes nothing for it."""
+    lone = _type_with_method(None, "Conn", "Execute", "db/Conn.cs")
+    caller = _caller()
+    stub = _stub(caller, "Execute", receiver_type_hint="Conn")
+    (edge,) = _link([*lone, caller], stub, _scope("Whatever"))
+    assert edge.dst == lone[1].id

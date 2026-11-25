@@ -1446,6 +1446,22 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Inferred type of a call edge's receiver, stamped by the "
                 "analyzer receiver-type inference to aid cross-file method "
                 "resolution (e.g. an external constructor's return type)."),
+    MetaKeySpec("qualifier", AXIS_EDGE_META,
+                "On an unresolved call edge: the owner the call site NAMES, as "
+                "written (``Util`` in ``Util.Helper()``, ``Ns.Util`` in "
+                "``Ns.Util.Helper()``), a type or namespace path and never a "
+                "variable. A call fact of ADR-0064: the inherited-calls linker "
+                "asks which declaration the name means from the caller's file "
+                "(``type_visibility.visible_types`` over the file's import "
+                "table) and looks the callee up on it, marking the bind "
+                "``resolved_by=qualified``. Read only for a file that hands "
+                "over an import table.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: analyze.base.make_unresolved_edge, from its "
+                    "qualifier= argument."
+                )),
     MetaKeySpec("referring_paths", AXIS_EDGE_META,
                 "The list of source file paths that referred to a deduplicated "
                 "edge — the only list-of-paths meta value, minted at the "

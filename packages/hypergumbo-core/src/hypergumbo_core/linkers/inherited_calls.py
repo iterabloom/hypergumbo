@@ -139,7 +139,9 @@ from typing import Callable
 
 from .. import resolved_by
 from ..edge_types import INHERITANCE_EDGE_TYPES
+from ..import_scope import ImportScope
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..type_visibility import dotted, visible_types
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
     LinkerActivation,
@@ -1001,16 +1003,43 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
         # (history: WI-supat)
         receiver_type_id = meta.get("receiver_type_id")
         enclosing_class_id = meta.get("enclosing_class_id")
+        # The owner the call site names (``Util`` in ``Util.Helper()``): a
+        # call fact of ADR-0064, read only where the file handed over a table.
+        qualifier = meta.get("qualifier")
 
         if not (
             receiver_type_hint or inherited_field_receiver
-            or enclosing_class
+            or enclosing_class or qualifier
         ):
             continue
 
         src_sym = symbol_by_id.get(edge.src)
         src_lang = src_sym.language if src_sym else None
-        if src_lang is None:
+        if src_sym is None or src_lang is None:
+            continue
+
+        # WHICH type the name means (ADR-0064). The hint is a name, and a name
+        # looked up among every class of the language binds a namesake when
+        # the file means a library's type, and is refused when two types share
+        # it. Where the caller's file handed over its import table, the table
+        # and the caller's enclosing scopes say which declaration is meant;
+        # that declaration is then used exactly as a producer-threaded
+        # ``receiver_type_id`` is. No table: the name lookup, as before.
+        scoped_by = resolved_by.RECEIVER_TYPE
+        scope = ctx.import_scopes.get(src_sym.path)
+        if scope is not None and not inherited_field_receiver:
+            named_type = receiver_type_hint
+            if not named_type and qualifier:
+                named_type, scoped_by = qualifier, resolved_by.QUALIFIED
+            if named_type and receiver_type_id is None:
+                meant = _type_meant(
+                    named_type, src_sym, scope, class_ids_by_name, class_symbols,
+                )
+                if meant is _NOT_BOUND:
+                    continue
+                if meant is not None:
+                    receiver_type_hint, receiver_type_id = named_type, meant
+        if not (receiver_type_hint or inherited_field_receiver or enclosing_class):
             continue
 
         callee_short = parse_unresolved_name(edge.dst)
@@ -1031,6 +1060,7 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
             inheritance_index=inheritance_index,
             existing_call_pairs=existing_call_pairs,
             run=run,
+            scoped_by=scoped_by,
         )
         if emitted is not None:
             new_edges.append(emitted)
@@ -1043,6 +1073,39 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 # ---------------------------------------------------------------------------
 # Per-Site resolvers.
 # ---------------------------------------------------------------------------
+
+
+#: ``_type_meant``'s answer when the name means no single declaration from the
+#: caller's place: the call stays unresolved.
+_NOT_BOUND = "<not bound>"
+
+
+def _type_meant(
+    written: str,
+    caller: Symbol,
+    scope: ImportScope,
+    class_ids_by_name: dict[str, list[str]],
+    class_symbols: dict[str, Symbol],
+) -> str | None:
+    """The class id ``written`` means for ``caller``, whose file's imports are
+    ``scope`` (``type_visibility.visible_types``).
+
+    One id when the name is settled. ``_NOT_BOUND`` when no declaration of
+    that name is visible from the caller (a library's type, however many
+    namesakes the repository holds) or when two are (a tie). ``None`` when
+    visibility cannot judge (a candidate with no qualified name): the caller
+    falls back to the name lookup.
+    """
+    short = dotted(written.split("<", 1)[0]).rpartition(".")[2].strip()
+    candidates = [
+        class_symbols[class_id] for class_id in _same_language_class_ids(
+            short, caller.language or "", class_ids_by_name, class_symbols,
+        )
+    ]
+    seen = visible_types(written, caller.qualified_name, scope, candidates)
+    if seen is None:
+        return None
+    return seen[0].id if len(seen) == 1 else _NOT_BOUND
 
 
 def _same_language_class_ids(
@@ -1096,6 +1159,7 @@ def _try_resolve(
     inheritance_index: dict[str, list[tuple[str, str]]],
     existing_call_pairs: set[tuple[str, str]],
     run: AnalysisRun,
+    scoped_by: str = resolved_by.RECEIVER_TYPE,
 ) -> Edge | None:
     """Dispatch an unresolved edge to the right Site resolver.
 
@@ -1143,6 +1207,7 @@ def _try_resolve(
             inheritance_index=inheritance_index,
             existing_call_pairs=existing_call_pairs,
             run=run,
+            scoped_by=scoped_by,
         )
 
     # Site 1: bare/this call.
@@ -1263,8 +1328,10 @@ def _resolve_site2(
     inheritance_index: dict[str, list[tuple[str, str]]],
     existing_call_pairs: set[tuple[str, str]],
     run: AnalysisRun,
+    scoped_by: str = resolved_by.RECEIVER_TYPE,
 ) -> Edge | None:
-    """Site 2: ``var.method()`` typed receiver.
+    """Site 2: ``var.method()`` typed receiver, or ``Type.method()`` where the
+    call site names the type (``scoped_by`` is then ``qualified``).
 
     Resolution:
 
@@ -1340,7 +1407,7 @@ def _resolve_site2(
             evidence_type="ast_call_type_inferred",
             is_resolved=True,
             derived_from=[edge.id, type_class_id],
-            resolved_by=resolved_by.RECEIVER_TYPE,
+            resolved_by=scoped_by,
         )
 
     # Step 2: MRO walk (requires a registered walker).
@@ -1367,7 +1434,7 @@ def _resolve_site2(
                     evidence_type="ast_call_inherited_method",
                     is_resolved=True,
                     derived_from=[edge.id, type_class_id],
-                    resolved_by=resolved_by.RECEIVER_TYPE,
+                    resolved_by=scoped_by,
                 )
 
     # Step 3: the method is nowhere on the type's chain (an external base's,
