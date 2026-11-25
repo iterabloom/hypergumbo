@@ -718,6 +718,19 @@ def test_overloads_of_one_function_are_one_declaration() -> None:
     assert edge.dst == first.id
 
 
+def test_the_callers_own_file_declares_the_function_it_calls() -> None:
+    """Two files that declare one qualified name are never loaded together
+    (two PHP scripts that each define ``hardAssert``): a call in one of them
+    is to its own, whichever path sorts first."""
+    early = _decl("function", "", "hardAssert", "interop/client.php", language="php")
+    late = _decl("function", "", "hardAssert", "qps/client.php", language="php")
+    for own, other in ((early, late), (late, early)):
+        caller = _decl("function", "", "run", own.path, language="php", lines=(10, 20))
+        stub = make_unresolved_edge("php", caller.id, "hardAssert", 12, "test-pass", "test-run")
+        (edge,) = _named_link([other, own, caller], stub, ImportScope(), caller.path)
+        assert edge.dst == own.id
+
+
 def test_a_bare_call_cannot_name_a_type_where_the_language_writes_new() -> None:
     """Java and PHP construct with ``new``: a bare ``Request()`` is a method
     or a function, never the class of that name."""

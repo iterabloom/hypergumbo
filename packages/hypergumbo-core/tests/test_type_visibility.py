@@ -361,3 +361,14 @@ def test_the_file_rule_says_which_rule_answered() -> None:
     ns.add_namespace("src/db.ts", "db")
     assert _how("db.Conn", None, ns, conns, caller_path="src/other.ts") == (["src/db.ts"], "import")
     assert _how("Conn", None, _file_scope(), conns, caller_path="src/other.ts") == ([], None)
+
+
+def test_a_php_name_with_a_leading_backslash_is_a_full_name() -> None:
+    r"""``\Util\helper`` is rooted at the global namespace: the caller's own
+    namespace does not reinterpret it, and an alias does not either."""
+    helpers = [_type("App.Util.helper"), _type("Util.helper")]
+    assert _how("\\Util\\helper", "App.Main.run", ImportScope(), helpers) == (["Util.helper"], "qualified")
+    assert _how("Util\\helper", "App.Main.run", ImportScope(), helpers) == (["App.Util.helper"], "qualified")
+    aliased = ImportScope()
+    aliased.add_named(module="Other", name="Kit", alias="Util")
+    assert _how("\\Util\\helper", "App.Main.run", aliased, helpers) == (["Util.helper"], "qualified")
