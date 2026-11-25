@@ -1487,6 +1487,20 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "Sole writer: analyze.base.make_unresolved_edge, from its "
                     "super_receiver= argument."
                 )),
+    MetaKeySpec("stdlib_member_name", AXIS_EDGE_META,
+                "On an unresolved call edge: ``True`` when the callee's name "
+                "is one the language's own standard library defines on its "
+                "types (JavaScript ``push``, ``then``, ``forEach``). A "
+                "receiver of unknown type may then be the library's, so the "
+                "single-holder name linker does not bind the call to the "
+                "repository's one declaration of that name. Present only "
+                "when true (ADR-0064 call fact).",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: analyze.base.make_unresolved_edge, from its "
+                    "stdlib_member_name= argument."
+                )),
     MetaKeySpec("referring_paths", AXIS_EDGE_META,
                 "The list of source file paths that referred to a deduplicated "
                 "edge — the only list-of-paths meta value, minted at the "

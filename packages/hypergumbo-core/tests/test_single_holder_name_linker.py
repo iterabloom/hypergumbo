@@ -88,6 +88,7 @@ def test_a_fact_the_shared_lookup_already_read_refuses_the_name() -> None:
         {"enclosing_class": "Main"},
         {"enclosing_class": "Main", "super_receiver": True},
         {"inherited_field_receiver": "queue"},
+        {"stdlib_member_name": True},
     ):
         assert _link([holder, caller], [_member_call(caller, "drain", **facts)], _files()) == [], facts
 
@@ -209,3 +210,24 @@ def test_a_holder_is_a_method_for_a_call_on_a_receiver_and_a_function_for_a_bare
     assert edge.dst == method.id
     (edge,) = _link(symbols, [_bare_call(caller, "drain")], scope)
     assert edge.dst == spare.id
+
+
+def test_a_call_whose_producer_stated_a_module_is_not_bound_by_name() -> None:
+    """``require('lib').drain()``: the stub says the callee lives in ``lib``.
+    A qualifier the file's table binds to the repository still decides for
+    itself, whatever module spelling the stub carries."""
+    holder = _sym("method", "Queue.drain", "src/queue.ts")
+    caller = _caller()
+    stated = make_unresolved_edge(
+        "typescript", caller.id, "drain", 12, "test-pass", "test-run",
+        module_hint="lib", call_construct="method",
+    )
+    assert _link([holder, caller], [stated], _files()) == []
+    scope = _files()
+    scope.add_named("src/store.ts", "store")
+    bound = make_unresolved_edge(
+        "typescript", caller.id, "drain", 12, "test-pass", "test-run",
+        module_hint="./store", call_construct="method", qualifier="store",
+    )
+    (edge,) = _link([holder, caller], [bound], scope)
+    assert edge.dst == holder.id

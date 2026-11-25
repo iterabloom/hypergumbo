@@ -46,6 +46,13 @@ repository. The stub's facts say so, and each refuses:
   holds bindings to files of the repository only: an imported object or
   instance (``import {store} from './store'; store.drain()``), whose type the
   analyzer could not say. ``console.log()`` binds nothing.
+* ``stdlib_member_name``: the analyzer says the language's own library
+  defines this name on its types (JavaScript ``push``, ``then``,
+  ``forEach``). The library is then a second holder: ``items.push(x)`` on an
+  untyped ``items`` is not the repository's one ``push``.
+* A stated module (``dst_ref`` with a module path, ``ir.stated_module_of``)
+  on a call with no qualifier: the producer said where the callee lives
+  (``require('lib').m()``), and it is not here.
 * A bare call (no receiver) whose name is not a binding of the file's table:
   in the adopted languages a bare name is lexical, imported or a global, and
   the first two were tried before this pass. A name the table does bind, to a
@@ -54,7 +61,8 @@ repository. The stub's facts say so, and each refuses:
 
 What this does not know: that a receiver's first name is not declared in the
 caller's file at all (a global such as ``document``). No stub says so; a
-single ``getElementById`` in a repository would be bound to it.
+single ``getElementById`` in a repository would be bound to it, unless the
+analyzer lists the name as the library's.
 
 The number
 ----------
@@ -76,7 +84,9 @@ from __future__ import annotations
 import time
 
 from .. import resolved_by
-from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..ir import (
+    PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id, stated_module_of,
+)
 from ..import_scope import MODULES_ARE_FILES, ImportScope
 from ..type_visibility import call_language, dotted
 from .method_call_recovery import parse_unresolved_name, short_name
@@ -92,10 +102,11 @@ PASS_ID = make_pass_id("single-holder-name-linker")
 #: What a holder of a name is, by how the call is written (module docstring).
 _ON_A_RECEIVER, _BARE = "method", "function"
 
-#: Stub facts that an earlier pass has already read; each refuses the name.
-_ANSWERED_FACTS = (
+#: Stub facts that refuse the name: the four an earlier pass has already
+#: read, and the analyzer's word that the library holds the name too.
+_REFUSING_FACTS = (
     "receiver_type_hint", "enclosing_class", "super_receiver",
-    "inherited_field_receiver",
+    "inherited_field_receiver", "stdlib_member_name",
 )
 
 _NAME_CONFIDENCE = 0.7
@@ -105,7 +116,7 @@ def _holder_to_look_up(edge: Edge, scope: ImportScope) -> tuple[str, str] | None
     """The (kind, name) whose one holder this stub may be bound to, or
     ``None`` when the stub's own text refuses the name (module docstring)."""
     meta = edge.meta or {}
-    if any(meta.get(fact) for fact in _ANSWERED_FACTS):
+    if any(meta.get(fact) for fact in _REFUSING_FACTS):
         return None
     callee = parse_unresolved_name(edge.dst)
     if not callee:
@@ -119,7 +130,7 @@ def _holder_to_look_up(edge: Edge, scope: ImportScope) -> tuple[str, str] | None
         )
         return (_ON_A_RECEIVER, callee) if bound_to_the_repository else None
     if meta.get("call_construct") == "method":
-        return _ON_A_RECEIVER, callee
+        return None if stated_module_of(edge) is not None else (_ON_A_RECEIVER, callee)
     bound = scope.named(callee)
     return (_BARE, bound.name) if bound is not None else None
 

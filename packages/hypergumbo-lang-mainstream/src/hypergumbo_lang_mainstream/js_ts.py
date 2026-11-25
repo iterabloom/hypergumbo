@@ -1426,11 +1426,14 @@ def _is_cross_package(file_path: Path, target_path: str) -> bool:
 # not calls to user-defined functions.  Skip these during call resolution
 # to prevent false-positive edges to user-defined components that shadow
 # built-in names (e.g., a React component named `Number`).
-# Built-in method names that should not be resolved via the method name
-# fallback (Case 4).  These are methods on Array, Map, Set, Object, etc.
-# that appear on virtually every JS object.  Without this blocklist,
+# Built-in method names that must not be bound by name alone.  These are
+# methods on Array, Map, Set, Object, etc. that appear on virtually every JS
+# object.  A call of one on a receiver this analyzer cannot type is reported
+# with the stub fact ``stdlib_member_name``, which makes the shared
+# single-holder name linker (ADR-0064) leave it unresolved.  Without it,
 # `items.forEach(cb)` resolves to a user-defined class that happens to
-# define `forEach`, inflating its in-degree and corrupting centrality.
+# define `forEach`, inflating its in-degree and corrupting centrality:
+# measured on five trees, 15 of 20 sampled name binds were of this kind.
 # Analogous to Rust's _RUST_GENERIC_TRAIT_METHODS blocklist.
 JS_BUILTIN_METHODS: frozenset[str] = frozenset({
     # Array methods
@@ -7913,6 +7916,7 @@ def _extract_edges(
                                     module_hint=_normalize_import_module_hint(import_path),
                                     qualifier=obj_name,
                                     call_construct="method",
+                                    stdlib_member_name=method_name in JS_BUILTIN_METHODS,
                                 ))
                             else:
                                 # WI-vurop: a library's member: an unresolved
@@ -8142,6 +8146,7 @@ def _extract_edges(
                                     PASS_ID, run.execution_id,
                                     qualifier=_qualifier,
                                     call_construct="method",
+                                    stdlib_member_name=method_name in JS_BUILTIN_METHODS,
                                 ))
                                 edge_added = True
 
@@ -8172,6 +8177,7 @@ def _extract_edges(
                                     var_types.get(obj_name) if obj_name else None
                                 ),
                                 call_construct="method",
+                                stdlib_member_name=method_name in JS_BUILTIN_METHODS,
                             ))
                             edge_added = True
 

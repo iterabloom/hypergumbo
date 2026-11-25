@@ -335,6 +335,23 @@ def test_end_to_end_an_untyped_receiver_stays_unresolved(tmp_path: Path) -> None
     assert _resolved(data, "run", "open") == []
 
 
+def test_end_to_end_an_untyped_receiver_reaches_the_one_holder_of_the_name(tmp_path: Path) -> None:
+    """ADR-0064, the name step: with ONE method of the name in the repository
+    the call is bound and says it was bound by name. A name the language's own
+    library defines on its types (``push``) is not: the library is a second
+    holder, and the stub says so."""
+    files = {
+        "src/queue.ts": "export class Queue { drain() {} push(x) {} }\n",
+        "src/main.ts": "export function run(c, items) { c.drain(); items.push(1); }\n",
+    }
+    data = _map(tmp_path, files)
+    assert _resolved(data, "run", "drain") == [("src/queue.ts", "Queue.drain", "name")]
+    assert _resolved(data, "run", "push") == []
+    edges = _calls(tmp_path / "facts", files, "run")
+    assert (_stub(edges, "push").meta or {}).get("stdlib_member_name") is True
+    assert "stdlib_member_name" not in (_stub(edges, "drain").meta or {})
+
+
 def test_end_to_end_inherited_this_and_super_calls(tmp_path: Path) -> None:
     data = _map(tmp_path, {
         "src/base.ts": "export class Base { ping() {} save() {} }\n",

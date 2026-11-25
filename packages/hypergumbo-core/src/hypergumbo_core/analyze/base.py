@@ -1211,6 +1211,7 @@ def make_unresolved_edge(
     call_construct: Optional[str] = None,
     qualifier: Optional[str] = None,
     super_receiver: bool = False,
+    stdlib_member_name: bool = False,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -1272,6 +1273,13 @@ def make_unresolved_edge(
             true). The inherited-calls linker then starts its walk at the
             enclosing type's PARENTS: the enclosing type's own method of
             that name, which is the usual caller, is never the callee.
+        stdlib_member_name: The callee's name is one the language's own
+            standard library defines on its types (JavaScript ``push``,
+            ``then``, ``forEach``), so a receiver of unknown type may well
+            be the library's. Lands on ``Edge.meta`` under
+            ``"stdlib_member_name"`` (only when true). The single-holder
+            name linker then does not bind the call to the repository's one
+            declaration of that name: the library is a second holder.
     """
     # Both slots through the factory (ADR-0036 Ruling 1): the name slot folds
     # ':' to '.', so a selector, a Rust/C++ path or a PowerShell argument such
@@ -1319,6 +1327,8 @@ def make_unresolved_edge(
         hint_meta["qualifier"] = qualifier
     if super_receiver:
         hint_meta["super_receiver"] = True
+    if stdlib_member_name:
+        hint_meta["stdlib_member_name"] = True
     return Edge.create(
         src=src_id,
         dst=dst_id,
