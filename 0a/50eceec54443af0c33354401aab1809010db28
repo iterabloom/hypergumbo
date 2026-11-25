@@ -1,0 +1,75 @@
+Original commit body from 5de397218826f016fb5f6620f0babf21d15efb43:
+
+The call-resolution fixture gets its second layout: one class per file. It also measures a qualified call and a third same-named candidate, and pins the resolution mark behind every cell. Test-only: no analyzer changes. Step 2 of the shared call-resolution program; this table is the gate for every rollout PR that follows. Addresses WI-bobik.
+
+WHY
+The table measured on 2026-11-24 put every class and every caller of an arm in one file. Real Java, C#, Groovy and Objective-C trees are laid out one class per file, and nobody had measured whether the nine languages that guess by declaration order also guess across files, or whether the other eight do.
+
+WHAT
+- `_call_matrix_fixture.py`: every generator takes `split=` (R, D, B, Child, S each in a file of its own, made visible the way the language does it, callers' text unchanged) and `third=` (a third declaration of each callee, on the decoy side). A new caller `via_qual` reaches the imported `helper` through a qualifier. `measure()` returns the cells, the `resolved_by` marks behind them, and the cells with a third candidate. In the split layout the decoy's file carries the order arm (an `a_` / `z_` prefix on the file, or on its directory where a file's name is tied to its class).
+- `test_call_resolution_matrix.py`: `MATRIX` (one file; its nine existing columns did not move in any language), `MATRIX_SPLIT`, the marks of both, and `THIRD` (the cells a third candidate changes). Each (layout, language) is one test: one measurement (six surveys), read four ways, reach first. Nothing is kept between tests.
+- Python was written first as the reference; three agents converted the other sixteen generators in separate worktrees (24 commits, cherry-picked without conflict). The brief contradicted the program on one point and an agent stopped on it: the callers' file names the decoy class (the same-variable callers), so in the split layout it must import it. Ruled, applied to all 17, no cell moved.
+
+WHAT THE SECOND LAYOUT SHOWS
+- 14 of 17 languages answer the same in both layouts, marks and confidences included.
+- C#, Groovy and Objective-C do not. Every bind they made through a same-file name table (marked `same_file`) is `unresolved` across files: C# 3 guess cells, Groovy 5, Objective-C 8. Objective-C resolves no method call across files at all, a constructor call included. C# also loses a correct bind: `var db = get_db(); db.execute()` is `right` in one file and `unresolved` when the returned class is declared in another.
+- Guess cells: 28 in the one-file table, 12 in the split table. The 12 are all in the `import` and `qual` columns.
+
+THE QUALIFIED CALL (new column, same in both layouts)
+- right: Perl, Scala (`qualified`), Python, TypeScript (`import`).
+- a guess by file order: C++ `::helper()`, JavaScript `util.helper()` through `import * as util`, Rust `util::helper()` (all marked `name`), Java `util.Util.helper()` (resolved or unresolved by where a same-named class sorts). Each is in `GUESSES` under the open item that owns its mechanism (WI-joniz, WI-lizis, WI-bihug, WI-mugon).
+- unresolved: C#, Groovy, Kotlin, Swift. No edge at all: PHP `\Util\helper()`.
+- not written (no second qualified form of this call): Go, Lua, Objective-C, Ruby.
+
+A THIRD CANDIDATE
+Moves 19 cells, all to `unresolved` or `no_edge`, none to a new bind: C# stops choosing in 4 one-file cells and 1 split cell, Ruby in its `import` cell, and Groovy drops the call edge altogether in 6 cells of each layout.
+
+SCOREBOARD (cell [mark]; measured twice, identical; identical with file enumeration forced ascending and descending)
+
+ONE FILE
+| language | var | chain | ctor | inherited | amb_ext | amb_param | import | scope_own | scope_ext | qual |
+|---|---|---|---|---|---|---|---|---|---|---|
+| cpp | unresolved | unresolved | right [receiver_type] | right [receiver_type] | unresolved | n/a | order:right/decoy [name] | right [receiver_type] | unresolved | order:right/decoy [name] |
+| csharp | right [receiver_type] | unresolved | right [receiver_type] | order:decoy/right [same_file] | picked [same_file] | n/a | order:decoy/right [qualified] | right [receiver_type] | picked [same_file] | unresolved |
+| go | right [receiver_type] | unresolved | right [receiver_type] | unresolved | unresolved | n/a | right [import] | right [receiver_type] | unresolved | n/a |
+| groovy | order:decoy/right [same_file] | unresolved | right [receiver_type] | order:decoy/right [same_file] | picked [same_file] | picked [same_file] | order:decoy/right [name] | right [receiver_type] | picked [same_file] | unresolved |
+| java | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | n/a | order:unresolved/right [qualified] | right [receiver_type] | unresolved | order:unresolved/right [qualified] |
+| javascript | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | order:decoy/right [name] | right [receiver_type] | unresolved | order:decoy/right [name] |
+| kotlin | right [receiver_type] | unresolved | right [receiver_type] | unresolved | unresolved | n/a | right [import] | right [receiver_type] | unresolved | unresolved |
+| lua | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | right [import] | right [receiver_type] | unresolved | n/a |
+| objc | order:decoy/right [same_file] | order:decoy/right [same_file] | order:decoy/right [same_file] | order:decoy/right [same_file] | picked [same_file] | picked [same_file] | no_edge | order:decoy/right [same_file] | picked [same_file] | n/a |
+| perl | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | unresolved | right [receiver_type] | unresolved | right [qualified] |
+| php | unresolved | unresolved | right+unresolved [class_hint] | unresolved | unresolved | unresolved | order:decoy/right [name] | right+unresolved [class_hint] | unresolved | no_edge |
+| python | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | unresolved | right [import] | right [receiver_type] | unresolved | right [import] |
+| ruby | unresolved | unresolved | right [receiver_type] | no_edge | no_edge | unresolved | order:decoy/right [name] | right [receiver_type] | no_edge | n/a |
+| rust | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | unresolved | n/a | right [import] | right [receiver_type] | unresolved | order:decoy/right [name] |
+| scala | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | n/a | unresolved | right [receiver_type] | unresolved | right [qualified] |
+| swift | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | n/a | order:decoy/right [name] | right [receiver_type] | unresolved | unresolved |
+| typescript | right [receiver_type] | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | right [import] | right [receiver_type] | unresolved | right [import] |
+
+ONE CLASS PER FILE
+| language | var | chain | ctor | inherited | amb_ext | amb_param | import | scope_own | scope_ext | qual |
+|---|---|---|---|---|---|---|---|---|---|---|
+| cpp | unresolved | unresolved | right [receiver_type] | right [receiver_type] | unresolved | n/a | order:right/decoy [name] | right [receiver_type] | unresolved | order:right/decoy [name] |
+| csharp | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | n/a | order:decoy/right [qualified] | right [receiver_type] | unresolved | unresolved |
+| go | right [receiver_type] | unresolved | right [receiver_type] | unresolved | unresolved | n/a | right [import] | right [receiver_type] | unresolved | n/a |
+| groovy | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | order:decoy/right [name] | right [receiver_type] | unresolved | unresolved |
+| java | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | n/a | order:unresolved/right [qualified] | right [receiver_type] | unresolved | order:unresolved/right [qualified] |
+| javascript | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | order:decoy/right [name] | right [receiver_type] | unresolved | order:decoy/right [name] |
+| kotlin | right [receiver_type] | unresolved | right [receiver_type] | unresolved | unresolved | n/a | right [import] | right [receiver_type] | unresolved | unresolved |
+| lua | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | right [import] | right [receiver_type] | unresolved | n/a |
+| objc | unresolved | unresolved | unresolved | unresolved | unresolved | unresolved | no_edge | unresolved | unresolved | n/a |
+| perl | unresolved | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | unresolved | right [receiver_type] | unresolved | right [qualified] |
+| php | unresolved | unresolved | right+unresolved [class_hint] | unresolved | unresolved | unresolved | order:decoy/right [name] | right+unresolved [class_hint] | unresolved | no_edge |
+| python | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | unresolved | right [import] | right [receiver_type] | unresolved | right [import] |
+| ruby | unresolved | unresolved | right [receiver_type] | no_edge | no_edge | unresolved | order:decoy/right [name] | right [receiver_type] | no_edge | n/a |
+| rust | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | unresolved | n/a | right [import] | right [receiver_type] | unresolved | order:decoy/right [name] |
+| scala | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | n/a | unresolved | right [receiver_type] | unresolved | right [qualified] |
+| swift | right [receiver_type] | right [receiver_type] | right [receiver_type] | right [receiver_type] | unresolved | n/a | order:decoy/right [name] | right [receiver_type] | unresolved | unresolved |
+| typescript | right [receiver_type] | unresolved | right [receiver_type] | unresolved | unresolved | unresolved | right [import] | right [receiver_type] | unresolved | right [import] |
+
+CHECKED AND NOT CHECKED
+- Programs run or compiled where a toolchain is on this machine: Python (the split program run under the interpreter, both orders), JavaScript (`node --check`, and the split program loaded as ES modules), Rust (`rustc`, only the missing `extlib` errors), C++ (`g++ -fsyntax-only`, the same), Perl (`perl -c`, and the split program run).
+- NOT compiled: TypeScript, Java, Kotlin, Scala, Groovy, C#, Go, Swift, Objective-C, Ruby, PHP, Lua. They were written and read with care; a Scala package named `util` may clash with `scala.util` under a real compiler (that predates this PR).
+- The gaps the new cells show (PHP qualified call with no edge; the unresolved qualified calls; C# and Objective-C across files; Groovy with three candidates) are not investigated here and are filed after the merge.
+- Swift, decoy last: the decoy class files sort before `Sources/Util/util.swift`; Objective-C, decoy first: `Util.h` / `Util.m` sort before the `a_` files. Neither involves two candidates for one callee.
