@@ -1,0 +1,27 @@
+Original commit body from acf632dba8ba241ea3b15cbf672862fae830e9c3:
+
+Follow-up to #2389 (the resolution mark). The full 51-repository census at merged dev found 565 resolved `calls` edges with no mark; this marks them and closes the hole in the check that let them through. Addresses WI-hirol.
+
+WHAT THE CENSUS FOUND
+51 repositories at dev b26c7dcf7: 271,323 resolved call-family edges, 565 with no mark, 0 unresolved with a mark. All 565 are on zstd, from the Lua FFI linker's second phase (a tree with no Lua: the phase rebinds any language's unresolved call to a same-named C or C++ function; that behaviour is filed as WI-patin and is not changed here).
+
+WHY THE CHECKS MISSED IT
+The site passed `is_resolved=False` to `Edge.create` for a destination that is a symbol of the repository. `Edge.create` refuses the mark on an edge it is told is unresolved, and `check-resolved-by-sites` exempted any site that passes that literal. finalize's verdict (ADR-0037: `is_resolved` names in-repo-ness; the producer's value is advisory) then published the edge as resolved. Two sites in the gRPC linker have the same shape; no repository of the 51 reaches them.
+
+WHAT CHANGES
+- `linkers/lua_ffi.py` phase 2 and `linkers/grpc.py` (the stub-to-proto-service fallback, and the rebinding of an unresolved `Register*Server` edge) no longer pass `is_resolved=False`, and pass the mark: `name` for the two that rebind an unresolved edge by its callee name, `key_match` for the stub joined to a proto service by service name. Their docstrings said the flag recorded "a destination, not a proof"; that is now what the mark says.
+- `check-resolved-by-sites`: `is_resolved=False` no longer exempts a site whose destination is written `<symbol>.id`. A destination held in a variable is still not judged.
+- Tests pin the three values and the resolved state. With each value swapped for another declared value, the three tests fail.
+
+MEASURED
+zstd, workadventure/play/src/front and envoy/api analysed again with this branch: edges and nodes identical to the baseline maps once the mark is removed (21,588 / 51,245 / 5,783 edges). zstd's resolved-with-no-mark count: 565 before, 0 after. The other 48 repositories had 0 before and were not analysed again.
+
+THE CENSUS ITSELF (51 repositories, dev b26c7dcf7; the baseline for the shared call-resolution work)
+- Resolved `calls` 250,319: name 72,678; receiver_type 71,244; own_type 24,873; same_file 20,733; qualified 14,995; import 13,604; same_module 12,241; lexical_scope 10,488; key_match 6,737; class_hint 2,036; no mark 565 (this PR); 125 collapsed edges whose call sites disagreed.
+- Resolved `instantiates` 21,004: name 17,636; same_file 1,724; import 1,603; lexical_scope 36; qualified 3; 2 collapsed.
+- Largest populations with more than one same-named candidate in the scope the mark names: swift name 8,542; cpp name 8,227; rust name 2,236; swift receiver_type 2,054; go receiver_type 1,886; kotlin receiver_type 1,718; go name 1,693; erlang qualified 1,587; c name 1,514. A count sizes a population; it does not say an edge is wrong.
+
+NOT DONE
+- No pipeline-level before/after for the two gRPC sites (fixture tests only).
+- The run-time half of "a resolved call edge carries the mark" is still a census run by hand (WI-pitok).
+- The Lua FFI linker's second phase still binds by bare name across languages (WI-patin); with this PR those edges are counted under `name`.
