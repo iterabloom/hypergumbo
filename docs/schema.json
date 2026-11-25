@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.22.2"
+      "const": "0.22.3"
     },
     "confidence_model": {
       "type": "string",
@@ -1693,6 +1693,9 @@
             },
             "argparse_kwarg": {
               "description": "The keyword through which an argparse ``set_defaults(<kw>=<handler>)`` registered the handler (e.g. 'func')."
+            },
+            "argument_count": {
+              "description": "On an unresolved call edge: the number of arguments the call site writes (a trailing lambda is one). Absent when the site does not say (a spread) or the analyzer does not count. The shared call resolution leaves out the overloads of the callee's name whose declared parameters (``Symbol.meta[\"parameters\"]``) cannot take that many (ADR-0064 call fact)."
             },
             "attr_carrier": {
               "description": "On a `module_attr_ref` edge: the CALL at whose argument, keyword or receiver position the attribute was used, as `<callee as spelled>@<call line>` -- `print@7` for `print(k, file=sys.stderr)`, `io.WriteString@12` for `io.WriteString(os.Stderr, k)`, `System.out.println@4` for the receiver form. Absent for a use outside any call (`out = sys.stderr`). INV-hopib: a stream-object row's sink was matched wherever the object was used, so one write was two findings and one of them named a sink with no arguments and no receiver. taint drops the stream's sink site when every use is carried by a call that is itself a matched sink in the same zone (`_subsume_sink_sites`), and a surviving stream finding names its carriers (`sink_carriers`). PER CALL SITE: one function writes `sys.stderr` through `print` on one line and `json.dump` on the next, and only the first is a sink; a collapsed edge's `attr_carrier_values` keeps both, with `None` for an uncarried use."

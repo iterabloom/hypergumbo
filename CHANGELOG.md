@@ -25,7 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Breaking and contract changes
 
 - **Behavior map `SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
-- **Behavior map `SCHEMA_VERSION` 0.22.0 → 0.22.2** (additions): `resolved_by` on resolved calls; call facts `qualifier`, `super_receiver`, `stdlib_member_name` on unresolved calls; `type_arity` on type nodes.
+- **Behavior map `SCHEMA_VERSION` 0.22.0 → 0.22.3** (additions): `resolved_by` on resolved calls; call facts `qualifier`, `super_receiver`, `stdlib_member_name`, `argument_count` on unresolved calls; `type_arity` on type nodes.
 - **Resolved call edges change in C#, Java, JavaScript/TypeScript, Kotlin, PHP and Rust**: fewer binds by name alone, more through types and imports (ADR-0064).
 - **Java and PHP report every `new`**; one the tool cannot place is an unresolved `instantiates` edge.
 - **Two workspace packages declaring one name resolve to neither** (the first in path order was kept).

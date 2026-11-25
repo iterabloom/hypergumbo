@@ -950,3 +950,105 @@ def test_an_imported_member_that_holds_a_callable_is_bound_when_no_method_is() -
     method = _decl("method", "cfg", "Defaults.retry", "cfg/Defaults.kt", lines=(5, 7))
     (edge,) = _named_link([prop, method, caller], stub, table, caller.path)
     assert edge.dst == method.id
+
+
+# --- overloads: the argument count the call site writes (WI-tosut) --------------------
+
+
+def _with_parameters(symbol: Symbol, *names: str, defaults: int = 0, variadic: bool = False) -> Symbol:
+    """``symbol`` declaring the parameters ``names``, the last ``defaults`` of
+    them with a default value; ``variadic`` adds a parameter taking any number."""
+    from hypergumbo_core.overload_arity import parameter_entry
+
+    entries = [
+        parameter_entry(name, default=index >= len(names) - defaults)
+        for index, name in enumerate(names)
+    ]
+    if variadic:
+        entries.append(parameter_entry("rest", variadic=True))
+    symbol.meta = {"parameters": entries}
+    return symbol
+
+
+def _typed_call(caller: Symbol, callee: str, hint: str, argument_count: int | None) -> Edge:
+    return make_unresolved_edge(
+        "kotlin", caller.id, callee, 12, "test-pass", "test-run",
+        receiver_type_hint=hint, call_construct="method", argument_count=argument_count,
+    )
+
+
+def test_the_overload_that_takes_the_arguments_written_is_the_one_bound() -> None:
+    """``server.takeRequest()`` is the overload with no parameter, not the one
+    declared after it that takes two; with a default, ``start()`` is
+    ``start(port = 0)``. A call that does not say how many arguments it
+    writes lands where it did before: on the last overload."""
+    server = _decl("class", "web", "Server", "web/Server.kt", lines=(1, 40))
+    plain = _with_parameters(_decl("method", "web", "Server.takeRequest", "web/Server.kt", lines=(5, 6)))
+    timed = _with_parameters(
+        _decl("method", "web", "Server.takeRequest", "web/Server.kt", lines=(8, 9)), "timeout", "unit")
+    start = _with_parameters(
+        _decl("method", "web", "Server.start", "web/Server.kt", lines=(11, 12)), "port", defaults=1)
+    bind = _with_parameters(
+        _decl("method", "web", "Server.start", "web/Server.kt", lines=(14, 15)), "address", "backlog")
+    caller = _decl("function", "web", "run", "web/Main.kt", lines=(10, 20))
+    symbols = [server, plain, timed, start, bind, caller]
+
+    def target(callee: str, argument_count: int | None) -> str | None:
+        edges = _named_link(symbols, _typed_call(caller, callee, "Server", argument_count),
+                            ImportScope(own_namespace="web"), caller.path)
+        return edges[0].dst if edges else None
+
+    assert target("takeRequest", 0) == plain.id
+    assert target("takeRequest", 2) == timed.id
+    assert target("takeRequest", None) == timed.id
+    assert target("takeRequest", 5) is None
+    assert target("start", 0) == start.id
+    assert target("start", 1) == start.id
+    assert target("start", 2) == bind.id
+
+
+def test_an_overload_the_type_inherits_is_a_candidate_beside_its_own() -> None:
+    """The subclass declares ``send(a)``; ``send(a, b)`` is the parent's. A
+    call with two arguments on the subclass is the parent's overload. A
+    method that records no parameters is of unknown arity and is not left out."""
+    base = _decl("class", "net", "Channel", "net/Channel.kt", lines=(1, 20))
+    wide = _with_parameters(_decl("method", "net", "Channel.send", "net/Channel.kt", lines=(3, 4)), "a", "b")
+    child = _decl("class", "net", "Tls", "net/Tls.kt", lines=(1, 20))
+    narrow = _with_parameters(_decl("method", "net", "Tls.send", "net/Tls.kt", lines=(3, 4)), "a")
+    extends = Edge.create(
+        src=child.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test-run",
+    )
+    caller = _decl("function", "net", "run", "net/Main.kt", lines=(10, 20))
+    symbols = [base, wide, child, narrow, caller]
+
+    def target(argument_count: int | None) -> str | None:
+        ctx = LinkerContext(
+            repo_root=Path("/"), symbols=symbols,
+            edges=[extends, _typed_call(caller, "send", "Tls", argument_count)],
+            import_scopes={caller.path: ImportScope(own_namespace="net")},
+        )
+        edges = link_inherited_calls(ctx).edges
+        return edges[0].dst if edges else None
+
+    assert target(1) == narrow.id
+    assert target(2) == wide.id
+    narrow.meta = None
+    assert target(2) == narrow.id
+
+
+def test_a_bare_call_takes_the_function_overload_that_fits() -> None:
+    one = _with_parameters(_decl("function", "app", "helper", "app/Util.kt", lines=(1, 3)), "a")
+    two = _with_parameters(_decl("function", "app", "helper", "app/Util.kt", lines=(5, 7)), "a", "b")
+    caller = _decl("function", "app", "run", "app/Main.kt", lines=(10, 20))
+
+    def target(argument_count: int | None) -> str | None:
+        stub = make_unresolved_edge(
+            "kotlin", caller.id, "helper", 12, "test-pass", "test-run", argument_count=argument_count,
+        )
+        edges = _named_link([one, two, caller], stub, ImportScope(own_namespace="app"), caller.path)
+        return edges[0].dst if edges else None
+
+    assert target(2) == two.id
+    assert target(1) == one.id
+    assert target(None) == one.id
+    assert target(3) is None

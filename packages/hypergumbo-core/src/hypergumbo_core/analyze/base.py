@@ -1213,6 +1213,7 @@ def make_unresolved_edge(
     super_receiver: bool = False,
     stdlib_member_name: bool = False,
     instantiates: bool = False,
+    argument_count: Optional[int] = None,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -1281,6 +1282,12 @@ def make_unresolved_edge(
             ``"stdlib_member_name"`` (only when true). The single-holder
             name linker then does not bind the call to the repository's one
             declaration of that name: the library is a second holder.
+        argument_count: How many arguments the call site writes (a trailing
+            lambda is one), or ``None`` when the site does not say (a spread,
+            an analyzer that does not count). Lands on ``Edge.meta`` under
+            ``"argument_count"``. The shared call resolution leaves out the
+            overloads of the callee's name that cannot take that many
+            (``overload_arity``; ADR-0064).
         instantiates: The site constructs a type (``new Conn()``): the stub
             is an unresolved ``instantiates`` edge (evidence ``ast_new``)
             whose callee is the TYPE as written. The inherited-calls linker
@@ -1336,6 +1343,8 @@ def make_unresolved_edge(
         hint_meta["super_receiver"] = True
     if stdlib_member_name:
         hint_meta["stdlib_member_name"] = True
+    if argument_count is not None:
+        hint_meta["argument_count"] = argument_count
     return Edge.create(
         src=src_id,
         dst=dst_id,
