@@ -1,0 +1,23 @@
+- op: create  # c7ee
+  at: '2026-11-25T01:51:56Z'  # c7ee
+  by: agent  # c7ee
+  actor: jgstern_agent  # c7ee
+  clock: 1  # c7ee
+  nonce: c7ee  # c7ee
+  data:  # c7ee
+    kind: work_item  # c7ee
+    title: "typescript: a variable declared with a type and no initializer is not typed (let target: T;)"  # c7ee
+    status: todo_hard  # c7ee
+    priority: 3  # c7ee
+    parent:  # c7ee
+    tags:  # c7ee
+    - call_graph  # c7ee
+    - analysis_quality  # c7ee
+    - call_matrix  # c7ee
+    - typescript  # c7ee
+    isbefore: []  # c7ee
+    duplicate_of: []  # c7ee
+    not_duplicate_of: []  # c7ee
+    pr_ref:  # c7ee
+    description: "WHAT\nTypeScript: a variable declared with a type and no initializer is not typed. let target: ParseBoolPipe; in a describe callback, assigned in beforeEach (target = new ParseBoolPipe()), then target.transform(..) in every it callback: unresolved. Neither the annotation nor the assignment binds the name; only const x = new T() and a typed parameter do.\n\nREPRO\nnest packages/common/test/pipes/parse-bool.pipe.spec.ts lines 6, 8, 13 (~/whole_bunch_of_repos/nest/packages). Line 13's call is unresolved on dev before and after INV-zabud; line 33's was resolved before only because another it callback wrote const target = new ParseBoolPipe(..).\n\nFIX\nBind the annotation of a variable_declarator in the scope that declares it (js_ts.py; var_types is a ScopedVarTypes, so a nested callback sees it). The declaration is evidence, as for a typed parameter.\n\nNOT KNOWN\nHow many calls this types on a real repository."  # c7ee
+    fields: {}  # c7ee

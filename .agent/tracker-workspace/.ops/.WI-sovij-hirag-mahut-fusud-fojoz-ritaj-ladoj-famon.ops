@@ -1,0 +1,23 @@
+- op: create  # e369
+  at: '2026-11-25T01:52:08Z'  # e369
+  by: agent  # e369
+  actor: jgstern_agent  # e369
+  clock: 1  # e369
+  nonce: e369  # e369
+  data:  # e369
+    kind: work_item  # e369
+    title: "rust: a call on an untyped closure parameter is bound by the short-name fallback to a method of another type"  # e369
+    status: todo_hard  # e369
+    priority: 3  # e369
+    parent:  # e369
+    tags:  # e369
+    - call_graph  # e369
+    - analysis_quality  # e369
+    - call_matrix  # e369
+    - rust  # e369
+    isbefore: []  # e369
+    duplicate_of: []  # e369
+    not_duplicate_of: []  # e369
+    pr_ref:  # e369
+    description: "WHAT\nRust: a method call on an untyped closure parameter is bound by the short-name fallback to a method the receiver does not have. reqwest src/blocking/request.rs line 648, in RequestBuilder::try_clone: self.request.as_ref().ok().and_then(|req| req.try_clone()). req is a &Request; the edge goes to Kind::try_clone.\n\nHISTORY\nBefore INV-zabud the edge went to Request::try_clone, right, because another function of the file declared req: Request. With variable types scoped to their function nothing types req and Strategy 2 (the same-file short-name table, rust.py) answers. INV-hupis's guard refuses that table when the file's same-named methods have more than one owner; why it did not refuse here is NOT traced.\n\nREPRO\n~/hypergumbo_lab_notebook/var_scope_11242026/sample_rust_repointed.txt entry 2; maps base/rust_reqwest_src.json and final/rust_reqwest_src.json."  # e369
+    fields: {}  # e369
