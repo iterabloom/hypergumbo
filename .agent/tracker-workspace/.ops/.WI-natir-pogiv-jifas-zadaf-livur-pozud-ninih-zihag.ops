@@ -1,0 +1,21 @@
+- op: create  # 853e
+  at: '2026-11-25T14:32:28Z'  # 853e
+  by: agent  # 853e
+  actor: jgstern_agent  # 853e
+  clock: 1  # 853e
+  nonce: 853e  # 853e
+  data:  # 853e
+    kind: work_item  # 853e
+    title: "Rust: std method names on untyped receivers are bound by the name step (file_name, stdout, as_ptr, args)"  # 853e
+    status: todo_hard  # 853e
+    priority: 3  # 853e
+    parent:  # 853e
+    tags:  # 853e
+    - analysis_quality  # 853e
+    - shared_call_resolution  # 853e
+    isbefore: []  # 853e
+    duplicate_of: []  # 853e
+    not_duplicate_of: []  # 853e
+    pr_ref:  # 853e
+    description: "STATEMENT: entry.file_name() on a std::fs::DirEntry is not bound to the repository's one file_name. OBSERVED at e948d2ae3 on diesel: of the 14 calls the name step bound that had no bind of that name before, 5 right and 9 wrong (Path::file_name, Command::stdout / stderr / args); of the 1,549 it restored to their earlier target, 13 right of 15 read (wrong: String::as_str, slice::first). SUPPRESSED_METHOD_NAMES means no stub at all and feeds a disclosure, so these names need another home: a stub with stdlib_member_name. Also open in rust.py: tuple-struct and enum-variant constructors called by imported name; a wildcard of another file's inline module (use diesel::dsl::*); #[cfg] alternatives counted as several holders.\n\nEvidence and method: ~/hypergumbo_lab_notebook/pilot_11252026/DESIGN.md and final/ (maps mine_e948 at e948d2ae3 against before/ at dev 0d3c12ff4; hand samples seed 20261125). Found during the ADR-0064 pilot (rust, csharp, javascript/typescript); not built there because fewer than two of the three pilot languages need it, or because it is the analyzer's own."  # 853e
+    fields: {}  # 853e
