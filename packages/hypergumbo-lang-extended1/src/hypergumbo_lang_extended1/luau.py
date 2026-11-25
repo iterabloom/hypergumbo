@@ -63,6 +63,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -376,7 +377,7 @@ def _resolve_callee(
     call_name: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-) -> Optional[Symbol]:
+) -> Optional[tuple[Symbol, str]]:
     """The symbol a call names, THIS file's first (WI-jusah).
 
     The full text (``Mod.fn``) is tried before the short name (``fn``), and at
@@ -385,12 +386,19 @@ def _resolve_callee(
     file-scoped, so a same-named one elsewhere in the run is never the right
     answer while this file has its own; and a same-file short name must not
     pre-empt another file's exact ``Mod.fn``.
+
+    Returned with what scoped the choice (``resolved_by``): ``Mod.fn`` as
+    written names its owner (``qualified``); a short name is this file's
+    (``same_file``) or the run's (``name``).
     """
     for key in dict.fromkeys((call_name, _last_segment(call_name))):
         for table in (local_symbols, global_symbols):
             sym = table.get(key)
             if sym is not None:
-                return sym
+                if key == call_name and key != _last_segment(call_name):
+                    return sym, resolved_by.QUALIFIED
+                local = table is local_symbols
+                return sym, resolved_by.SAME_FILE if local else resolved_by.NAME
     return None
 
 
@@ -424,7 +432,8 @@ def _extract_call_edges(
         caller = enclosing_declared_symbol(node, decl_index, _CALLER_NODE_TYPES)
         src_id = caller.id if caller is not None else make_file_id("luau", rel_path)
 
-        callee = _resolve_callee(call_name, local_symbols, global_symbols)
+        resolved = _resolve_callee(call_name, local_symbols, global_symbols)
+        callee, _by = resolved if resolved is not None else (None, None)
         if callee is not None:
             confidence = 1.0
             dst = callee.id
@@ -449,6 +458,7 @@ def _extract_call_edges(
             evidence_type="tree_sitter",
             confidence=confidence,
             evidence_lang="luau",
+            resolved_by=_by,
         ))
     return edges
 

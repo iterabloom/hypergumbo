@@ -546,3 +546,41 @@ class TestLuauCallerAndCalleeByFile:
         by_id = {s.id: s for s in result.symbols}
         (edge,) = self._calls(result)
         assert (by_id[edge.src].name, by_id[edge.dst].name) == ("run", "make")
+
+
+class TestLuauResolvedBy:
+    """``meta["resolved_by"]`` per route of ``_resolve_callee`` (audit 0030)."""
+
+    def test_each_route_carries_its_value(self, tmp_path: Path) -> None:
+        make_luau_file(tmp_path, "lib.luau", """local Mod = {}
+function Mod.run()
+end
+function common()
+end
+return Mod
+""")
+        make_luau_file(tmp_path, "main.luau", """local function helper()
+end
+local function main()
+    helper()
+    Mod.run()
+    common()
+    obj.common()
+    missing()
+end
+""")
+        result = analyze_luau(tmp_path)
+        calls = {
+            (e.line, e.dst.split(":")[-2]): (e.meta or {}).get("resolved_by")
+            for e in result.edges if e.edge_type == "calls"
+        }
+        # A local function of this file.
+        assert calls[(4, "helper")] == "same_file"
+        # ``Mod.run`` as written names its owner.
+        assert calls[(5, "Mod.run")] == "qualified"
+        # A short name found in the run-wide registry.
+        assert calls[(6, "common")] == "name"
+        # ``obj.common`` is no key; its last segment is.
+        assert calls[(7, "common")] == "name"
+        # No target, no mark.
+        assert calls[(8, "missing")] is None

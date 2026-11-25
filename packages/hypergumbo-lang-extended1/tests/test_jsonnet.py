@@ -356,3 +356,25 @@ class TestJsonnetCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function', 'method'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestJsonnetResolvedBy:
+    """``meta["resolved_by"]`` on the registry hit, none on the stand-in (audit 0030)."""
+
+    def test_registry_hit_is_name_and_stand_in_has_none(self, tmp_path: Path) -> None:
+        make_jsonnet_file(tmp_path, "lib.libsonnet", """{
+  helper(x):: x + 1,
+}
+""")
+        make_jsonnet_file(tmp_path, "main.jsonnet", """local lib = import 'lib.libsonnet';
+{
+  a: lib.helper(1),
+  b: missing(2),
+}
+""")
+        result = analyze_jsonnet(tmp_path)
+        calls = {e.dst.split(":")[-2]: e for e in result.edges if e.edge_type == "calls"}
+        assert calls["helper"].confidence == 1.0
+        assert calls["helper"].meta["resolved_by"] == "name"
+        assert calls["missing"].confidence == 0.6
+        assert "resolved_by" not in (calls["missing"].meta or {})

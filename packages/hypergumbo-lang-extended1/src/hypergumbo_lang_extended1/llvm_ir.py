@@ -60,6 +60,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
+from hypergumbo_core import resolved_by
 from hypergumbo_core.ir import Edge, Span, StableId, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.overload_arity import (
@@ -361,6 +362,7 @@ def _resolve_calls(
         callee_sym = local_symbols.get(callee_name)
         if callee_sym is not None and callee_sym.kind == "function":
             resolution_score = resolver.CONFIDENCE_EXACT
+            _by = resolved_by.SAME_FILE
         else:
             callee_result = resolver.lookup(callee_name)
             callee_sym = callee_result.symbol
@@ -369,6 +371,7 @@ def _resolve_calls(
             # ADR-0039 ruling 6: the resolver's grade interpolates in the
             # ast_call_direct band.
             resolution_score = callee_result.confidence
+            _by = callee_result.resolved_by
         edges.append(Edge.create(
             src=caller_sym.id,
             dst=callee_sym.id,
@@ -378,6 +381,7 @@ def _resolve_calls(
             origin=PASS_ID,
             origin_run_id=run_id,
             evidence_type="ast_call_direct",
+            resolved_by=_by,
         ))
 
     return edges
