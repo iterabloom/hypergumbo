@@ -1,0 +1,22 @@
+- op: create  # 0d40
+  at: '2026-11-25T07:13:40Z'  # 0d40
+  by: agent  # 0d40
+  actor: jgstern_agent  # 0d40
+  clock: 1  # 0d40
+  nonce: 0d40  # 0d40
+  data:  # 0d40
+    kind: work_item  # 0d40
+    title: "Mainstream call routes read during the resolution-mark stamping that no item names: fixture cells and acceptance rows per batch"  # 0d40
+    status: todo_hard  # 0d40
+    priority: 3  # 0d40
+    parent:  # 0d40
+    tags:  # 0d40
+    - call_graph  # 0d40
+    - analysis_quality  # 0d40
+    - call_matrix  # 0d40
+    isbefore: []  # 0d40
+    duplicate_of: []  # 0d40
+    not_duplicate_of: []  # 0d40
+    pr_ref:  # 0d40
+    description: "PURPOSE\nThe routes in the mainstream analyzers that the resolved_by stamping read past and that no filed item names. Each is a line for the fixture (WI-bobik's wider table) and an acceptance row for the language's batch of the shared pass (5a java/kotlin/php, 5b python/ruby/go/lua/perl and js/ts with step 4, 5d groovy/scala/cpp/swift/objc). Lines at the mark PR's head. Nothing here was measured on real code.\n\nSTATEMENT\nFor each route below, the fixture has a cell with a decoy in both declaration orders, and after the language's batch the call is bound by the language's rule or left unresolved.\n\nROUTES\n- js_ts.py `_same_package_candidate` (~1338): returns the first candidate under the caller's package root when several are there (enumeration order). Marked name.\n- Bare-name file tables where the last declaration of a name wins (`local_symbols[name]`): kotlin ~2832, scala ~3221, ruby ~3550 / 3723, bash 1430, jupyter 368, python `_lexical_def`'s `local_symbols`. kotlin, scala and python have no guess cell in the matrix today: the fixture declares each name once per file.\n- scala.py `_project_object_binding` (~643): the first visible candidate in `symbols_by_name` order.\n- jupyter.py ~368: `obj.helper()` binds the notebook's top-level `helper` by attribute name; the receiver is ignored (marked same_file).\n- bash.py ~1446: the resolver does not read `source` statements, so a sourced file's function is a repository-wide name match.\n- rust.py 4131 (Strategy 2): a root-level bare call binds an inline module's function Rust does not put in scope (pinned today as `bare_inner_only -> inner::inner_only`, same_file).\n- rust.py 3951 / 4035 / 4094: `global_symbols.get(\"T::m\")` is single-valued; the rust typed-receiver item covers the rule, these are its sites.\n- rust.py 4264: `SystemTime::now()` bound to an in-repo free function `now` (owner ignored); path-dependent: seen under /tmp, unresolved under pytest's tmp path. Not investigated. The rust path-call item covers the rule.\n- swift.py 3304 `_visible_global_type`: the last registered top-level type of a name.\n- Scala and Dart: a chained call whose receiver the grammar drops is read as a bare call, so it is marked own_type when the method is on the enclosing type.\n\nALREADY FILED (do not duplicate): objc by selector, groovy last-declared, csharp last-declared (its constructor table `global_ctors[X.X]` mixes same-named classes of different namespaces, csharp.py ~2297, `overloads[0]`), js `.js` import, php `use function`, ruby top-level, swift free function, cpp static, java static call on an imported class.\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/mainB/FINAL_REPORT.md (2, 4-9), mainA/RESULTS.md (8-10, 14)."  # 0d40
+    fields: {}  # 0d40

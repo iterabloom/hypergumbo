@@ -1,0 +1,22 @@
+- op: create  # 5463
+  at: '2026-11-25T07:13:27Z'  # 5463
+  by: agent  # 5463
+  actor: jgstern_agent  # 5463
+  clock: 1  # 5463
+  nonce: '5463'  # 5463
+  data:  # 5463
+    kind: work_item  # 5463
+    title: "go: same-named Type.Method keys of several packages are picked by position; a qualified receiver type matches the file's own type by bare name"  # 5463
+    status: todo_hard  # 5463
+    priority: 3  # 5463
+    parent:  # 5463
+    tags:  # 5463
+    - call_graph  # 5463
+    - analysis_quality  # 5463
+    - call_matrix  # 5463
+    isbefore: []  # 5463
+    duplicate_of: []  # 5463
+    not_duplicate_of: []  # 5463
+    pr_ref:  # 5463
+    description: "STATEMENT\nA Go method or function call binds a declaration of the package the call's receiver type or qualifier names; with same-named `Type.Method` keys in several packages and no way to tell them apart, the call is unresolved.\n\nOBSERVED (read in go.py while stamping resolved_by, 2026-11-25; lines at the mark PR's head). go has no guess cell in the call-resolution matrix; these routes are ones the fixture does not reach.\n1. `_go_method_of_type` (3909, 3920): an unimported qualifier, or an unqualified type not declared in the caller's directory, takes `candidates[0]` among same-named `Type.Method` keys of every package.\n2. Field chain (4922) and chained return type (5063): `global_symbols[qualified][0]`, the first of same-named `Type.m` across packages; no package check.\n3. 4804 / 3897-3899: a qualified receiver type `pkg.T` is matched to the caller's FILE's own `T.m` by bare type name before anything else (a same-named type of another package).\n4. 5248 interface dispatch: two or more interface candidates, minimum by id (already flagged disambiguation_fallback).\n5. 5457: `x.M()` on an untyped receiver binds the file's `M` by bare name (any type's method in the file; marked same_file). 5531 with no hint: the only `M` in the repository (name).\n6. 3837 / 5480: `root.F` where `root` imports the module's ROOT package gives an empty hint; the lookup filters nothing.\n7. 5480-5482: a value receiver whose hint is the package that made the value (`pkg.F().M()`, a package variable, a field's qualified type): the method is looked up by bare name in that package, not on the value's type (marked name).\n\nSIZE: not measured. On caddy the marks are in mainA/ab_go_*.txt; no count per route above exists.\n\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/mainA/RESULTS.md, guess-prone 2-7 and the judgment calls."  # 5463
+    fields: {}  # 5463

@@ -1,0 +1,22 @@
+- op: create  # b31e
+  at: '2026-11-25T07:13:33Z'  # b31e
+  by: agent  # b31e
+  actor: jgstern_agent  # b31e
+  clock: 1  # b31e
+  nonce: b31e  # b31e
+  data:  # b31e
+    kind: work_item  # b31e
+    title: "cpp: a construction finds its class through the run-wide one-per-name table; a pointer declaration emits a second instantiates edge"  # b31e
+    status: todo_hard  # b31e
+    priority: 3  # b31e
+    parent:  # b31e
+    tags:  # b31e
+    - call_graph  # b31e
+    - analysis_quality  # b31e
+    - call_matrix  # b31e
+    isbefore: []  # b31e
+    duplicate_of: []  # b31e
+    not_duplicate_of: []  # b31e
+    pr_ref:  # b31e
+    description: "TWO FINDINGS IN cpp.py, read while stamping resolved_by (2026-11-25; lines at the mark PR's head)\n\n1. `_find_class_or_struct` (cpp.py:1676): the file table's entry for a class that has constructors is the CONSTRUCTOR, so even a class of the caller's own file is found through the run-wide one-per-name table (last writer). On libzmq 624 of 648 resolved `instantiates` edges are marked `name`. A construction of a class the caller's own file declares is not bound by that file's declaration.\n   STATEMENT: a construction `T(...)` / `new T(...)` of a class declared in the caller's file (or a header it includes) binds that class; two classes of one name elsewhere do not change the answer.\n\n2. `Widget* w = new Widget(1);` emits TWO `instantiates` edges to Widget: one for the `new` expression and one `stack_construction` edge, because the declaration arm reads the pointer declaration's type. A pointer declaration constructs nothing. Pre-existing; the mark PR did not change it.\n   STATEMENT: a pointer declaration emits no stack-construction edge.\n\nNOT CHECKED: how many of libzmq's 624 land on the wrong class (the count says the search was unscoped, not that the answer is wrong); the number of doubled edges on any tree.\n\nRelated: the constructor chosen within the class is by arity (`construct()`, 2348); the class value is passed in.\nSource: ~/hypergumbo_lab_notebook/resolution_mark_11252026/mainA/RESULTS.md, guess-prone 11 and 13."  # b31e
+    fields: {}  # b31e
