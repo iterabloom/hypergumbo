@@ -149,11 +149,15 @@ def test_the_check_reports_a_disagreement(tmp_path: Path) -> None:
     assert any(dst.endswith(":run:external_symbol") for dst in found.get("io_only_sink", [])), found
 
 
-@pytest.mark.xfail(strict=True, reason="WI-riloj: io follows no in-tree alias of a catalogued function; taint matches it by name")
 def test_a_promisified_alias_is_answered_alike(tmp_path: Path) -> None:
-    """knex's shape: the alias lives in a file NAMED ``fs.js``, and taint's match
-    of the in-tree ``.../fs.js:...:writeFile`` to ``fs.writeFile`` rides on that
-    file name; io classifies nothing."""
+    """knex's shape: the alias lives in a file NAMED ``fs.js``. Until ADR-0064's
+    pilot the call was bound by name to the in-tree VARIABLE ``writeFile``, and
+    taint's match of ``.../fs.js:...:writeFile`` to ``fs.writeFile`` rode on
+    that file name while io classified nothing (this test was a strict xfail
+    for it, WI-riloj). The shared pass binds an imported name to a function
+    of the file the import names, and the alias is a variable, so the call is
+    unresolved and the two answer alike: neither follows the alias to the
+    catalogued ``fs.writeFile``, which is still the gap."""
     behavior_map = _map(tmp_path, {
         "util/fs.js": "const fs = require('fs');\nconst { promisify } = require('util');\n"
                       "const writeFile = promisify(fs.writeFile);\nmodule.exports = { writeFile };\n",
