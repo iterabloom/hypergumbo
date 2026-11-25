@@ -2285,6 +2285,11 @@ def _extract_edges_from_file(
                 # heuristic, not full C# overload resolution).
                 ctor_key = f"{type_name}.{type_name}"
                 ctor = local_symbols.get(ctor_key) or global_symbols.get(ctor_key)
+                # The file's table first, else the run-wide one (last writer).
+                _by = (
+                    resolved_by.SAME_FILE if ctor_key in local_symbols
+                    else resolved_by.NAME
+                )
                 overloads = global_ctors.get(ctor_key)
                 if overloads and len(overloads) > 1:
                     arg_list = find_child_by_type(node, "argument_list")
@@ -2298,6 +2303,8 @@ def _extract_edges_from_file(
                     ]
                     if len(matches) == 1:
                         ctor = matches[0]
+                        # By arity among every same-keyed ctor of the run.
+                        _by = resolved_by.NAME
                     elif ctor is None:  # pragma: no cover - global_symbols has the key
                         ctor = overloads[0]
                 if ctor is not None:
@@ -2310,6 +2317,7 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         meta={"call_construct": "constructor"},
+                        resolved_by=_by,
                     ))
                 elif type_name in local_symbols:
                     target = local_symbols[type_name]
@@ -2322,6 +2330,7 @@ def _extract_edges_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         meta={"call_construct": "constructor"},
+                        resolved_by=resolved_by.SAME_FILE,
                     ))
                 else:
                     # Use import path for disambiguation
@@ -2338,6 +2347,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_construct": "constructor"},
+                            resolved_by=lookup_result.resolved_by,
                         ))
 
             # Track variable type for type inference
