@@ -249,6 +249,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     java_lang_default_spellings,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -795,9 +796,10 @@ class _ParsedFile:
        initializer (1) still narrows it afterwards; a return-type inference
        (2) never overrides it.
 
-    Sources 3 and 4 are file-wide; sources 1, 2 and 5 are unbound when the
-    next method begins, so a local named like a field cannot retype the field
-    in a sibling method.
+    Source 4 is file-wide; sources 1, 2, 3 and 5 are unbound when the method
+    that binds them ends (``ScopedVarTypes``), so a local or a parameter named
+    like a field cannot retype the field in a sibling method, and a parameter
+    of one method does not type a same-named local of the next (INV-zabud).
     """
 
     path: Path
@@ -2758,38 +2760,26 @@ def _extract_edges(
     file_anchor = file_anchor_symbol("java", str(file_path), PASS_ID, run.execution_id)
     current_method: Optional[Symbol]
     _caller_path = str(file_path)
-    # Track variable types for type inference: var_name -> class_name
-    var_types: dict[str, str] = {}
-    # One scope per method being walked -- ``(end_byte, shadow)`` where
-    # ``shadow`` records what each LOCAL binding in that method replaced
-    # (``None`` = nothing). A scope closes when the walk passes its end
-    # byte, and its locals are put back to what they shadowed (INV-vugon).
-    # It is a STACK because a method can nest inside a method: an anonymous
-    # class body (``new FilenameFilter() { public boolean accept(..) {..} }``)
-    # is a method_declaration inside the enclosing method's span, and closing
-    # the enclosing scope there would unbind the enclosing method's locals
-    # for the rest of its body. Fields and parameters are never recorded
-    # here and keep their file-wide binding.
-    scope_stack: list[tuple[int, dict[str, str | None], set[str]]] = []
+    # Variable types for type inference: var_name -> class_name. A LOCAL or a
+    # PARAMETER closes with its method (``ScopedVarTypes``; INV-vugon,
+    # INV-zabud): without that, ``File f = new File(p)`` in one method would
+    # type a sibling's use of a ``Socket f`` field, and ``void a(Other db)``
+    # would type ``var db = Lib.make()`` in the next method. Scopes nest: an
+    # anonymous class body's method sits inside the enclosing method's span
+    # and closes alone. Fields and record components are bound for the file.
+    var_types = ScopedVarTypes()
+    # (scope, name) of every local whose type the source DECLARED: an inferred
+    # type never replaces one (see ``_bind_declarator``).
+    declared_locals: set[tuple[int, str]] = set()
     # Type parameters seen so far in the file (``<T>``): a bare ``T`` is not a
     # class in any package, so it must never be sent to the ``java.lang`` slot.
     type_params: set[str] = set()
 
     def _bind(name: str, type_name: str, *, local: bool) -> None:
-        if local and scope_stack:
-            shadow = scope_stack[-1][1]
-            if name not in shadow:
-                shadow[name] = var_types.get(name)
-        var_types[name] = type_name
-
-    def _close_scopes_before(node: "tree_sitter.Node") -> None:
-        while scope_stack and node.start_byte >= scope_stack[-1][0]:
-            _, shadow, _ = scope_stack.pop()
-            for local_name, shadowed in shadow.items():
-                if shadowed is None:
-                    var_types.pop(local_name, None)
-                else:
-                    var_types[local_name] = shadowed
+        if local:
+            var_types[name] = type_name
+        else:
+            var_types.bind_outer(name, type_name)
 
     def _bind_declarator(
         declarator: "tree_sitter.Node", type_name: str, *, exact: bool,
@@ -2816,11 +2806,11 @@ def _extract_edges(
         name = _node_text(name_node, source)
         parent = declarator.parent
         is_local = parent is not None and parent.type == "local_variable_declaration"
-        if is_local and scope_stack:
-            declared = scope_stack[-1][2]
+        scope = var_types.scope_end
+        if is_local and scope is not None:
             if exact:
-                declared.add(name)
-            elif name in declared:
+                declared_locals.add((scope, name))
+            elif (scope, name) in declared_locals:
                 return
         _bind(name, type_name, local=is_local)
 
@@ -2951,7 +2941,7 @@ def _extract_edges(
         return dst_sym
 
     for node in iter_tree(tree.root_node):
-        _close_scopes_before(node)
+        var_types.close_scopes_before(node)
         # Check for extends (superclass) / implements in class declarations
         if node.type == "class_declaration":
             # The edge's SOURCE is the class this declaration node declares,
@@ -2993,12 +2983,10 @@ def _extract_edges(
             # File(p)`` in one method would leave ``f`` bound to ``File`` for
             # every later method in the file, typing a sibling's use of a
             # ``Socket f`` FIELD as ``java.io.File`` (INV-vugon).
-            scope_stack.append((node.end_byte, {}, set()))
-            param_types = _extract_param_types(node, source)
-            # Add parameter types to var_types for method call resolution
-            # Note: This is file-scoped, not method-scoped, but variable name collisions
-            # across methods are rare in practice
-            for param_name, param_type in param_types.items():
+            var_types.open_scope(node)
+            # Parameter types, for method call resolution; they close with
+            # the method like its locals (INV-zabud).
+            for param_name, param_type in _extract_param_types(node, source).items():
                 var_types[param_name] = param_type
 
         # Class field declarations — track field types for method call resolution

@@ -504,12 +504,12 @@ class TestLocalScope:
     def test_a_local_does_not_leak_into_the_next_method(self, tmp_path: Path) -> None:
         """A local named like a field must not retype the field elsewhere.
 
-        ``var_types`` is file-scoped, so unscoped, ``File f = new File(p)`` in
+        Were ``var_types`` one map per file, ``File f = new File(p)`` in
         one method would leave ``f`` bound to ``File`` for every LATER method
         in the file, typing a sibling method's use of the ``Socket f`` FIELD
         as ``java.io.File``. Locals (declared, constructed, or inferred from a
-        return) are unbound when the next method begins; fields and
-        parameters keep their file-wide binding.
+        return) and parameters are unbound when their method ends; fields
+        keep their file-wide binding.
         """
         (tmp_path / "S.java").write_text("""
 import java.io.File;
