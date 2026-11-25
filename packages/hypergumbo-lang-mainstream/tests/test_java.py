@@ -4039,16 +4039,6 @@ class TestClassNameCollision:
             f"(got {len(false_edges)} false edges)"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "ADR-0064 batch 5a, Java: the ``new`` is reported and the shared "
-            "pass looks the type up by its LAST name (``Properties``), while a "
-            "Java nested type's symbol is named ``Log4jConfiguration.Properties``"
-            ": no nested type is found through the table. A gap of the shared "
-            "layer, reported; this expectation is right and comes back with it."
-        ),
-    )
     def test_nested_class_resolved_from_same_file(
         self, tmp_path: Path,
     ) -> None:
@@ -4901,12 +4891,11 @@ public class IO {
         callee_names = {e.dst.split(":")[-2] for e in unresolved}
         # fis.read() and fis.close() should appear as unresolved
         assert "fis.read" in callee_names or "read" in callee_names
-        # An unresolved CALL is at 0.50. The ``new java.io.FileInputStream``
-        # is an unresolved ``instantiates`` stub too, whose confidence is the
-        # ``ast_new`` band's (a shared-layer value, not this analyzer's).
+        # An unresolved call is at 0.50, and so is the unresolved
+        # ``instantiates`` stub of ``new java.io.FileInputStream``.
+        assert {e.edge_type for e in unresolved} == {"calls", "instantiates"}
         for e in unresolved:
-            if e.edge_type == "calls":
-                assert e.confidence == 0.50
+            assert e.confidence == 0.50
 
     def test_typed_local_receiver_puts_the_TYPE_in_the_module_slot(
         self, tmp_path: Path,

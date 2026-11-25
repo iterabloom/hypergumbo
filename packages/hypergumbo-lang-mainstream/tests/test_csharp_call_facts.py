@@ -1056,12 +1056,12 @@ def test_end_to_end_a_global_using_in_another_file_of_the_project(tmp_path: Path
     assert _resolved(data, "TextToken.Render", "Format") == [
         ("Serilog.Rendering.Casing.Format", "receiver_type")]
     # The receiver made by ``new Casing()``: the shared pass binds the type in
-    # scope. The second edge is WRONG, and pinned here so that it is seen:
-    # ``new T()`` found by name alone (R12) binds the namesake class, and the
-    # method-call-recovery linker takes that class as the receiver's (its
-    # name agrees with the receiver_type_hint, so its step 3a keeps it).
+    # scope, and that is the call's one answer. ``new T()`` found by name
+    # alone (R12) still binds the namesake CLASS, and the method-call-recovery
+    # linker took that class for the receiver's and added a second, wrong
+    # edge to ``Decoy.Rendering.Casing.Format``, until it learned to leave a
+    # stub an earlier linker had answered.
     assert _resolved(data, "TextToken.Made", "Format") == [
-        ("Decoy.Rendering.Casing.Format", "class_hint"),
         ("Serilog.Rendering.Casing.Format", "receiver_type"),
     ]
 

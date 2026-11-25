@@ -486,3 +486,30 @@ def test_end_to_end_an_untyped_receiver_binds_one_holder_and_never_a_library_nam
     assert _resolved(data, "go", "drain") == [("io.Pipe.drain", "name")]
     assert _resolved(data, "go", "flush") == []
     assert _resolved(data, "go", "map") == []
+
+
+def test_end_to_end_a_call_in_a_class_body_and_at_the_top_of_a_file(tmp_path: Path) -> None:
+    """A property initialiser's caller is its class, which sees its own nested
+    type; a top-level property's caller is the file, which is in the file's
+    package. Neither is a namesake of another package."""
+    data = _map(tmp_path, {
+        "app/Widget.kt": "package app\n\nclass Widget {\n    private val log = Recorder()\n\n"
+                         "    class Recorder\n}\n",
+        "other/Recorder.kt": "package other\n\nclass Recorder\n",
+        "app/Top.kt": "package app\n\nfun helper(): Int = 1\n\nval ready = helper()\n",
+        "other/Helper.kt": "package other\n\nfun helper(): Int = 2\n",
+    })
+    assert _resolved(data, "Widget", "Recorder") == [("app.Widget.Recorder", "same_module")]
+    assert _resolved(data, "app/Top.kt", "helper") == [("app.helper", "same_module")]
+
+
+def test_end_to_end_a_parent_package_is_no_scope(tmp_path: Path) -> None:
+    """Kotlin packages do not nest: ``Pool()`` written in ``net.http`` is not
+    ``net.Pool`` without an import."""
+    data = _map(tmp_path, {
+        "net/Pool.kt": "package net\n\nclass Pool\n",
+        "net/http/Client.kt": "package net.http\n\nfun open() {\n    Pool()\n}\n",
+        "net/http/Server.kt": "package net.http\n\nimport net.Pool\n\nfun serve() {\n    Pool()\n}\n",
+    })
+    assert _resolved(data, "open", "Pool") == []
+    assert _resolved(data, "serve", "Pool") == [("net.Pool", "import")]

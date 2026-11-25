@@ -324,7 +324,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference. _(derived confidence 0.90)_
 - **`ast_method_type_inferred`** — Edge inferred from a method call with type-inferred receiver. _(derived confidence 0.85)_
 - **`ast_name_read`** — Edge inferred from a bare-name read of a module-level variable (WI-jagus). _(derived confidence 0.85)_
-- **`ast_new`** — Edge inferred from a `new` constructor expression. _(derived confidence 0.95)_
+- **`ast_new`** — Edge inferred from a `new` constructor expression. _(derived confidence 0.95; 0.50 when unresolved)_
 - **`ast_package`** — Edge inferred from a package declaration.
 - **`ast_perform`** — Edge inferred from a `perform`/effect-handler invocation (OCaml/Eff). _(derived confidence 0.85)_
 - **`ast_ref`** — Edge inferred from a generic name reference in source AST.
@@ -458,6 +458,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 |---|---|---|
 | `ast_call` | 0.85 | 0.40 |
 | `ast_call_direct` | 0.85 | 0.50 |
+| `ast_new` | 0.95 | 0.50 |
 | `macro_expansion` | 0.80 | 0.40 |
 
 **Unseeded (37).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.

@@ -621,3 +621,30 @@ def test_a_script_calls_its_own_function_not_another_scripts_namesake(tmp_path: 
     assert {(Path(a).parent.name, Path(b).parent.name) for a, b in own} == {
         ("interop", "interop"), ("qps", "qps"),
     }
+
+
+def test_a_call_at_the_top_of_a_file_is_in_the_files_namespace(tmp_path: Path) -> None:
+    """``boot();`` at the top of a file of namespace ``App`` has the file for
+    its caller: it is ``App\\boot``, not the ``boot`` of another namespace."""
+    nodes, edges = _map(tmp_path, {
+        "App/helpers.php": "<?php\nnamespace App;\nfunction boot() {}\n",
+        "Other/helpers.php": "<?php\nnamespace Other;\nfunction boot() {}\n",
+        "App/start.php": "<?php\nnamespace App;\nboot();\n",
+    })
+    assert {(line, target, mark) for _, line, target, mark in _resolved(nodes, edges)} == {
+        (3, "App\\boot", "same_module"),
+    }
+
+
+def test_a_class_is_not_looked_for_in_a_parent_or_the_global_namespace(tmp_path: Path) -> None:
+    """PHP namespaces do not nest, and only a FUNCTION falls back to the
+    global namespace: ``Conn`` written in ``App\\Http`` is neither ``App\\Conn``
+    nor the global ``Conn``; ``\\Conn`` is the global one."""
+    nodes, edges = _map(tmp_path, {
+        "Conn.php": _CONN.format(ns="Lib").replace("namespace Lib;\n", ""),
+        "App/Conn.php": _CONN.format(ns="App"),
+        "App/Http/Ctl.php": "<?php\nnamespace App\\Http;\nfunction run() {\n    Conn::open();\n"
+                            "    new Conn();\n    \\Conn::open();\n}\n",
+    })
+    assert _resolved(nodes, edges) == {("App\\Http\\run", 6, "Conn::open", "qualified")}
+    assert _resolved(nodes, edges, "instantiates") == set()

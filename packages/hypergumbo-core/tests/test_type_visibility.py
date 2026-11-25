@@ -372,3 +372,68 @@ def test_a_php_name_with_a_leading_backslash_is_a_full_name() -> None:
     aliased = ImportScope()
     aliased.add_named(module="Other", name="Kit", alias="Util")
     assert _how("\\Util\\helper", "App.Main.run", aliased, helpers) == (["Util.helper"], "qualified")
+
+
+# --- packages that do not nest (Java, Kotlin, PHP) -----------------------------------
+
+
+def _package(namespace: str, **flags: bool) -> ImportScope:
+    return ImportScope(own_namespace=namespace, **flags)
+
+
+def test_a_parent_package_is_no_scope_where_packages_do_not_nest() -> None:
+    """``Builder`` written in ``jedis.search`` is not ``jedis.Builder``: a
+    parent package needs an import. Where namespaces nest (no package named
+    by the table) it is."""
+    builders = [_type("jedis.Builder")]
+    assert _how("Builder", "jedis.search.Query.run", ImportScope(), builders) == (["jedis.Builder"], "same_module")
+    assert _how("Builder", "jedis.search.Query.run", _package("jedis.search"), builders) == ([], None)
+    imported = _package("jedis.search")
+    imported.add_named(module="jedis", name="Builder")
+    assert _how("Builder", "jedis.search.Query.run", imported, builders) == (["jedis.Builder"], "import")
+
+
+def test_the_own_package_and_the_enclosing_types_are_scopes() -> None:
+    helpers = [_type("a.b.Helper"), _type("a.b.Outer.Helper"), _type("a.Helper")]
+    assert _how("Helper", "a.b.Main.run", _package("a.b"), helpers) == (["a.b.Helper"], "same_module")
+    assert _how("Helper", "a.b.Outer.Inner.run", _package("a.b"), helpers) == (["a.b.Outer.Helper"], "same_module")
+
+
+def test_a_caller_that_is_a_scope_sees_what_it_declares() -> None:
+    """A call in a class body (a property initialiser) has the class for its
+    caller: the class's nested types are in scope, in either kind of language."""
+    nested = [_type("a.b.Outer.Nested"), _type("x.Nested")]
+    for scope in (ImportScope(), _package("a.b")):
+        assert _how("Nested", "a.b.Outer", scope, nested) == (["a.b.Outer.Nested"], "same_module")
+
+
+def test_a_caller_with_no_qualified_name_is_in_the_files_package() -> None:
+    """A call at the top of a file: the table's package is its scope."""
+    helpers = [_type("a.b.helper"), _type("helper")]
+    assert _how("helper", None, _package("a.b"), helpers) == (["a.b.helper"], "same_module")
+    assert _how("helper", None, _package(""), helpers) == (["helper"], "same_module")
+    assert _how("helper", None, ImportScope(), helpers) == (["helper"], "same_module")
+
+
+def test_a_name_with_an_owner_may_be_a_full_name() -> None:
+    """``x.y.Util`` from package ``a.b``: relative to the caller's scopes
+    first, then the full name. A bare name is never the unnamed package's."""
+    utils = [_type("x.y.Util"), _type("Util")]
+    assert _how("x.y.Util", "a.b.Main.run", _package("a.b"), utils) == (["x.y.Util"], "qualified")
+    assert _how("Util", "a.b.Main.run", _package("a.b"), utils) == ([], None)
+    nearer = [*utils, _type("a.b.x.y.Util")]
+    assert _how("x.y.Util", "a.b.Main.run", _package("a.b"), nearer) == (["a.b.x.y.Util"], "qualified")
+
+
+def test_a_php_bare_function_falls_back_to_the_global_namespace() -> None:
+    """PHP: ``helper()`` in ``App\\Http`` is ``App\\Http\\helper`` or the global
+    ``helper``; a class is never looked for in the global namespace."""
+    function = _type("helper")
+    function.kind = "function"
+    php = _package("App.Http", global_functions_visible=True)
+    assert _how("helper", "App.Http.run", php, [function]) == (["helper"], "same_module")
+    assert _how("Conn", "App.Http.run", php, [_type("Conn")]) == ([], None)
+    assert _how("helper", "App.Http.run", _package("App.Http"), [function]) == ([], None)
+    own = _type("App.Http.helper")
+    own.kind = "function"
+    assert _how("helper", "App.Http.run", php, [function, own]) == (["App.Http.helper"], "same_module")

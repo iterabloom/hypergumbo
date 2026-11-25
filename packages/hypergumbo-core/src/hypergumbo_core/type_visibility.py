@@ -18,12 +18,21 @@ thing a call site needs on top, the order):
    an alias of the file (``using Svc = A.B;``) is replaced by what it names
    and the result is taken as a full name;
 2. otherwise the scopes that enclose the caller are searched from the
-   innermost out: every proper prefix of the caller's qualified name (its
+   innermost out: the caller itself (a type's body sees the type's nested
+   declarations), then every proper prefix of its qualified name (its
    enclosing types, then its namespaces), then the global namespace. The
    first scope that declares the name answers, and a name is not looked for
-   further out once found;
+   further out once found. Where packages do not nest (Java, Kotlin, PHP:
+   the table says so by naming the file's package,
+   ``ImportScope.own_namespace``) the walk ends at that package: a parent
+   package is no scope, and neither is the global namespace;
 3. otherwise the file's wildcard imports (``using N;``) are searched
-   together; a name two of them supply is a tie, and both are returned.
+   together; a name two of them supply is a tie, and both are returned;
+4. otherwise, where packages do not nest: a name written with an owner
+   (``a.b.Util``) is a full name (Java and Kotlin read it so; in PHP a name
+   that only this step answers is relative and does not run, so no valid
+   PHP call is bound by it), and in PHP a FUNCTION called by a bare name is
+   the global namespace's (``ImportScope.global_functions_visible``).
 
 A language whose imports name FILES (JavaScript, TypeScript, Rust: the scope
 says which kind it holds, ``ImportScope.module_kind``) has a different rule,
@@ -139,11 +148,19 @@ def written_arity(written: str) -> int:
     return count
 
 
-def _enclosing_scopes(caller_qualified_name: str | None) -> list[str]:
-    """Proper prefixes of the caller's qualified name, innermost first, then
-    the global namespace."""
-    parts = dotted(caller_qualified_name or "").split(".")[:-1]
-    return [".".join(parts[:n]) for n in range(len(parts), 0, -1)] + [""]
+def _enclosing_scopes(caller_qualified_name: str | None, own_namespace: str | None) -> list[str]:
+    """The scopes around the caller, innermost first: the caller itself, the
+    prefixes of its qualified name, then the global namespace. With
+    ``own_namespace`` (packages that do not nest) only the scopes from the
+    caller in to that package, and the package alone for a caller that
+    records no qualified name (a call at the top of a file)."""
+    parts = [part for part in dotted(caller_qualified_name or "").split(".") if part]
+    scopes = [".".join(parts[:n]) for n in range(len(parts), 0, -1)] + [""]
+    if own_namespace is None:
+        return scopes
+    package = dotted(own_namespace)
+    inside = [s for s in scopes if not package or s == package or s.startswith(f"{package}.")]
+    return inside or [package]
 
 
 #: How many files a name is followed through before the search gives up: a
@@ -265,7 +282,7 @@ def _by_declared_name(
     if alias is not None:
         return list(declared.get(name, ())), resolved_by.IMPORT
 
-    for enclosing in _enclosing_scopes(caller_qualified_name):
+    for enclosing in _enclosing_scopes(caller_qualified_name, scope.own_namespace):
         found = declared.get(f"{enclosing}.{name}" if enclosing else name)
         if found:
             # The call site wrote an owner (``Db.Conn``): the scope walk only
@@ -275,7 +292,13 @@ def _by_declared_name(
     supplied: list["Symbol"] = []
     for module in scope.wildcard_modules:
         supplied += declared.get(f"{dotted(module)}.{name}", ())
-    return supplied, resolved_by.IMPORT
+    if supplied or scope.own_namespace is None:
+        return supplied, resolved_by.IMPORT
+    if rest:
+        return list(declared.get(name, ())), resolved_by.QUALIFIED
+    if scope.global_functions_visible:
+        return [c for c in declared.get(name, ()) if c.kind == "function"], resolved_by.SAME_MODULE
+    return [], resolved_by.IMPORT
 
 
 def _by_file(

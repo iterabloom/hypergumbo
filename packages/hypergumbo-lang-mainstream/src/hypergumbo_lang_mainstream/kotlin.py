@@ -1491,8 +1491,10 @@ def _kotlin_import_scope(tree: "tree_sitter.Tree", source: bytes) -> ImportScope
     A companion object's member is imported through ``Companion``
     (``import a.b.Foo.Companion.of``) while its qualified name has no such
     segment (``a.b.Foo.of``): the segment is dropped (``kotlin_import_path``).
-    What is NOT recorded: the file's own package, which the caller's qualified
-    name already supplies to the declared-name rule, and Kotlin's default
+    The file's package is the table's ``own_namespace``: Kotlin packages do
+    not nest, so a name is looked for in the caller's enclosing declarations
+    and its own package, never in a parent package. What is NOT recorded:
+    Kotlin's default
     imports (``kotlin.*``, ``kotlin.collections.*``, ``java.lang.*``, ...),
     where nothing of a repository is declared.
 
@@ -1501,7 +1503,10 @@ def _kotlin_import_scope(tree: "tree_sitter.Tree", source: bytes) -> ImportScope
     defines on its types is handed over with ``stdlib_member_name``
     (:data:`_KOTLIN_LIBRARY_MEMBER_NAMES`).
     """
-    scope = ImportScope(library_names_screened=True)
+    scope = ImportScope(
+        library_names_screened=True,
+        own_namespace=_extract_kotlin_package(tree.root_node, source) or "",
+    )
     for path, alias, star in _kotlin_import_nodes(tree, source):
         if star:
             scope.add_open_wildcard(kotlin_import_path(path))

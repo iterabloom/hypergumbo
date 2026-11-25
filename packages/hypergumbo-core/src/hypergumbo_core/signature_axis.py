@@ -224,7 +224,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
                     "packages/hypergumbo-core/src/hypergumbo_core/"
                     "linkers/method_call_recovery.py"
                 ),
-                line=203,
+                line=209,
                 anchor="HOLDS BOTH A VALUE TYPE AND A CALL SIGNATURE",
                 note=(
                     "The consumer that found the conflation, and the reason "
@@ -346,7 +346,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2748,
+        line=2753,
         anchor="resolved_nav_sym.signature",
         fact="return_type",
         note="Navigation-target return type.",
@@ -356,7 +356,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2831,
+        line=2836,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",
@@ -399,7 +399,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-core/src/hypergumbo_core/"
             "linkers/method_call_recovery.py"
         ),
-        line=214,
+        line=220,
         anchor='signature = (member.signature or "").strip()',
         fact="value_type",
         note=(

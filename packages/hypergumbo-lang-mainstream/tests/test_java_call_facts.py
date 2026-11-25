@@ -384,3 +384,43 @@ def test_end_to_end_an_untyped_receiver_stays_unresolved(tmp_path: Path) -> None
         ),
     })
     assert _resolved(data, "Main.run", "execute") == []
+
+
+def test_end_to_end_a_parent_package_is_no_scope(tmp_path: Path) -> None:
+    """Java packages do not nest (JLS 7.1): ``Builder`` written in
+    ``jedis.search`` is not ``jedis.Builder`` unless the file imports it."""
+    builder = "package jedis;\npublic class Builder { public void build() {} }\n"
+    body = "{\n  void run(Builder b) { b.build(); new Builder(); }\n}\n"
+    data = _map(tmp_path, {
+        "jedis/Builder.java": builder,
+        "jedis/search/Query.java": "package jedis.search;\npublic class Query " + body,
+        "jedis/search/Other.java": "package jedis.search;\nimport jedis.Builder;\npublic class Other " + body,
+    })
+    assert _resolved(data, "Query.run", "build") == []
+    assert _resolved(data, "Query.run", "Builder", "instantiates") == []
+    assert _resolved(data, "Other.run", "build") == [("jedis.Builder.build", "receiver_type")]
+    assert _resolved(data, "Other.run", "Builder", "instantiates") == [("jedis.Builder", "import")]
+
+
+def test_end_to_end_a_nested_type_and_a_statically_imported_method(tmp_path: Path) -> None:
+    """A nested type is found as ``Outer.Inner`` from outside and ``Inner``
+    inside its outer type, never a namesake nested elsewhere; ``import static
+    util.Text.pad;`` makes a bare ``pad(..)`` that method, not ``ui.Box.pad``."""
+    data = _map(tmp_path, {
+        "db/Config.java": "package db;\npublic class Config {\n"
+                          "  public static class Builder { public Config build() { return null; } }\n"
+                          "  static Builder fresh() { return new Builder(); }\n}\n",
+        "web/Request.java": "package web;\npublic class Request {\n"
+                            "  public static class Builder { public void build() {} }\n}\n",
+        "util/Text.java": "package util;\npublic class Text { public static String pad(String s) { return s; } }\n",
+        "ui/Box.java": "package ui;\npublic class Box { public static String pad(String s) { return s; } }\n",
+        "app/Main.java": "package app;\nimport db.Config;\nimport static util.Text.pad;\n"
+                         "public class Main {\n  void run() {\n"
+                         "    Config.Builder b = new Config.Builder();\n    b.build();\n    pad(\"x\");\n  }\n}\n",
+    })
+    assert _resolved(data, "Main.run", "Builder", "instantiates") == [("db.Config.Builder", "import")]
+    assert _resolved(data, "Main.run", "build") == [("db.Config.Builder.build", "receiver_type")]
+    assert _resolved(data, "Main.run", "pad") == [("util.Text.pad", "import")]
+    assert _resolved(data, "Config.fresh", "Builder", "instantiates") == [
+        ("db.Config.Builder", "same_module"),
+    ]

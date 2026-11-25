@@ -133,6 +133,17 @@ class ImportScope:
     #: the screen, ``task.AsTask()`` or ``items.push(x)`` on a receiver of
     #: unknown type is bound to the repository's one method of that name.
     library_names_screened: bool = False
+    #: The file's own package or namespace, set by the analyzer of a language
+    #: whose packages DO NOT NEST (Java, Kotlin, PHP: a file of ``a.b.c`` sees
+    #: the declarations of ``a.b.c``, not those of ``a.b``); ``""`` is the
+    #: unnamed package. ``None``: every namespace around the caller is a scope
+    #: (C#), or the file has more than one. Read by the declared-name rule
+    #: (``type_visibility``), which also takes it as the scope of a caller
+    #: that records no qualified name (a call at the top of the file).
+    own_namespace: Optional[str] = None
+    #: PHP: a function called by a bare name that the caller's namespace does
+    #: not declare is the global namespace's (a class is not looked for there).
+    global_functions_visible: bool = False
     _named: dict[str, CanonicalName] = field(default_factory=dict)
     _modules: dict[str, str] = field(default_factory=dict)
     _wildcards: list[str] = field(default_factory=list)

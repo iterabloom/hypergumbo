@@ -1869,15 +1869,22 @@ class TestConstructorsAreContained:
     @staticmethod
     def _hops(analysis, tmp_path: Path) -> list[tuple[str, str]]:
         from hypergumbo_core.construction import initializer_hops
+        from hypergumbo_core.linkers.inherited_calls import link_inherited_calls
 
         contained = link_containment(LinkerContext(
             repo_root=tmp_path, symbols=analysis.symbols, edges=analysis.edges,
+        ))
+        # An analyzer that hands over import tables reports ``new T()`` and
+        # the shared call resolution says which type it means (ADR-0064).
+        constructed = link_inherited_calls(LinkerContext(
+            repo_root=tmp_path, symbols=analysis.symbols, edges=analysis.edges,
+            import_scopes=analysis.import_scopes,
         ))
         names = {s.id: s.name for s in analysis.symbols}
         return [
             (names[owner], names[init])
             for owner, init in initializer_hops(
-                analysis.symbols, analysis.edges + contained.edges,
+                analysis.symbols, analysis.edges + contained.edges + constructed.edges,
             )
         ]
 
