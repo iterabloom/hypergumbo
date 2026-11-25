@@ -1311,9 +1311,11 @@ class TestRustParamTypeExtraction:
 
 
 class TestRustVarTypesExtraction:
-    """Unit tests for _extract_var_types_rust (WI-titor file-scoped var_types).
+    """Unit tests for _extract_var_types_rust (WI-titor; per function since INV-zabud).
 
-    Single-pass file-scoped collector. Sources:
+    One walk, bindings scoped to the ``fn`` that makes them. Each test here
+    has one function, whose scope is still open when the walk ends, so the
+    returned map reads as that function's bindings. Sources:
     - function parameters (delegated to _extract_param_types_rust)
     - ``let x: Type = ...`` (explicit annotation)
     - ``let x = Type::new(...)`` (constructor / associated-function call)
@@ -1413,9 +1415,9 @@ class TestRustVarTypesExtraction:
         assert var_types == {}
 
     def test_first_writer_wins_on_rebinding(self) -> None:
-        """Rust ``let`` shadowing: the first binding sticks (matches Go's
-        single-assignment posture; later same-name lets would carry a
-        different type but file-scoped tracking can't distinguish blocks)."""
+        """Rust ``let`` shadowing: the first binding in the function sticks
+        (matches Go's single-assignment posture; a later same-name let would
+        carry a different type, and the map is per function, not per block)."""
         from hypergumbo_lang_mainstream.rust import _extract_var_types_rust
         tree, src = self._parse(
             "fn handler() { let x = Foo::new(); let x = Bar::new(); }"
@@ -1754,6 +1756,7 @@ fn handler(engine: Engine) {
         """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
+            _extract_var_types_rust,
             is_rust_tree_sitter_available,
             RustAnalyzer,
         )
@@ -1812,7 +1815,7 @@ fn handler(svc: Service) {
             span_index=span_idx,
             field_type_registry=analyzer._field_type_registry,
             analyzer=analyzer,
-            var_types={"svc": "Service"},
+            var_types=_extract_var_types_rust(tree.root_node, source, None),
         )
 
         typed_var_edges = [

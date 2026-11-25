@@ -74,14 +74,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      the call binds the trait's declaration when nothing else in the tree
      has the name (INV-hupis; before it, the entry was whichever
      same-named method the file declared last).
-   - Local types (strategies 1.8/1.9) come from a file-scoped var-type
-     map: parameters, ``let`` annotations, constructor / struct-literal
+   - Local types (strategies 1.8/1.9) come from a var-type map kept per
+     function (``ScopedVarTypes``): parameters, ``let`` annotations, constructor / struct-literal
      initializers, enum-variant destructuring patterns,
      ``let x = recv.method()`` chained through the return-type registry,
      and ``let x = function()`` (also ``function().method()``) through
      the declared return type of the one function the name reaches from
-     this file. The map is per FILE, first writer wins: a variable name
-     typed in one function types the same name in the others.
+     this file. A binding belongs to the ``fn`` that makes it, first writer
+     in the function wins: a name typed in one function does not type the
+     same name in another (INV-zabud).
    - Generic trait methods (``into``, ``clone``, ...; the shared
      ``SUPPRESSED_METHOD_NAMES`` set) are barred from short-name
      resolution, and a bare call that matches a *different* impl's method
@@ -208,6 +209,7 @@ from hypergumbo_core.analyze.registry import (
     last_segment,
     register_analyzer,
 )
+from hypergumbo_core.analyze.var_scope import ScopedVarTypes
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -524,7 +526,7 @@ def _extract_param_types_rust(
 ) -> dict[str, str]:
     """Extract parameter ``name -> type`` mapping from a Rust function_item.
 
-    The result seeds the file-scoped ``var_types`` dict so method calls
+    The result seeds the function's ``var_types`` bindings so method calls
     on typed parameters (``fn process(client: Client) { client.send() }``)
     resolve to ``Client::send`` instead of falling through to the
     short-name ambiguity guard (WI-titor).
@@ -604,17 +606,22 @@ def _extract_var_types_rust(
     source: bytes,
     method_return_type_registry: dict[str, str] | None,
     free_fn_return_type: "Callable[[str], str | None] | None" = None,
-) -> dict[str, str]:
-    """Build a file-scoped ``var_name -> type_name`` map for Rust.
+) -> ScopedVarTypes:
+    """Build the ``var_name -> type_name`` bindings of a Rust file, per function.
 
     Seeds ``var_types`` and consumes the return-type registry for
-    chained calls (WI-titor). File-scoped (not method-scoped) matches the
-    Java/Kotlin/C#/Go convention per ADR-0006; the documented trade-off
-    is occasional false positives when the same variable name carries
-    different types across functions (extra edges, never missing edges).
+    chained calls (WI-titor).
 
-    Sources, in tree walk order (first writer wins, mirrors Go's
-    single-assignment posture):
+    SCOPE (INV-zabud). A binding belongs to the ``fn`` that makes it: a
+    parameter, a ``let``, a pattern local. Ask the result for the bindings a
+    call sees with ``var_types.at(call_node)``. The map was once one per file,
+    first writer wins, described as "extra edges, never missing edges"; what
+    it gave was a WRONG edge in place of the right one, because the first
+    ``db`` in the file typed every later ``db``, including one constructed on
+    the line above its call.
+
+    Sources, in tree walk order (the first writer IN THE FUNCTION wins,
+    mirrors Go's single-assignment posture):
 
     1. Function parameters from every ``function_item`` (delegated to
        ``_extract_param_types_rust``).
@@ -635,24 +642,25 @@ def _extract_var_types_rust(
        function the name reaches from this file (``free_fn_return_type``;
        see ``_infer_type_from_rust_rhs``).
 
-    Returns an empty dict when no patterns match; never raises.
+    Returns an empty map when no patterns match; never raises.
     """
-    var_types: dict[str, str] = {}
+    var_types = ScopedVarTypes(remember=True)
     registry = method_return_type_registry or {}
     enum_variant_field_types = _extract_enum_variant_field_types_rust(
         root_node, source
     )
 
     for node in iter_tree(root_node):
+        var_types.close_scopes_before(node)
         if node.type == "function_item":
+            var_types.open_scope(node)
             for k, v in _extract_param_types_rust(node, source).items():
-                var_types.setdefault(k, v)
+                var_types[k] = v
         elif node.type == "tuple_struct_pattern":
             # A tuple-struct enum-variant pattern (match arm, if/while let, or
             # destructuring let) binds each positional local to the variant's
             # field type, so a later `local.method()` resolves to the concrete
-            # impl (WI-kodap). First-writer-wins, file-scoped (the documented
-            # var_types trade-off: extra edges, never missing).
+            # impl (WI-kodap). The first writer in the function wins.
             type_node = _find_child_by_field(node, "type")
             if type_node is None:  # pragma: no cover - grammar invariant
                 continue
@@ -670,15 +678,18 @@ def _extract_var_types_rust(
                 if c.id != type_node.id and c.type not in ("(", ")", ",")
             ]
             for sub, field_type in zip(sub_patterns, field_types, strict=False):
-                if field_type is not None and sub.type == "identifier":
-                    var_types.setdefault(node_text(sub, source), field_type)
+                if (
+                    field_type is not None and sub.type == "identifier"
+                    and not var_types.bound_here(node_text(sub, source))
+                ):
+                    var_types[node_text(sub, source)] = field_type
         elif node.type == "let_declaration":
             pattern_node = _find_child_by_field(node, "pattern")
             if pattern_node is None or pattern_node.type != "identifier":
                 continue
             var_name = node_text(pattern_node, source)
-            if var_name in var_types:
-                continue  # first writer wins
+            if var_types.bound_here(var_name):
+                continue  # the first writer in this function wins
             type_node = _find_child_by_field(node, "type")
             if type_node is not None:
                 bare = _normalize_rust_type_to_bare_name(
@@ -736,8 +747,8 @@ def _qualified_rust_type_path(type_text: str, bare: str) -> str | None:
 
 def _extract_qualified_var_type_paths(
     root_node: "tree_sitter.Node", source: bytes,
-) -> dict[str, str]:
-    """File-scoped ``var_name -> WRITTEN qualified type path`` (INV-linub L3).
+) -> ScopedVarTypes:
+    """``var_name -> WRITTEN qualified type path``, per function (INV-linub L3).
 
     A companion to ``_extract_var_types_rust``, not a replacement: that map
     holds BARE names because the typed-receiver strategies look them up in the
@@ -756,15 +767,15 @@ def _extract_qualified_var_type_paths(
     than in normalization; the field- and chained-receiver arms of the
     unresolved-external path in ``_extract_edges_from_file`` recover those.
 
-    First-writer-wins and file-scoped, matching ``_extract_var_types_rust``'s
-    documented trade-off exactly, so the two maps never disagree about which
-    binding a name refers to.
+    Scoped to the function and first-writer-wins inside it, exactly as
+    ``_extract_var_types_rust`` is (INV-zabud), so the two maps never disagree
+    about which binding a name refers to.
     """
-    paths: dict[str, str] = {}
+    paths = ScopedVarTypes(remember=True)
 
     def _record(name: str, type_text: str) -> None:
-        if name in paths:
-            return  # first writer wins, as in _extract_var_types_rust
+        if paths.bound_here(name):
+            return  # first writer in the function, as in _extract_var_types_rust
         bare = _normalize_rust_type_to_bare_name(type_text)
         if not bare:
             return
@@ -773,7 +784,9 @@ def _extract_qualified_var_type_paths(
             paths[name] = qualified
 
     for node in iter_tree(root_node):
+        paths.close_scopes_before(node)
         if node.type == "function_item":
+            paths.open_scope(node)
             params_node = _find_child_by_field(node, "parameters")
             if params_node is None:  # pragma: no cover - grammar invariant
                 continue
@@ -3430,8 +3443,8 @@ def _extract_edges_from_file(
     field_type_registry: dict[str, dict[str, str]] | None = None,
     analyzer: "RustAnalyzer | None" = None,
     kind_index: dict[str, list[Symbol]] | None = None,
-    var_types: dict[str, str] | None = None,
-    var_type_paths: dict[str, str] | None = None,
+    var_types: ScopedVarTypes | None = None,
+    var_type_paths: ScopedVarTypes | None = None,
     file_functions: list[Symbol] | None = None,
     free_fn_return_type: "Callable[[str], str | None] | None" = None,
 ) -> list[Edge]:
@@ -3455,8 +3468,9 @@ def _extract_edges_from_file(
             ``register_symbol``), the impl_item handler returns no
             trait_sym for any name and the unresolved-trait branch
             handles edge emission.
-        var_types: Optional file-scoped ``var_name -> type_name`` map
-            from ``_extract_var_types_rust`` (WI-titor). When provided,
+        var_types: Optional per-function ``var_name -> type_name`` bindings
+            from ``_extract_var_types_rust`` (WI-titor, INV-zabud); a call
+            reads the ones its own function made. When provided,
             ``receiver.method()`` calls whose
             ``receiver`` is a bound variable resolve directly to
             ``{ReceiverType}::{method}`` — a strategy that fires
@@ -3473,8 +3487,9 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
     file_anchor = file_anchor_symbol("rust", str(file_path), PASS_ID, run_id)
-    _var_types: dict[str, str] = var_types or {}
-    _var_type_paths: dict[str, str] = var_type_paths or {}
+    # What the call being walked sees; set per call from the two scoped maps.
+    _var_types: dict[str, str] = {}
+    _var_type_paths: dict[str, str] = {}
     # Hoisted out of the iter_tree loop so the impl_item ``_lookup_trait``
     # closure doesn't trigger ruff B023
     # (function-definition-does-not-bind-loop-variable). The contents
@@ -3658,6 +3673,10 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
+            if var_types is not None:
+                _var_types = var_types.at(node)
+            if var_type_paths is not None:
+                _var_type_paths = var_type_paths.at(node)
             # INV-bamij: a call in no function (a static / const initialiser, a
             # LazyLock closure, a top-level macro) is anchored on the file.
             current_function = (
@@ -5211,7 +5230,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
         else:
             kind_index = {}
 
-        # Pre-compute file-scoped var_types from let bindings
+        # Pre-compute the per-function var_types from let bindings
         # and parameter declarations, consulting the cross-file
         # method-return-type registry for chained method calls. The
         # registry comes from base.py's Pass-1 aggregation step
