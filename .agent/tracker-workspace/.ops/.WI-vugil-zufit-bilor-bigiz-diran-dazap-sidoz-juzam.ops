@@ -19,3 +19,10 @@
     pr_ref:  # 70bc
     description: "STATEMENT: where several files declare a type, method or function under one qualified name and the language has no types declared in parts, a call from a file that declares none of them is bound to the declaration its build loads, or is unresolved. OBSERVED: inherited_calls takes declarations of one qualified name for one declaration and binds the first by path (the caller's own file's first, since batch 5a). On grpc's PHP, tests/interop and tests/qps/generated_code each declare Grpc\\Testing\\Payload and its siblings (generated copies); 168 resolved calls and constructions go to such a name from a file that declares none (59 receiver_type, 51 qualified method, 49 class, 9 class_hint). A blind judge, deciding by each script's composer psr-4 map, found 5 of 6 such sampled binds on the right copy and 1 on the other. Other trees of the batch: okhttp 7 (Kotlin expect / actual), the rest 0. C# partial classes and Kotlin expect / actual are legitimately several declarations of one type; PHP and Java are not.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 70bc
     fields: {}  # 70bc
+- op: discuss  # f8a3
+  at: '2026-11-26T03:33:38Z'  # f8a3
+  by: agent  # f8a3
+  actor: jgstern_agent  # f8a3
+  clock: 2  # f8a3
+  nonce: f8a3  # f8a3
+  message: "Batch 5b, Go: build-tag variants of one function in the caller's own package (foo_linux.go / foo_windows.go) are several declarations of one qualified name; the Go analyzer binds the first by path (9 calls on caddy, logrus and pgx), the same pick this item describes. Which variant a reader wants was not checked."  # f8a3

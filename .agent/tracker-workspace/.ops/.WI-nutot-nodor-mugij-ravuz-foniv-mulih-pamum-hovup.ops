@@ -1,0 +1,21 @@
+- op: create  # a6c8
+  at: '2026-11-26T00:08:51Z'  # a6c8
+  by: agent  # a6c8
+  actor: jgstern_agent  # a6c8
+  clock: 1  # a6c8
+  nonce: a6c8  # a6c8
+  data:  # a6c8
+    kind: work_item  # a6c8
+    title: "Rust: a method called through a library wrapper that derefs to a type of the tree is reported as the wrapper's own method"  # a6c8
+    status: todo_hard  # a6c8
+    priority: 2  # a6c8
+    parent:  # a6c8
+    tags:  # a6c8
+    - analysis_quality  # a6c8
+    - shared_call_resolution  # a6c8
+    isbefore: []  # a6c8
+    duplicate_of: []  # a6c8
+    not_duplicate_of: []  # a6c8
+    pr_ref:  # a6c8
+    description: "STATEMENT: a method called through a wrapper that derefs to a type of the tree is bound to that type's method, or is unresolved; it is never reported as a method of the wrapper, which does not declare it.\n\nFound 2026-11-25 from the red scheduled run at 4b66bbfec (self-tree-validation, the\ntest-only-reachability half), not from a measurement arm.\n\nThe instance. In the recorded crate packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/crate:\n  src/dns/coredns.rs:408  backend: &Guard<Arc<DNSBackend>>\n  src/dns/coredns.rs:442  backend.reverse_lookup(...)\n  src/dns/coredns.rs:470  backend.lookup(...)\n`DNSBackend::lookup` and `DNSBackend::reverse_lookup` are declared at src/backend/mod.rs:62 and :165.\nRust reaches them by auto-deref: Guard<T> derefs to T, Arc<T> derefs to T. Run on that crate alone\n(branch head 048001685, `hypergumbo run <crate>`), the two calls come out as\n  reply_ptr -> rust:arc_swap::Guard:0-0:reverse_lookup:external_symbol\n  reply_ip  -> rust:arc_swap::Guard:0-0:lookup:external_symbol\nthat is, as methods of the library type `arc_swap::Guard`, which declares neither. Before the Rust\nadapter of the pilot (merged in the pull request of step 4) these two calls were bound to the\nDNSBackend methods by name.\n\nWhat is general. A receiver whose declared type is a library generic around a type of the tree\n(Arc<T>, Rc<T>, Box<T>, a guard type, MutexGuard<T>, Ref<T>) and a method the wrapper does not\ndeclare. The analyzer names the outermost type as the owner. Two separate things are wrong:\n  1. the edge states a callee that does not exist (a library method named after the call), where\n     the ruling is \"unresolved beats a guess\";\n  2. the right callee is not found: for the standard wrappers whose Deref target is their first\n     type argument (Arc, Rc, Box, and the std guards) the type argument is in the source text.\n     For a wrapper of a third-party crate (arc_swap::Guard) the Deref target is not in the tree;\n     whether to treat \"a method the tree's type T declares, called on Library<T>\" as T's method\n     is a rule to decide and measure, not assumed here.\n\nNot measured: how many calls on the Rust trees of the pilot have this shape, and how many of them\nwere right before. The instance above is two calls in one crate.\n\nNot the cause of the red run's fix: the gate judged a recorded third-party crate because its\npredicate for \"production path\" admitted any path under packages/ with a /src/ segment; that is\nfixed separately (the commit carrying `Fixes-scheduled-run: self-tree-validation`, merged in PR #2424)."  # a6c8
+    fields: {}  # a6c8
