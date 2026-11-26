@@ -1,0 +1,32 @@
+Original commit body from d99e93adcb98e8161ee4de3da951ef9419bf856b:
+
+The Python adapter of ADR-0064 (shared call resolution). It was in batch 5b (#2426) and was pulled after its first round; this is the second.
+
+## What changes for a reader of a map
+
+A Python import names one file of the repository or none. The dotted-suffix match that found a module when the exact name failed is gone for calls, and so are the base-class guesses (the one class of that short name in the run, else the first by id). The analyzer reads the directories a file itself puts on `sys.path`. Unresolved Python calls now carry the facts the shared linkers read, which resolve more of them.
+
+## Why it was pulled, and what the second round did
+
+The first round lost 176 resolved calls on this repository's own map; 15 of 15 read were right before. 170 were scripts calling `scripts/lib` modules they reach through `sys.path.insert(0, ..)`. The analyzer now evaluates such an argument when it is a static path expression and applies the entries in Python's order: 172 are back.
+
+## Measured (before = dev a73a748a4, after = this branch at 19d0aa81e)
+
+| three repositories (flask-restful, httpx, poetry) | |
+|---|---|
+| resolved calls | 4,641 to 4,795 |
+| resolved before, not now | 1 |
+| different target | 6 |
+| not resolved before, resolved now | 155 |
+
+A judge who did not know which side a pair came from read every changed site and 15 of the new edges: six `super().__init__` calls were wrong before (bound to a class the caller constructs on a nearby line) and are right now; one right edge is lost (a property read on a value typed by an import of pytest's `conftest` under `TYPE_CHECKING`, which names no file now); 15 of 15 new edges are right.
+
+Poetry gains 5 `extends` edges and the 11 `dispatches_to` that follow; no other edge type and no declared symbol moved on the three.
+
+This repository, on a map typed by the scip pass (what the scheduled gates read): 94,251 resolved Python call-family edges to 94,250 outside the four files this change edits; the 2 lost are a module reached through a `PYTHONPATH` a runner sets and a class of the recorded sample project. Self-tree validation is within its baselines and no callable is newly reachable only from tests.
+
+Eighteen repositories of the other ten languages: identical in every edge and symbol.
+
+## Not checked
+
+smart-test's selection was not compared edge by edge (the pre-PR run selects with this branch's code). Taint and I/O-boundary output beyond the existing tests and the self-claims gate. No Python repository outside the three and this one. Trees whose imports depend on `PYTHONPATH`, `.pth` files or pytest settings outside `pyproject.toml`: those imports name no file now.
