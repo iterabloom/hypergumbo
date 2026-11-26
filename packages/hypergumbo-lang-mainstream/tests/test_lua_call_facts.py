@@ -8,8 +8,10 @@ a module a ``require`` of a file of the tree binds, held by what that file
 returns (``import``); a field declared on the caller's own local table
 (``lexical_scope``); ``self``'s own table (``own_type``); a table a local was
 constructed from (``receiver_type``). Every other call is an unresolved stub
-with the facts its site has, and the shared linkers decide through the file's
-table (``ImportScope`` of FILES).
+with the facts its site has, for the shared linkers. The file's table
+(``ImportScope`` of FILES) binds no name: the analyzer binds a call through a
+``require`` on what the module returns, and the linkers' "the file declares a
+function of that name" does not model it (the last two tests).
 
 The first part pins each route at the analyzer, each with a NAMESAKE in
 another file that a bind by name would pick; the second runs the whole
@@ -27,8 +29,6 @@ from hypergumbo_core.ir import Edge
 from hypergumbo_lang_mainstream.lua import (
     LUA_VALUE_METHODS,
     OPENRESTY_VALUE_METHODS,
-    _LuaCalls,
-    _import_scope,
     _module_names,
     analyze_lua,
 )
@@ -382,7 +382,10 @@ def test_require_is_an_import_whatever_its_shape(tmp_path: Path) -> None:
 # --- the table ------------------------------------------------------------------------
 
 
-def test_every_file_has_a_table_of_its_chunk_level_requires(tmp_path: Path) -> None:
+def test_every_file_has_a_table_and_it_binds_no_name(tmp_path: Path) -> None:
+    """The table says files and screened names, and binds nothing: a call
+    through a ``require`` is the analyzer's to bind (on what the module
+    returns) or stays unresolved. A name two files answer is no module."""
     root = _write(tmp_path, {
         "pkg/util.lua": _MODULE,
         "two.lua": "", "two/init.lua": "",
@@ -390,37 +393,17 @@ def test_every_file_has_a_table_of_its_chunk_level_requires(tmp_path: Path) -> N
             "local util = require('pkg.util')\n"
             "local helper = util.helper\n"
             "local run = require('pkg.util').run\n"
-            "local lib = require('cjson')\n"
             "local amb = require('two')\n"
-            "require('pkg.util')\n"
-            "local function f() local u = require('pkg.util') end\n"
+            "local function main()\n  amb.x()\nend\n"
         ),
     })
     result = analyze_lua(root)
     assert set(result.import_scopes) == {"pkg/util.lua", "two.lua", "two/init.lua", "main.lua"}
-    scope = result.import_scopes["main.lua"]
-    assert (scope.module_kind, scope.library_names_screened) == (MODULES_ARE_FILES, True)
-    assert scope.namespace("util") == "pkg/util.lua"
-    assert (scope.named("helper").module, scope.named("helper").name) == ("pkg/util.lua", "helper")
-    assert (scope.named("run").module, scope.named("run").name) == ("pkg/util.lua", "run")
-    assert scope.namespace("lib") is None and scope.namespace("amb") is None and scope.namespace("u") is None
-    assert result.import_scopes["two.lua"].namespace("util") is None
-
-    import tree_sitter
-    import tree_sitter_lua
-    from hypergumbo_lang_mainstream.lua import FileAnalysis, _Scopes
-
-    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_lua.language()))
-    files = {}
-    for rel in ("pkg/util.lua", "two.lua", "two/init.lua", "main.lua"):
-        source = (root / rel).read_bytes()
-        files[rel] = FileAnalysis(rel, source, parser.parse(source), [], scopes=_Scopes(source))
-    _, counts = _import_scope(files["main.lua"], _LuaCalls(files, ""))
-    assert dict(counts) == {
-        "add_namespace": 1, "add_named": 2, "require recorded": 2,
-        "require left out: library": 1, "require left out: two files answer the name": 1,
-        "require left out: not a chunk-level local": 2,
-    }
+    for scope in result.import_scopes.values():
+        assert (scope.module_kind, scope.library_names_screened) == (MODULES_ARE_FILES, True)
+        assert all(scope.namespace(n) is None and scope.named(n) is None for n in ("util", "helper", "run", "amb"))
+    (amb,) = [e for e in result.edges if e.edge_type == "calls"]
+    assert (amb.is_resolved, amb.dst, amb.meta.get("qualifier")) == (False, "lua:two:0-0:x:unresolved", None)
 
 
 # --- through the shared pass -------------------------------------------------------
@@ -489,3 +472,41 @@ def test_end_to_end_the_name_step_binds_one_holder_and_refuses_the_library(tmp_p
     })):
         data = _map(tmp_path / str(i), files)
         assert _resolved(data, "main") == [("pool.lua", "P.drain", "name")]
+
+
+def test_end_to_end_a_local_function_the_module_does_not_return_is_not_its_field(tmp_path: Path) -> None:
+    """``reports.log()`` where x/reports.lua has a ``local function log`` and
+    returns ``{ log = function(ctx) end }``: the exported ``log`` has no
+    symbol, and the local function is not it."""
+    for i, files in enumerate(_both_orders({
+        "x/reports.lua": (
+            "local function log(lvl, ...) end\n"
+            "local function send() log(1) end\n"
+            "return { log = function(ctx) end, send = send }\n"
+        ),
+        "z_other.lua": "local function unrelated() end\nreturn unrelated\n",
+        "main.lua": (
+            "local reports = require('x.reports')\n"
+            "local function main()\n  reports.log()\n  reports.send()\nend\nreturn main\n"
+        ),
+    })):
+        data = _map(tmp_path / str(i), files)
+        assert _resolved(data, "main") == [("x/reports.lua", "send", "import")]
+
+
+def test_end_to_end_a_field_the_module_does_not_declare_is_not_the_trees_one_function(
+    tmp_path: Path,
+) -> None:
+    """``M.f()`` through a require of a tree module that declares no ``f``
+    (it fills the field by assignment), with ONE function ``f`` elsewhere in
+    the tree: no resolved edge (the name step bound it before round 2)."""
+    for i, files in enumerate(_both_orders({
+        "lib/m.lua": "local M = {}\nM.f = function() end\nreturn M\n",
+        "z_elsewhere.lua": "local function f() end\nreturn { f = f }\n",
+        "main.lua": (
+            "local M = require('lib.m')\nlocal g = M.f\n"
+            "local function main()\n  M.f()\n  g()\nend\nreturn main\n"
+        ),
+    })):
+        data = _map(tmp_path / str(i), files)
+        assert _resolved(data, "main") == []
