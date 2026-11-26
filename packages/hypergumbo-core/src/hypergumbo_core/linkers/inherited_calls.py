@@ -631,8 +631,11 @@ _MRO_WALKERS: dict[str, Callable[
     # edges these walkers traverse. Walker choice follows the language's MRO
     # shape: single-superclass-then-interfaces (Java-like) for php/js/ts/csharp/
     # objc; insertion-order BFS for go struct embedding, rust trait impls, and
-    # C++ multiple inheritance. (lua/zig emit no inheritance model, so no
-    # walker recovers anything for them — deliberately unregistered. dart
+    # C++ multiple inheritance. (zig emits no inheritance model, so no walker
+    # recovers anything for it. lua writes ``base_classes`` for a table made
+    # with ``R:extend(..)`` / ``R:subclass(..)`` and nothing else: most of
+    # its tables have no type symbol a walk could start from, so it is
+    # unregistered too. dart
     # emits extends/implements/includes edges but has no walker: its member
     # lookup runs class, mixins right to left, then the superclass, and
     # ``implements`` contributes no implementation, which no walker here
@@ -956,7 +959,8 @@ def _extract_method_short_name(callee_name: str) -> str:
     #
     # Derived, not hand-copied, from the four emission paths:
     #   Site 1  — ``enclosing_class`` producers INTERSECT ``_MRO_WALKERS``
-    #             (dart/lua/zig stamp the hint but have no walker)
+    #             (dart/zig stamp the hint but have no walker; so does lua,
+    #             which is declared for Site 2 and the table)
     #   Site 2  — ``receiver_type_hint`` producers; these need NO walker,
     #             because step 1 resolves the method directly on the inferred
     #             type (this is what adds ``d`` and ``kotlin``)
@@ -964,7 +968,8 @@ def _extract_method_short_name(callee_name: str) -> str:
     #   Table   — an analyzer that hands over ``import_scopes`` (ADR-0064): a
     #             bare call, a construction or an imported function is bound
     #             through the caller's file's table, with no hint at all
-    #             (this is what adds ``perl``)
+    #             (this is what adds ``perl``; ``lua`` hands over a table
+    #             and stamps ``receiver_type_hint`` on a constructed local)
     # ``test_depends_on_producer_sets.py`` re-derives all four and fails when
     # this list drifts from the registry. Note ``_MRO_WALKERS`` is keyed on
     # ``Symbol.language``, a wider vocabulary than pass ids: its ``typescript``
@@ -979,7 +984,7 @@ def _extract_method_short_name(callee_name: str) -> str:
     depends_on=[
         [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "perl", "php", "python", "ruby", "rust",
+            "kotlin", "lua", "objc", "perl", "php", "python", "ruby", "rust",
             "rust_analyzer",  # WI-juzig: the second producer of rust
             "scala", "scip_python",  # WI-nanom: the second producer of python
             "swift",

@@ -307,7 +307,7 @@ class TestInheritedCallsDeclaresItsWalkers:
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("inherited-calls-linker", "java") == [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "perl", "php", "python", "ruby", "rust",
+            "kotlin", "lua", "objc", "perl", "php", "python", "ruby", "rust",
             "rust_analyzer",  # WI-juzig: rust's second producer
             "scala", "scip_python",  # WI-nanom: python's second producer
             "swift",
