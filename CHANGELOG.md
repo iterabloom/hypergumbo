@@ -26,7 +26,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Behavior map `SCHEMA_VERSION` 0.21.0 → 0.22.0**: entry `kind` loses 23 values nothing produced (`cli_main`, `electron_renderer`, 21 framework-named kinds).
 - **Behavior map `SCHEMA_VERSION` 0.22.0 → 0.22.3** (additions): `resolved_by` on resolved calls; call facts `qualifier`, `super_receiver`, `stdlib_member_name`, `argument_count` on unresolved calls; `type_arity` on type nodes.
-- **Resolved call edges change in C#, Go, Java, JavaScript/TypeScript, Kotlin, Lua, Perl, PHP, Ruby and Rust**: fewer binds by name alone, more through types and imports (ADR-0064).
+- **Resolved call edges change in C#, Go, Java, JavaScript/TypeScript, Kotlin, Lua, Perl, PHP, Python, Ruby and Rust**: fewer binds by name alone, more through types and imports (ADR-0064).
+- **A Python import names one file or none**; a script's own `sys.path` entries are read.
 - **Perl symbols carry `qualified_name`**; a Lua call names the function that contains it.
 - **A Go method outside its type's file joins its own type**, which moves `dispatches_to` edges.
 - **Java and PHP report every `new`**; one the tool cannot place is an unresolved `instantiates` edge.
