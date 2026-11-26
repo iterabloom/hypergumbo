@@ -89,9 +89,11 @@ How It Works
      ``pkg.T(x)`` / ``pkg.V()`` naming a type or a function-valued variable
      (``_go_package_value``).
    - Receiver types are tracked **per function scope** from ``:=`` composite
-     literals, ``var`` declarations, function parameters and method receivers
-     (e.g., in ``func foo() { s := &Server{} }``, s has type Server only in
-     foo), and from a call's result: the callee's DECLARED return type when Go
+     literals, ``var`` declarations, type assertions (``v.(T)``), the
+     parameters of functions, methods and function literals, and method
+     receivers (e.g., in ``func foo() { s := &Server{} }``, s has type Server
+     only in foo); a package-level variable of the caller's package is typed
+     from its declaration (``_go_package_var_types``); and from a call's result: the callee's DECLARED return type when Go
      places the callee exactly (``_go_result_type``: a function of the
      caller's package or of a package it dot-imports, ``pkg.F()`` through an
      import of the tree, ``x.M()`` declared on ``x``'s type), read in the
@@ -1200,6 +1202,71 @@ class _GoTree:
             for c in callees
         }
         return found.pop() if len(found) == 1 else None
+
+
+def _go_package_var_types(
+    file_analyses: Mapping[Path, "_GoFileAnalysis"],
+    parser: "tree_sitter.Parser",
+    tree: _GoTree,
+    package_scopes: Mapping["GoPackageKey", "GoPackageScope"],
+) -> dict["GoPackageKey", dict[str, _GoTypeRef]]:
+    """The type of each package-level variable, by the package that sees it.
+
+    ``var std = New()`` / ``var defaultRunner pgxtest.ConnTestRunner`` /
+    ``var writers = NewUsagePool()``: a variable of the package is visible in
+    every file of it, so a call on it (``std.WithField(..)``) has its
+    receiver's type from the declaration: the declared type, else a composite
+    literal's, else the callee's declared return type (``_go_result_type``),
+    each read in the declaring file. Keyed as ``_go_package_scopes`` keys a
+    package (a ``_test.go`` file's variables are seen by the package's test
+    files only).
+    """
+    out: dict[GoPackageKey, dict[str, _GoTypeRef]] = {}
+    for go_file, analysis in file_analyses.items():
+        try:
+            source = go_file.read_bytes()
+        except OSError:  # pragma: no cover - read in Pass 1 a moment ago
+            continue
+        file_key = str(go_file)
+        key = _go_package_key(go_file, analysis.package_name)
+        found: dict[str, _GoTypeRef] = {}
+        for decl in parser.parse(source).root_node.children:
+            if decl.type != "var_declaration":
+                continue
+            specs = [c for c in decl.children if c.type == "var_spec"] + [
+                s for c in decl.children if c.type == "var_spec_list"
+                for s in c.children if s.type == "var_spec"
+            ]
+            for spec in specs:
+                names = spec.children_by_field_name("name")
+                declared = find_child_by_field(spec, "type")
+                value = find_child_by_field(spec, "value")
+                values = (
+                    value.named_children if value is not None and value.type == "expression_list"
+                    else [value] if value is not None else []
+                )
+                for index, name in enumerate(names):
+                    text = (
+                        _type_identifier_from_node(declared, source)
+                        if declared is not None and declared.type in (
+                            "type_identifier", "qualified_type", "pointer_type",
+                        ) else None
+                    )
+                    if text is None and len(values) == len(names):
+                        initializer = values[index]
+                        text = _type_from_rhs(initializer, source) or (
+                            _go_result_type(
+                                initializer, source, {}, file_key, tree,
+                                analysis.import_aliases, package_scopes[key],
+                            ) if initializer.type == "call_expression" else None
+                        )
+                    ref = tree.ref(text, file_key) if text else None
+                    if ref is not None:
+                        found[node_text(name, source)] = ref
+        directory, package, is_test = key
+        for caller_is_test in ((True,) if is_test else (False, True)):
+            out.setdefault((directory, package, caller_is_test), {}).update(found)
+    return out
 
 
 def _go_import_scope(
@@ -2879,13 +2946,17 @@ def _extract_go_var_types(
         # Pattern 3: Function/method parameters
         elif node.type == "parameter_declaration":
             # Only extract params that are inside a parameter_list of a
-            # function_declaration or method_declaration (not return types)
+            # function, a method or a function literal (not return types).
+            # A literal's parameters join the enclosing function's table
+            # (``_get_enclosing_func_name`` walks through the literal), as its
+            # locals do: ``RunTest(ctx, t, func(..., conn *pgx.Conn) {
+            # conn.Exec(..) })`` types ``conn``.
             parent = node.parent
             if parent is None or parent.type != "parameter_list":
                 continue  # pragma: no cover - params always in parameter_list
             grandparent = parent.parent
             if grandparent is None or grandparent.type not in (
-                "function_declaration", "method_declaration",
+                "function_declaration", "method_declaration", "func_literal",
             ):
                 continue
             # Must be the *parameters* list, not the result list
@@ -2972,6 +3043,7 @@ def _unwrap_rhs_expression(
         for child in node.children:
             if child.type in (
                 "unary_expression", "composite_literal", "call_expression",
+                "type_assertion_expression",
             ):
                 return child
         return None
@@ -3025,6 +3097,15 @@ def _type_from_rhs(
         ):
             return _type_identifier_from_node(type_node, source)
         # map[k]v{} / []T{} / struct{}{} — composite types name no receiver type.
+        return None
+
+    # v.(T) / v.(*pkg.T): the asserted type.
+    if node.type == "type_assertion_expression":
+        asserted = find_child_by_field(node, "type")
+        if asserted is not None and asserted.type in (
+            "type_identifier", "qualified_type", "pointer_type",
+        ):
+            return _type_identifier_from_node(asserted, source)
         return None
 
     return None
@@ -4327,6 +4408,7 @@ def _extract_edges_from_file(
     package_scope: GoPackageScope | None = None,
     usage_contexts: list[UsageContext] | None = None,
     import_scopes: dict[str, ImportScope] | None = None,
+    package_vars: Mapping[str, _GoTypeRef] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -4350,6 +4432,9 @@ def _extract_edges_from_file(
     is one Go scoping or an import places exactly (``result_type``); a
     struct field's declared type, read in its struct's file
     (``_go_field_chain_type``).
+
+    ``package_vars``: the types of the package-level variables of the
+    caller's package (``_go_package_var_types``).
 
     ``tree`` (built in ``_analyze_go_impl``; a direct caller that passes none
     gets an empty one: no package but the caller's file is known) is also
@@ -4384,6 +4469,8 @@ def _extract_edges_from_file(
     if tree is None:
         tree = _GoTree(imports={file_key: import_aliases})
     module_path = tree.module_path
+    if package_vars is None:
+        package_vars = {}
     import_specs: list[tuple[str, Optional[str]]] = []
 
     def result_type(call: "tree_sitter.Node", var_types: Mapping[str, str]) -> Optional[str]:
@@ -4627,6 +4714,13 @@ def _extract_edges_from_file(
                             recv_ref = (
                                 tree.ref(typed_local, file_key) if typed_local else None
                             )
+                        # A package-level variable of the caller's package
+                        # (``var std = New()``), unless a local hides it here.
+                        elif (
+                            alias is not None and alias not in _bound_names(node)
+                            and alias in package_vars
+                        ):
+                            recv_ref = package_vars[alias]
                         # WI-jikik: a method on a stdlib PACKAGE VARIABLE,
                         # ``http.DefaultClient.Do(req)``, typed from the
                         # library catalogue.
@@ -4656,6 +4750,13 @@ def _extract_edges_from_file(
                             recv_ref = _go_field_chain_type(
                                 operand_node, source, var_types, file_key, tree,
                             )
+                        # ``v.(T).M()``: the asserted type.
+                        elif (
+                            operand_node is not None
+                            and operand_node.type == "type_assertion_expression"
+                        ):
+                            _asserted = _type_from_rhs(operand_node, source)
+                            recv_ref = tree.ref(_asserted, file_key) if _asserted else None
                         # A call's result, ``f(args).Method()`` (WI-vinuh):
                         # typed by the rule a binding is (``result_type``).
                         elif operand_node is not None and operand_node.type == "call_expression":
@@ -4994,6 +5095,10 @@ def _extract_edges_from_file(
                         else:
                             if _go_library_name(callee_name):
                                 _meta["stdlib_member_name"] = True
+                                if recv_ref is None and full_import_path is None:
+                                    # The older spelling of the same fact on a
+                                    # receiver nobody typed (WI-gilip folds it).
+                                    _meta["receiver"] = "stdlib"
                             if callee_name[0].islower() and full_import_path is None:
                                 # An unexported method: of the caller's own
                                 # package, whatever the receiver.
@@ -6573,6 +6678,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         str(repo_root),
     )
     import_scopes: dict[str, ImportScope] = {}
+    package_vars = _go_package_var_types(file_analyses, parser, go_tree, package_scopes)
 
     # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
@@ -6596,6 +6702,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             package_scope=package_scopes[_go_package_key(go_file, analysis.package_name)],
             usage_contexts=registration_contexts,
             import_scopes=import_scopes,
+            package_vars=package_vars.get(_go_package_key(go_file, analysis.package_name), {}),
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes

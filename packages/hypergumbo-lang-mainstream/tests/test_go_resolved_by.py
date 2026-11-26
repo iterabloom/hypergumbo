@@ -22,8 +22,7 @@ Reported by go.py and bound by the shared pass (ADR-0064; the whole pipeline):
   import: ``import``;
 - a method on a typed receiver (a declaration, a field chain, a callee's
   declared return type): ``receiver_type``;
-- a value receiver of unknown type, and a package-level variable (not typed):
-  not bound (the name step is off for Go).
+- a value receiver of unknown type: not bound (the name step is off for Go).
 """
 
 from __future__ import annotations
@@ -195,6 +194,8 @@ def _shared_marks(data: dict[str, Any], caller: str, callee: str) -> list[str]:
     ("CallChained", "Query.Exec", "receiver_type"),
     # ``b.NewThing()`` is declared to return ``*Thing``: a typed receiver.
     ("CallUntypedValue", "Thing.Zork", "receiver_type"),
+    # ``var wk Worker``: a package-level variable's declared type.
+    ("CallInterface", "Worker.Run", "receiver_type"),
 ])
 def test_a_reported_route_is_bound_by_the_shared_pass(shared, caller, callee, mark) -> None:
     assert _shared_marks(shared, caller, callee) == [mark]
@@ -202,11 +203,10 @@ def test_a_reported_route_is_bound_by_the_shared_pass(shared, caller, callee, ma
 
 @pytest.mark.parametrize(("caller", "callee"), [
     ("CallUntypedInFile", "Maker.Frob"),
-    ("CallInterface", "Worker.Run"),
 ])
 def test_an_untyped_receiver_is_bound_by_no_route(shared, analysis, caller, callee) -> None:
-    """``x[0].Frob()`` and ``wk.Run()`` on a package-level variable: the
-    analyzer does not type the receiver and nothing binds them by name."""
+    """``x[0].Frob()``: the analyzer does not type the receiver and nothing
+    binds it by name."""
     assert _shared_marks(shared, caller, callee) == []
     by_id = {s.id: s.name for s in analysis.symbols}
     stubs = [

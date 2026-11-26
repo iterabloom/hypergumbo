@@ -227,7 +227,9 @@ def test_a_field_is_typed_in_the_file_of_its_struct(tmp_path: Path) -> None:
 def test_an_untyped_receiver_says_nothing_but_the_library_and_the_case(tmp_path: Path) -> None:
     calls = _calls(_analyze(tmp_path, _ROUTES), "Untyped")
     assert _facts(_one(calls, "Frob")) == {"call_construct": "method"}
-    assert _facts(_one(calls, "Close")) == {"stdlib_member_name": True, "call_construct": "method"}
+    close = _one(calls, "Close")
+    assert _facts(close) == {"stdlib_member_name": True, "call_construct": "method"}
+    assert close.meta["receiver"] == "stdlib"
     frob = _one(calls, "frob")
     assert (frob.meta["visibility"], frob.is_resolved) == ("unexported", False)
 
@@ -264,6 +266,54 @@ def test_what_the_shared_pass_cannot_bind_is_bound_here(tmp_path: Path) -> None:
     assert name.meta["resolution_quality"] == "typed_receiver"
     [conversion] = _calls(result, "Conversion")
     assert (conversion.dst.split(":")[-2], conversion.meta["resolved_by"]) == ("Duration", "import")
+
+
+_TYPED_BY_GO = {
+    "pkg/db/db.go": (
+        "package db\n\n"
+        "type Store struct{}\n\n"
+        "func Open() *Store { return &Store{} }\n\n"
+        "func (s *Store) Put() {}\n\n"
+        "type Level uint32\n\n"
+        "func (l Level) Name() string { return \"\" }\n"
+    ),
+    "app/vars.go": (
+        "package app\n\n"
+        'import "example.com/m/pkg/db"\n\n'
+        "var std = db.Open()\n\n"
+        "var (\n\tlvl db.Level\n\tlit = &Local{}\n\tn, m = 1, 2\n\tp, q = two()\n)\n\n"
+        "type Local struct{}\n\n"
+        "func (l *Local) Run() {}\n\n"
+        "func two() (int, int) { return 1, 2 }\n"
+    ),
+    "app/app.go": (
+        "package app\n\n"
+        'import "example.com/m/pkg/db"\n\n'
+        "func run(f func(*db.Store)) {}\n\n"
+        "func Assert(v any) {\n\tv.(db.Store).Put()\n\ts, _ := v.(*db.Store)\n\ts.Put()\n"
+        "\tx := v.(map[string]int)\n\t_ = x\n}\n\n"
+        "func Closure() { run(func(s *db.Store) { s.Put() }) }\n\n"
+        "func PackageVar() { std.Put(); lvl.Name(); lit.Run() }\n\n"
+        "func Shadowed(xs []int) { for _, std := range xs { std.Put() } }\n"
+    ),
+}
+
+
+def test_go_s_own_declarations_type_a_receiver(tmp_path: Path) -> None:
+    """A type assertion (``v.(db.Store)``, ``s, _ := v.(*db.Store)``), a
+    function literal's parameter, and a package-level variable of the
+    caller's package (declared type, composite literal, a callee's declared
+    return type, read in the declaring file) type the receiver; a local of
+    the variable's name in scope hides it."""
+    result = _analyze(tmp_path, _TYPED_BY_GO)
+    assert [e.meta["receiver_type_hint"] for e in _calls(result, "Assert")] == [
+        "db.Store", "db.Store"]
+    assert _one(_calls(result, "Closure"), "Put").meta["receiver_type_hint"] == "db.Store"
+    calls = _calls(result, "PackageVar")
+    assert _one(calls, "Put").meta["receiver_type_hint"] == "db.Store"
+    assert _one(calls, "Run").meta["receiver_type_hint"] == "Local"
+    assert _one(calls, "Name").meta["resolved_by"] == "receiver_type"
+    assert "receiver_type_hint" not in _one(_calls(result, "Shadowed"), "Put").meta
 
 
 _DOTS = {
