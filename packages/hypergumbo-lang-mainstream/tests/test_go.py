@@ -7985,14 +7985,17 @@ func main() {
         result = analyze_go(tmp_path)
 
         # ADR-0064: the pick of an interface method among the name's holders
-        # is deleted. ``w`` is a package-level variable, which the analyzer
-        # does not type, so ``w.Run()`` is reported with nothing said of
-        # its receiver and stays unresolved.
+        # is deleted. ``w`` is a package-level variable declared ``Worker``:
+        # ``w.Run()`` is reported with that type, for the shared pass to bind
+        # on ``Worker`` itself, and no ``interface_dispatch`` edge is made.
         run_calls = [
             e for e in result.edges
             if e.edge_type == "calls" and e.dst.split(":")[-2] == "Run"
         ]
-        assert [(e.evidence_type, e.is_resolved) for e in run_calls] == [("ast_call", False)]
+        assert [(e.is_resolved, (e.meta or {}).get("receiver_type_hint")) for e in run_calls] == [
+            (False, "Worker"),
+        ]
+        assert not [e for e in result.edges if e.evidence_type == "interface_dispatch"]
 
     def test_multi_interface_method_fallback(
         self, tmp_path: Path,
@@ -8028,14 +8031,17 @@ func main() {
         result = analyze_go(tmp_path)
 
         # ADR-0064: the pick of an interface method among the name's holders
-        # is deleted. ``w`` is a package-level variable, which the analyzer
-        # does not type, so ``w.Run()`` is reported with nothing said of
-        # its receiver and stays unresolved.
+        # is deleted. ``w`` is a package-level variable declared ``Worker``:
+        # ``w.Run()`` is reported with that type, for the shared pass to bind
+        # on ``Worker`` itself, and no ``interface_dispatch`` edge is made.
         run_calls = [
             e for e in result.edges
             if e.edge_type == "calls" and e.dst.split(":")[-2] == "Run"
         ]
-        assert [(e.evidence_type, e.is_resolved) for e in run_calls] == [("ast_call", False)]
+        assert [(e.is_resolved, (e.meta or {}).get("receiver_type_hint")) for e in run_calls] == [
+            (False, "Worker"),
+        ]
+        assert not [e for e in result.edges if e.evidence_type == "interface_dispatch"]
 
 class TestGoDocstring:
     """Symbol.docstring on Go callable symbols (INV-jahiv)."""
