@@ -69,6 +69,7 @@ from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..paths import is_test_node
 from ..member_names import member_owner, member_short_name
 from ..symbol_kinds import is_abstract_type, type_like_kind_names
+from ..type_visibility import dotted, module_keys
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -472,9 +473,11 @@ def _resolve_method_class_id(
     candidate contains the method (an out-of-line definition), the first
     same-file namesake stands, as before.
 
-    Falls back to the first candidate if no same-file class exists, to
-    preserve behavior for languages that allow methods in different
-    files than their class.
+    With no same-file class, the method's declared name decides: its type is
+    the namesake declared under the method's own qualified name less the last
+    segment, in the method's directory when several are. Only when no
+    candidate matches that (a producer that records no qualified name) is it
+    the first candidate, as before.
     """
     class_name = _get_class_name_from_method(method_sym)
     if not class_name:
@@ -497,7 +500,27 @@ def _resolve_method_class_id(
         return min(enclosing, key=lambda pair: pair[1].end_line - pair[1].start_line)[0]
     if same_file:
         return same_file[0]
-    # Fallback: first candidate (historical behavior for cross-file cases)
+    # A method written outside its type's file (Go: any file of the package;
+    # a partial class): the namesake whose DECLARED name is the method's own
+    # less its last segment, and of those the one in the method's directory
+    # when two packages share that name (two directories saying ``package
+    # util``). Measured on caddy: "the first namesake in the run" gave
+    # ``reverseproxy.Handler``'s methods to another package's ``Handler``.
+    owner = dotted(method_sym.qualified_name or "").rpartition(".")[0]
+    declared = [
+        cid for cid in candidate_ids
+        if owner and (csym := class_symbols.get(cid)) is not None
+        and dotted(csym.qualified_name or "") == owner
+    ]
+    if declared:
+        directory = module_keys(method_sym.path)[1]
+        beside = [
+            cid for cid in declared
+            if directory in module_keys(class_symbols[cid].path)
+        ]
+        return (beside or declared)[0]
+    # Fallback: first candidate (historical behavior for cross-file cases
+    # where neither side records a declared name)
     return candidate_ids[0]
 
 

@@ -715,6 +715,53 @@ class TestResolveMethodClassId:
         assert result == struct_a.id
 
     @staticmethod
+    def _go(kind: str, name: str, path: str, qualified: str | None) -> Symbol:
+        return Symbol(
+            id=f"go:{path}:1-5:{name}:{kind}", name=name, kind=kind, language="go",
+            path=path, span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="go", origin_run_id="test", qualified_name=qualified,
+        )
+
+    def test_a_method_in_another_file_belongs_to_the_type_its_declared_name_says(self) -> None:
+        """Go: a type's methods live in any file of its package. caddy's
+        ``reverseproxy.Handler`` has methods in sibling files, and "the first
+        type named Handler in the run" gave them to another package's. The
+        method's own declared name, less its last segment, names its type."""
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        other = self._go("struct", "Handler", "caddyfile/handler.go", "caddyfile.Handler")
+        wanted = self._go("struct", "Handler", "reverseproxy/types.go", "reverseproxy.Handler")
+        method = self._go(
+            "method", "Handler.ServeHTTP", "reverseproxy/streaming.go",
+            "reverseproxy.Handler.ServeHTTP",
+        )
+        class_symbols = {other.id: other, wanted.id: wanted}
+        ids = {"Handler": [other.id, wanted.id]}
+        assert _resolve_method_class_id(method, ids, class_symbols) == wanted.id
+
+    def test_two_packages_of_one_declared_name_are_told_apart_by_directory(self) -> None:
+        """Two directories both say ``package util``: their types share a
+        declared name, and the method's type is the one in its directory."""
+        from hypergumbo_core.linkers.type_hierarchy import (
+            _resolve_method_class_id,
+        )
+
+        decoy = self._go("struct", "Store", "adecoy/store.go", "util.Store")
+        wanted = self._go("struct", "Store", "util/store.go", "util.Store")
+        method = self._go("method", "Store.Get", "util/get.go", "util.Store.Get")
+        class_symbols = {decoy.id: decoy, wanted.id: wanted}
+        ids = {"Store": [decoy.id, wanted.id]}
+        assert _resolve_method_class_id(method, ids, class_symbols) == wanted.id
+        # No type of that declared name beside the method: the first of that name.
+        far = self._go("method", "Store.Put", "elsewhere/put.go", "util.Store.Put")
+        assert _resolve_method_class_id(far, ids, class_symbols) == decoy.id
+        # A method that records no declared name keeps the historical pick.
+        bare = self._go("method", "Store.Del", "util/del.go", None)
+        assert _resolve_method_class_id(bare, ids, class_symbols) == decoy.id
+
+    @staticmethod
     def _scala(kind: str, name: str, start: int, end: int) -> Symbol:
         return Symbol(
             id=f"scala:/app/P.scala:{start}-{end}:{name}:{kind}",
