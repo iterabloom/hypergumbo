@@ -200,8 +200,8 @@ def test_the_innermost_class_decides_even_when_it_lacks_the_method(
 ) -> None:
     """Ruby resolves the constant first, then sends: inside ``A::B``, ``X`` is
     ``A::B::X``, and ``X.run`` is not answered by ``A::X.run`` when ``A::B::X``
-    declares no ``run``. The call stays unresolved with its receiver's type,
-    for the inherited-calls linker."""
+    declares no ``run``. The call stays unresolved, qualified by the class's
+    full path (ADR-0064), for the inherited-calls linker."""
     for name, text in {
         "a.rb": (
             "module A\n"
@@ -218,7 +218,8 @@ def test_the_innermost_class_decides_even_when_it_lacks_the_method(
     go = next(s for s in result.symbols if s.qualified_name == "A::B::go")
     (edge,) = [e for e in result.edges if e.src == go.id]
     assert edge.dst == "ruby:X:0-0:run:unresolved"
-    assert edge.meta["receiver_type_hint"] == "X"
+    assert edge.meta["qualifier"] == "A::B::X"
+    assert "receiver_type_hint" not in edge.meta
 
 
 def test_a_constant_is_reached_through_an_included_module_and_a_superclass(
