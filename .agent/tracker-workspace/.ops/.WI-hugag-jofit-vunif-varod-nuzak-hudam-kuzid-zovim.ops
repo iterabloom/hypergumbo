@@ -1,0 +1,21 @@
+- op: create  # 3ee2
+  at: '2026-11-26T03:36:09Z'  # 3ee2
+  by: agent  # 3ee2
+  actor: jgstern_agent  # 3ee2
+  clock: 1  # 3ee2
+  nonce: 3ee2  # 3ee2
+  data:  # 3ee2
+    kind: work_item  # 3ee2
+    title: "Go receivers not typed: range variables, interface-method results, two-value returns; no screen of standard-library methods"  # 3ee2
+    status: todo_hard  # 3ee2
+    priority: 3  # 3ee2
+    parent:  # 3ee2
+    tags:  # 3ee2
+    - analysis_quality  # 3ee2
+    - shared_call_resolution  # 3ee2
+    isbefore: []  # 3ee2
+    duplicate_of: []  # 3ee2
+    not_duplicate_of: []  # 3ee2
+    pr_ref:  # 3ee2
+    description: "STATEMENT: a Go receiver whose type the source states is typed. OBSERVED, not typed by the analyzer after batch 5b: a range variable (the element type of the ranged slice or map), the result of an interface method (only method_declarations record a return type), a call returning two named types (ctx, _ := caddy.NewContext(..)), a composite literal used as a call's operand, an anonymous struct field. The 5 lost edges a blind judge found right before (of 15) are all of these (2 range variables over a slice of an interface type, 2 NewContext results, 1 package variable declared in a sibling file of a test package). Also: Go's screen of library names is 51 interface method names; concrete standard-library methods go out unmarked, so the name step is off for Go (measured on: 457 binds, 12 right of 15, the 3 wrong all standard-library names, Uint32 alone 50 binds). Nested go.mod files, replace directives and go.work are not read (none on the three trees). Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 3ee2
+    fields: {}  # 3ee2

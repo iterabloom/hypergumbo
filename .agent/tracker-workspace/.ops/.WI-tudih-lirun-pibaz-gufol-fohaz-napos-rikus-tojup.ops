@@ -1,0 +1,21 @@
+- op: create  # 09b6
+  at: '2026-11-26T03:35:56Z'  # 09b6
+  by: agent  # 09b6
+  actor: jgstern_agent  # 09b6
+  clock: 1  # 09b6
+  nonce: 09b6  # 09b6
+  data:  # 09b6
+    kind: work_item  # 09b6
+    title: "Lua: a table is no type symbol and has no walker (232 open stubs); function literals and nested names make no symbol; globals; luau duplication"  # 09b6
+    status: todo_hard  # 09b6
+    priority: 3  # 09b6
+    parent:  # 09b6
+    tags:  # 09b6
+    - analysis_quality  # 09b6
+    - shared_call_resolution  # 09b6
+    isbefore: []  # 09b6
+    duplicate_of: []  # 09b6
+    not_duplicate_of: []  # 09b6
+    pr_ref:  # 09b6
+    description: "STATEMENT: a Lua call on a table whose construction the file shows reaches that table's function, also through a base table. OBSERVED: a Lua table is no type symbol (only a table made with R:extend(..) / R:subclass(..) gets a class symbol with base_classes) and Lua has no hierarchy walker, so the analyzer binds self:f() and a local built with R.new() / setmetatable itself, in the caller's file only: 172 stubs with receiver_type_hint and 60 with enclosing_class stay open on kong and pandoc's Lua. Not made as symbols at all: function a.b.c(), M.f = function() end, a function in a table constructor; a call to one is unresolved whatever the caller knows. Globals have no form in the import table (3 right edges lost on pandoc). A dot call on an untyped receiver (obj.f()) never reaches the name step: function T.f() is kind function and the step binds methods for a call on a receiver. Nothing carries the type of a receiver that is a field (self.rpc:sync_once(), the one right edge of 15 lost ones judged). luau.py (another package) has none of the scope binder, module rule and screens lua.py now has: moving it would write them twice unless they move where both can import them. Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 09b6
+    fields: {}  # 09b6
