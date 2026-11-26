@@ -1,0 +1,21 @@
+- op: create  # a4b3
+  at: '2026-11-26T00:07:44Z'  # a4b3
+  by: agent  # a4b3
+  actor: jgstern_agent  # a4b3
+  clock: 1  # a4b3
+  nonce: a4b3  # a4b3
+  data:  # a4b3
+    kind: work_item  # a4b3
+    title: "A library ancestor hides its overloads from the hierarchy walk: the call binds to a repository overload further up, or was bound by luck before"  # a4b3
+    status: todo_hard  # a4b3
+    priority: 3  # a4b3
+    parent:  # a4b3
+    tags:  # a4b3
+    - analysis_quality  # a4b3
+    - shared_call_resolution  # a4b3
+    isbefore: []  # a4b3
+    duplicate_of: []  # a4b3
+    not_duplicate_of: []  # a4b3
+    pr_ref:  # a4b3
+    description: "STATEMENT: a call on a type whose ancestor is a library's is not bound to a repository method when the library ancestor declares the overload the call selects. OBSERVED: the hierarchy walk sees repository declarations only. With overloads now narrowed by argument count this shows in two shapes: (1) the repository type declares read(byte[], int, int) and the call writes read(buf): the callee is the JDK's InputStream.read(byte[]); before the narrowing it was bound to the three-parameter method, now it is unresolved, which is right (7 of the Java edges a blind judge read; 6 of 15 in the Java worker's lost sample). (2) A repository ancestor further up declares an overload that takes the count while the library type in between declares the one really called: write(byte[]) bound to ArchiveOutputStream.write(int) (Java worker), super.setLastModifiedTime on a class extending java.util.zip.ZipEntry (batch 5a judge). Nothing says that a type has an ancestor outside the repository at all; that alone would let the walk stop instead of going on past it. Evidence and method: ~/hypergumbo_lab_notebook/overloads_11252026/ (DESIGN.md; java_RESULTS.md, kotlin_RESULTS.md, csharp_RESULTS.md; maps mine_19de against base/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while building overload selection by argument count for Java, Kotlin and C#."  # a4b3
+    fields: {}  # a4b3

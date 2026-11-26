@@ -19,3 +19,10 @@
     pr_ref:  # 4409
     description: "STATEMENT: two calls of one name from one caller that carry different facts (a receiver type, a qualifier) are both seen by the linkers. OBSERVED: unresolved stubs of one name from one caller share an edge id, and all_analyzers keeps the first by id before any linker runs; the second call's facts are dropped. Every call of a multi-line chain starts on the chain's line, so EmptyTags.plus(..).plus(..) keeps one stub and loses the qualifier EmptyTags. Measured by the Kotlin adapter on okhttp and detekt-core: 432 stubs lose their facts (103 a receiver_type_hint, 11 a qualifier). Of 9 Kotlin edges a blind judge found right before the batch and unresolved after it, 5 are this (handshakeCertificates.sslSocketFactory() twice, EmptyTags.plus twice, compositeConfig.subConfig). It is the largest single cause of right edges lost by the Kotlin adapter. Not the same as the dedup that leaves a stub open beside its answer (a separate item): here the facts never reach a linker.\n\nEvidence and method: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md; php_RESULTS.md, java_RESULTS.md, kotlin_RESULTS.md; maps mine_e566 on the batch branch against before/ at dev 619ebe7ac; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found during batch 5a of ADR-0064 (java, kotlin, php)."  # 4409
     fields: {}  # 4409
+- op: discuss  # 0e95
+  at: '2026-11-26T00:07:36Z'  # 0e95
+  by: agent  # 0e95
+  actor: jgstern_agent  # 0e95
+  clock: 2  # 0e95
+  nonce: '0e95'  # 0e95
+  message: "Overload step: a stub merged from several call sites keeps the argument_count of its first site (Java worker: argument_count 2 with call_lines [341, 343], where line 343 writes one argument). For Java the linkers run before that merge and the binds are right; for Kotlin the stubs of one name from one caller collapse BEFORE the linkers (this item), so the second call is narrowed by the first call's count as well as losing its receiver type. Evidence: ~/hypergumbo_lab_notebook/overloads_11252026/java_RESULTS.md (what the shared layer lacks, 4)."  # 0e95

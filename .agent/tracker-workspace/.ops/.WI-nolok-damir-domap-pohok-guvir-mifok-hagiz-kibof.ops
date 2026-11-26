@@ -1,0 +1,21 @@
+- op: create  # 30d4
+  at: '2026-11-26T00:07:37Z'  # 30d4
+  by: agent  # 30d4
+  actor: jgstern_agent  # 30d4
+  clock: 1  # 30d4
+  nonce: 30d4  # 30d4
+  data:  # 30d4
+    kind: work_item  # 30d4
+    title: "Explicit type arguments on a call do not choose between a generic overload and its non-generic namesake (C# Policy.Timeout<T>, Kotlin tag<Any>())"  # 30d4
+    status: todo_hard  # 30d4
+    priority: 3  # 30d4
+    parent:  # 30d4
+    tags:  # 30d4
+    - analysis_quality  # 30d4
+    - shared_call_resolution  # 30d4
+    isbefore: []  # 30d4
+    duplicate_of: []  # 30d4
+    not_duplicate_of: []  # 30d4
+    pr_ref:  # 30d4
+    description: "STATEMENT: a call that writes explicit type arguments is bound to an overload that takes that many type parameters. OBSERVED: no symbol fact says how many type parameters a METHOD declares (meta type_arity exists for types only) and no stub fact says how many type arguments a call wrote. C#: Policy.Timeout<ResultPrimitive>(..), Policy.Cache<T>(..), Policy.BulkheadAsync<T>(..) bind the non-generic overload of the same parameter count where the generic one in another file is called (4 of the 17 wrong C# edges a blind judge read name this cause). Kotlin: tag<Any>() cannot be the member without type parameters, and the count admits it (1 read). Evidence and method: ~/hypergumbo_lab_notebook/overloads_11252026/ (DESIGN.md; java_RESULTS.md, kotlin_RESULTS.md, csharp_RESULTS.md; maps mine_19de against base/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while building overload selection by argument count for Java, Kotlin and C#."  # 30d4
+    fields: {}  # 30d4

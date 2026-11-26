@@ -26,3 +26,17 @@
   clock: 2  # b6db
   nonce: b6db  # b6db
   message: "Batch 5a (java, kotlin, php) measured this gap. Kotlin: the analyzer's run-wide Type.m lookup is gone and typed calls go through the linker's method index, which keeps the last overload: 255 edges on okhttp and detekt-core keep their qualified name and change overload. A blind judge read 15 retargeted Kotlin edges: 9 wrong before and right now, 2 wrong both times, 3 RIGHT BEFORE AND WRONG NOW, all three overloads the argument count decides (server.start() now on the private start(InetSocketAddress); server.takeRequest() now on takeRequest(timeout, unit)); also wrong among gained edges: url(HttpUrl) on url(URL), addHeader(String) on addHeader(name, value). Java: 2 of 10 sampled binds through a static import are toByteArray(long) bound to toByteArray(boolean). java.py now selects among a class's OWN overloads by argument count in the analyzer (352 retargeted, 15 of 15 sampled wrong before and right now), which the shared layer does not do. Proposal: the argument count as a stub fact, the method index keeping every overload, selection by count (defaults and varargs read from the declaration), before batch 5b moves more languages onto the index. Evidence: ~/hypergumbo_lab_notebook/batch5a_11262026/judge/."  # b6db
+- op: discuss  # f393
+  at: '2026-11-25T20:36:16Z'  # f393
+  by: agent  # f393
+  actor: jgstern_agent  # f393
+  clock: 3  # f393
+  nonce: f393  # f393
+  message: "The mechanism for the choice already exists: hypergumbo_core/overload_arity.py (parameter_entry, arity_bounds, narrow_by_arity, choose_overload; the declared home is Symbol.meta[parameters], ADR-0058), used by the cpp, elixir and nim analyzers. No Java, Kotlin, C#, PHP, TypeScript or Rust callable carries the key (jedis 16,180 callables, okhttp 7,215, polly 5,122: zero), and the linkers do not call it. java.py's own-member pick by argument count (batch 5a) re-implements it from the declaration node and must move onto it. Plan: ~/hypergumbo_lab_notebook/overloads_11252026/DESIGN.md."  # f393
+- op: discuss  # 8a2f
+  at: '2026-11-26T00:07:36Z'  # 8a2f
+  by: agent  # 8a2f
+  actor: jgstern_agent  # 8a2f
+  clock: 4  # 8a2f
+  nonce: 8a2f  # 8a2f
+  message: "Built and merged in PR #2424: Java, Kotlin and C# callables write meta[parameters] and their call stubs argument_count; one choice by arity (overload_arity.best_by_arity) wherever an overload is picked. Measured on 11 repositories against dev after batch 5a: call sites whose target changed Java 5,419, Kotlin 705, C# 1,706; a blind judge read 15 per language: wrong before and right now 11 / 13 / 7, wrong both times 4 / 1 / 8, right before and wrong now 0 / 1 / 0. WHAT THIS ITEM STILL ASKS FOR is the part not built: selection by the TYPES of the arguments. Every wrong-both-times edge read needs it (String against byte[]; Func against Action; a lambda's shape; a fixed-arity overload inapplicable by type where the varargs one is called), and so do most wrong newly resolved ones (right: 9 / 8 / 6 of 15). Among three or more overloads that tie on count the pick is the last declared. Evidence and method: ~/hypergumbo_lab_notebook/overloads_11252026/ (DESIGN.md; java_RESULTS.md, kotlin_RESULTS.md, csharp_RESULTS.md; maps mine_19de against base/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while building overload selection by argument count for Java, Kotlin and C#."  # 8a2f
