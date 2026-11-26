@@ -1,0 +1,21 @@
+- op: create  # 44f5
+  at: '2026-11-26T03:36:16Z'  # 44f5
+  by: agent  # 44f5
+  actor: jgstern_agent  # 44f5
+  clock: 1  # 44f5
+  nonce: 44f5  # 44f5
+  data:  # 44f5
+    kind: work_item  # 44f5
+    title: "The Ruby and Lua screens of library names were written without the documentation at hand and are not checked against it"  # 44f5
+    status: todo_hard  # 44f5
+    priority: 3  # 44f5
+    parent:  # 44f5
+    tags:  # 44f5
+    - analysis_quality  # 44f5
+    - shared_call_resolution  # 44f5
+    isbefore: []  # 44f5
+    duplicate_of: []  # 44f5
+    not_duplicate_of: []  # 44f5
+    pr_ref:  # 44f5
+    description: "STATEMENT: a screen of library names in an analyzer matches the documentation it cites. OBSERVED: the Ruby screen (113 Kernel / Object names and 515 core names in all, cited to the Ruby 3.3 core reference) and the Lua screen (the 5.4 reference manual's sections 6.1 to 6.10 and 2.4, the 5.1 names LuaJIT keeps, bit / ffi / jit, ngx.* and the cosocket and shared-dict methods from the lua-nginx-module README) were written by the adapters' authors without the documentation at hand: docs.ruby-lang.org, lua.org, luajit.org and the OpenResty documentation are not in ALLOWED_WEBSITES.md. Neither list was checked against its source. Effect if wrong: for Lua (name step on) a library name missing from the list lets a call on an untyped receiver be bound to the repository's one method of that name, and a repository name wrongly in the list keeps a right bind from being made; for Ruby (name step off) the list only marks stubs. Needs an owner decision on the allowlist, or the lists generated from an installed interpreter (Ruby: instance_methods of the core classes; Lua: the keys of the library tables), which needs those interpreters installed. Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 44f5
+    fields: {}  # 44f5

@@ -1,0 +1,21 @@
+- op: create  # 725f
+  at: '2026-11-26T03:36:03Z'  # 725f
+  by: agent  # 725f
+  actor: jgstern_agent  # 725f
+  clock: 1  # 725f
+  nonce: 725f  # 725f
+  data:  # 725f
+    kind: work_item  # 725f
+    title: "Go: kind type is no type for the linkers, the import step binds functions only, a directory mixes a package with its tests, a hint cannot name an unimported type"  # 725f
+    status: todo_hard  # 725f
+    priority: 3  # 725f
+    parent:  # 725f
+    tags:  # 725f
+    - analysis_quality  # 725f
+    - shared_call_resolution  # 725f
+    isbefore: []  # 725f
+    duplicate_of: []  # 725f
+    not_duplicate_of: []  # 725f
+    pr_ref:  # 725f
+    description: "STATEMENT: the shared layer can express what a Go call says. OBSERVED, four gaps the Go adapter reported and worked around or lost edges to: (1) Go's symbol kind type (type Level uint32) is not among the linkers' type kinds (inherited_calls: type_like_kind_names), so a hint naming one binds nothing; the analyzer keeps binding methods of a named non-struct type itself, by identity (72 calls on three trees). (2) The import step binds kind function only: a conversion pkg.T(x) and a function-valued package variable called through its package cannot be bound there; the analyzer keeps the conversions (60). (3) A directory module is every file directly in the directory: the package, its external test package (package x_test) and its _test.go files together; pgx's pgtype.Point is declared in the package and again in a test file and is a tie (8 calls). (4) A receiver_type_hint cannot name a type of a package the caller's file does not import (a field's type, a callee's return type read in another file): 27 lost edges. Also: build-tag variants of one function in the caller's own package are bound to the first by path (9 calls), the same as one qualified name declared in several files. Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 725f
+    fields: {}  # 725f
