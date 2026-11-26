@@ -122,7 +122,7 @@ from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id, stated_module_of,
 )
 from ..import_scope import MODULES_ARE_FILES, ImportScope
-from ..type_visibility import call_language, declaring_files, dotted
+from ..type_visibility import call_language, declaring_files, dotted, module_keys
 from .method_call_recovery import parse_unresolved_name, short_name
 from .receiver_type_dispatch import RECEIVER_META_KEYS
 from .registry import (
@@ -219,8 +219,9 @@ def link_single_holder_name(ctx: LinkerContext) -> LinkerResult:
             holders.setdefault((language, _ON_A_RECEIVER, name), []).append(symbol)
 
     functions_at = {
-        (symbol.path, short_name(symbol.name))
+        (module, short_name(symbol.name))
         for symbol in ctx.symbols if symbol.kind == _BARE
+        for module in module_keys(symbol.path)
     }
 
     def leads_to_a_function(module: str, name: str) -> bool:

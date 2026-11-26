@@ -273,6 +273,24 @@ def test_a_second_call_of_an_imported_function_is_not_looked_up_by_name() -> Non
     assert link_single_holder_name(ctx).edges == []
 
 
+def test_a_binding_of_a_directory_that_declares_the_function_answers_the_stub() -> None:
+    """Go ``log.Print()`` twice in one caller, ``log`` bound to the directory
+    ``pkg/log/``: a file of that directory declares ``Print``, so the stub is
+    answered and the one METHOD named Print elsewhere is not its callee. A
+    directory that does not declare it leaves the name to its one function."""
+    function = _sym("function", "Print", "pkg/log/print.go", language="go")
+    caller = _caller("go", "cmd/main.go")
+    stub = _member_call(caller, "Print", qualifier="log")
+    stub.meta.pop("call_construct")
+    scope = ImportScope(module_kind=MODULES_ARE_FILES, library_names_screened=True)
+    scope.add_namespace("pkg/log/", "log")
+    assert _link([function, caller], [stub], scope, path="cmd/main.go") == []
+    other = ImportScope(module_kind=MODULES_ARE_FILES, library_names_screened=True)
+    other.add_namespace("pkg/logging/", "log")
+    (edge,) = _link([function, caller], [stub], other, path="cmd/main.go")
+    assert edge.dst == function.id
+
+
 def test_a_call_through_a_module_binding_asks_for_a_function() -> None:
     """Rust ``diesel::insert_into(..)`` twice in one caller: the qualifier is
     a namespace binding, so the callee is a FUNCTION of that module. When the

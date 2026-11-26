@@ -437,3 +437,48 @@ def test_a_php_bare_function_falls_back_to_the_global_namespace() -> None:
     own = _type("App.Http.helper")
     own.kind = "function"
     assert _how("helper", "App.Http.run", php, [function, own]) == (["App.Http.helper"], "same_module")
+
+
+def test_a_module_written_with_a_trailing_slash_is_a_directory() -> None:
+    """Go: an import names a directory and the package is the files directly
+    in it. Neither a subdirectory nor a directory of the same last name
+    elsewhere is that package."""
+    logs = [
+        _file_type("Logger", "pkg/log/logger.go"),
+        _file_type("Logger", "pkg/log/sub/logger.go"),
+        _file_type("Logger", "other/log/logger.go"),
+        _file_type("Logger", "logger.go"),
+    ]
+    bound = _file_scope()
+    bound.add_namespace("pkg/log/", "log")
+    assert _paths(visible_types("log.Logger", None, bound, logs, caller_path="cmd/main.go")) == ["pkg/log/logger.go"]
+    dot = _file_scope()
+    dot.add_open_wildcard("pkg/log/")
+    assert _paths(visible_types("Logger", None, dot, logs, caller_path="cmd/main.go")) == ["pkg/log/logger.go"]
+    named = _file_scope()
+    named.add_named("other/log/", "Logger")
+    assert _paths(visible_types("Logger", None, named, logs, caller_path="cmd/main.go")) == ["other/log/logger.go"]
+    # The directory at the root of the tree is written "/".
+    root = _file_scope()
+    root.add_namespace("/", "app")
+    assert _paths(visible_types("app.Logger", None, root, logs, caller_path="cmd/main.go")) == ["logger.go"]
+    assert type_visibility.module_keys("pkg/log/logger.go") == ("pkg/log/logger.go", "pkg/log/")
+
+
+def test_the_callers_own_directory_is_its_package_after_its_own_file() -> None:
+    """Go: a bare name is the caller's file's, then its package's (the other
+    files of its directory, ``ImportScope.own_namespace``), then an import's.
+    Without the package named, a sibling file is no scope."""
+    from hypergumbo_core.import_scope import MODULES_ARE_FILES
+
+    conns = [_file_type("Conn", "db/conn.go"), _file_type("Conn", "legacy/conn.go")]
+    package = ImportScope(module_kind=MODULES_ARE_FILES, own_namespace="db/")
+    package.add_open_wildcard("legacy/")
+    assert _how("Conn", None, package, conns, caller_path="db/query.go") == (["db/conn.go"], "same_module")
+    own = [*conns, _file_type("Conn", "db/query.go")]
+    assert _how("Conn", None, package, own, caller_path="db/query.go") == (["db/query.go"], "same_file")
+    assert _how("Conn", None, _file_scope(), conns, caller_path="db/query.go") == ([], None)
+    elsewhere = ImportScope(module_kind=MODULES_ARE_FILES, own_namespace="cmd/")
+    elsewhere.add_open_wildcard("legacy/")
+    assert _how("Conn", None, elsewhere, conns, caller_path="cmd/main.go") == (["legacy/conn.go"], "import")
+

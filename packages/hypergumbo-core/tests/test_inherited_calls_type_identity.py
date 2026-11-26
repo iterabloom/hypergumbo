@@ -479,6 +479,28 @@ def test_a_bare_call_to_an_imported_function_reaches_the_file_the_import_names()
     assert _ts_link([wanted, decoy, caller], stub, None) == []
 
 
+def test_a_call_through_a_binding_of_a_directory_reaches_a_function_of_its_files() -> None:
+    """Go: ``import "m/pkg/log"``; ``log.Print()``. The import names a
+    directory, and the package is the files directly in it: not a
+    subdirectory, not a directory of the same last name elsewhere."""
+    wanted = _ts("function", "Print", "pkg/log/print.go")
+    below = _ts("function", "Print", "pkg/log/internal/print.go")
+    elsewhere = _ts("function", "Print", "vendor/log/print.go")
+    caller = _ts("function", "run", "src/main.ts", (10, 20))
+    scope = _file_scope()
+    scope.add_namespace("pkg/log/", "log")
+    stub = _ts_stub(caller, "Print", qualifier="log")
+    (edge,) = _ts_link([wanted, below, elsewhere, caller], stub, scope)
+    assert (edge.dst, edge.meta["resolved_by"]) == (wanted.id, "import")
+    # Two files of the directory declaring the name are a tie.
+    twin = _ts("function", "Print", "pkg/log/print_other.go")
+    assert _ts_link([wanted, twin, caller], stub, scope) == []
+    # A file is still only itself: a binding of the file ``pkg/log`` names no directory.
+    file_bound = _file_scope()
+    file_bound.add_namespace("pkg/log", "log")
+    assert _ts_link([wanted, caller], stub, file_bound) == []
+
+
 def test_an_imported_function_under_another_local_name() -> None:
     """``import {helper as h} from './util'``; ``h()``."""
     wanted, decoy = _ts("function", "helper", "src/util.ts"), _ts("function", "h", "legacy/h.ts")
