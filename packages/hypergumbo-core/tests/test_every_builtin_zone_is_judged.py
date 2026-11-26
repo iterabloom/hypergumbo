@@ -40,11 +40,21 @@ func main() {
 '''
 
 
-def _verdict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, zone: str) -> dict:
+#: The same program with the handle taken out of a map: the receiver of
+#: ``Exec`` is an index expression, which the Go analyzer does not type, so
+#: the call names no module.
+_GO_UNTYPED_RECEIVER = _GO.replace(
+    "var db *sql.DB", "var handles = map[string]*sql.DB{}",
+).replace("db.Exec(v)", 'handles["main"].Exec(v)')
+
+
+def _verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, zone: str, source: str = _GO,
+) -> dict:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "go.mod").write_text("module x\n")
-    (repo / "main.go").write_text(_GO)
+    (repo / "main.go").write_text(source)
     claims = tmp_path / "claims.yaml"
     claims.write_text(
         "claims:\n  - id: c\n    text: t\n    constraint:\n      taint_flow:\n"
@@ -65,9 +75,26 @@ def test_the_builtin_zones_are_the_io_and_non_boundary_ones() -> None:
 
 
 def test_a_database_claim_on_go_is_withheld(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    verdict = _verdict(tmp_path, monkeypatch, "database")
+    """The zone gate is what withholds when nothing else does: the receiver of
+    ``Exec`` is untyped here, so no other gate has a module to blame."""
+    verdict = _verdict(tmp_path, monkeypatch, "database", _GO_UNTYPED_RECEIVER)
     assert verdict["verdict"] == "inconclusive"
     assert "no sink in the 'database' zone" in verdict["details"]
+
+
+def test_a_database_claim_on_a_typed_go_receiver_is_withheld_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``var db *sql.DB``; ``db.Exec(v)``. The Go analyzer types a package
+    variable from its declaration (ADR-0064, batch 5b), so the call now names
+    ``database/sql``, which the I/O catalogue cannot classify: the coverage
+    gate withholds the verdict first and names the module, and the zone gate
+    leaves an already withheld verdict as it is. Either way the claim is not
+    confirmed, which is what WI-sojok asks."""
+    verdict = _verdict(tmp_path, monkeypatch, "database")
+    assert verdict["verdict"] == "inconclusive"
+    assert "database/sql" in verdict["details"]
+    assert "was never examined" in verdict["details"]
 
 
 def test_control_a_zone_go_has_sinks_in_is_not_withheld_for_it(
