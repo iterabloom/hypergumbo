@@ -1,0 +1,52 @@
+Original commit body from c3ccb6928766454666e441526309ad01b1338770:
+
+Batch 5b of ADR-0064 (shared call resolution): Perl, Ruby, Lua and Go report calls with facts and hand over a per-file import table; the shared linkers decide. Python was in this batch and is pulled into its own pull request (below).
+
+## What changes for a reader of a map
+
+In these four languages a call is no longer bound because some declaration in the repository has its name. It is bound by what the language's own rule says (the caller's package or scope, an import, the receiver's type), or it is left unresolved.
+
+## Measured (11 repositories; before = dev ed0583978, after = this branch at 5b5d0304b)
+
+| | Perl | Ruby | Lua | Go |
+|---|---|---|---|---|
+| resolved calls, before to after | 2,898 to 2,859 | 1,964 to 2,008 | 3,627 to 3,655 | 9,352 to 10,531 |
+| bound by name alone, before to after | 731 to 0 | 362 to 0 | 3,282 to 411 | 1,425 to 0 |
+| resolved before, not now (all) | 67 | 99 | 1,073 | 604 |
+| ... of 15 read: right before | 8 | 0 | 1 | 5 |
+| different target (all) | 26 | 1 | 329 | 291 |
+| ... of 15 read: wrong before, right now | 15 | 1 of 1 | 13 | 15 |
+| not resolved before, resolved now (all) | 28 | 143 | 1,101 | 1,783 |
+| ... of 15 read: right | 15 | 15 | 15 | 15 |
+
+The samples were read in the source by a judge given call and target only, shuffled, not told which side a pair came from. No sampled edge went from right to wrong. Of Lua's 15 retargeted edges, 1 is wrong after as before and 1 is not decidable from the source.
+
+## The name step
+
+On for Lua only, with a screen of the standard library, LuaJIT and OpenResty names: 411 binds, all calls on a receiver; of 15 read, 12 right, 2 wrong (methods of a heap library's and the Postgres client's objects), 1 not decidable. Off for Ruby (measured on: 7 right of 15; a Rails model's columns and associations) and Go (12 right of 15; standard-library methods its screen does not hold); it does nothing for Perl. The Ruby and Lua screens were written without the documentation at hand (its sites are not on the network allowlist) and are not checked against it.
+
+## Shared-layer changes (each with a test that fails without it)
+
+- A module of the file kind may be a directory (Go's package): the files directly in it; the caller's own directory is a scope.
+- A method declared outside its type's file belongs to the type its declared name says (it went to the first type of that short name in the run). On caddy: 16 typed calls now bound, 2 wrong binds gone, 4 wrong `dispatches_to` edges gone and 3 right ones new.
+- Perl and Lua are declared inputs of the inherited-calls linker; a test derives that from who builds an import table.
+
+## What must not change
+
+Ten repositories of languages outside the batch (JavaScript / TypeScript, Rust, Java, Kotlin, C#, PHP, and three Python trees): identical in every edge and symbol. In the four languages: no declared symbol changed but for Perl's new `qualified_name` (no id, no stable id moved); edges other than calls identical except the seven `dispatches_to` edges above.
+
+## One verify-claims reason changes
+
+Go's adapter types a package variable from its declaration, so `db.Exec(v)` on `var db *sql.DB` now names `database/sql`. A "never reaches a database" claim on such a program is still not confirmed, but the stated reason is the module the I/O catalogue cannot classify, where it was "Go has no sink in the database zone". Found by the pre-PR run; both cases are pinned.
+
+## Python
+
+Its adapter's first round lost 176 resolved calls on this repository's own map; 15 of 15 read were right before. Scripts reach `scripts/lib` through `sys.path.insert`, which the new exact module lookup did not read, and the scheduled gates and test selection of this repository read those edges. It gets a second round and its own pull request.
+
+## Still wrong or lost, to be filed after the merge (each with its count)
+
+Perl's indirect-object `throw Class(..)` (19 right edges lost) and its methods being invisible to the linkers; Go receivers that are range variables, interface-method results or two-value returns, and a hint that cannot name a type of a package the caller does not import; Lua tables with no type symbol (232 open stubs); Ruby `attr_reader` sends to `self` (53); the name step's fall-through for a module qualifier, which misbound Lua 9 times of 10 before its table stopped handing bindings over.
+
+## Not checked
+
+No repository outside the 21 was run. The moved edges outside the samples were not read. Confidence values, slices, dead-code and taint output beyond the existing tests were not compared. One run per tree: analysis time is not measured.
