@@ -159,11 +159,12 @@ sub main {
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
-        # main should call helper
+        # main calls helper: a bare name the analyzer reports for the shared
+        # linkers to bind in main's own package (ADR-0064; the bind is pinned
+        # by test_perl_call_facts.py::test_a_bare_call_means_the_callers_own_package).
         main_sym = next(s for s in result.symbols if s.name == "main")
-        helper_sym = next(s for s in result.symbols if s.name == "helper")
         edge_pairs = [(e.src, e.dst) for e in call_edges]
-        assert (main_sym.id, helper_sym.id) in edge_pairs
+        assert (main_sym.id, "perl:external:0-0:helper:unresolved") in edge_pairs
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handle empty Perl file gracefully."""

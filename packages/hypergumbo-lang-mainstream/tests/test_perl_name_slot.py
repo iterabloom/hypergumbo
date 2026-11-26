@@ -17,7 +17,7 @@ from hypergumbo_lang_mainstream.perl import analyze_perl
 
 _SRC = (
     "package Demo::Core;\n"
-    "sub run { return helper(); }\n"
+    "sub run { return Demo::Core::helper(); }\n"
     "sub helper { return 1; }\n"
     "package main;\n"
     "sub top { return 2; }\n"
@@ -45,7 +45,9 @@ def test_every_name_slot_is_the_sanitized_name(tmp_path: Path) -> None:
 
 
 def test_a_call_between_subs_ends_on_the_sub_id(tmp_path: Path) -> None:
-    """Control: the resolved call lands on the minted id."""
+    """Control: the resolved call lands on the minted id. The call writes its
+    package: a bare ``helper()`` is reported for the shared linkers to bind
+    (ADR-0064), so the analyzer alone makes no edge for it."""
     result = _result(tmp_path)
     ids = {s.name: s.id for s in result.symbols}
     calls = {(e.src, e.dst) for e in result.edges if e.edge_type == "calls"}
