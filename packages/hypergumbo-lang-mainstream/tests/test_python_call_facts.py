@@ -28,9 +28,12 @@ would show as wrong or as a tie.
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py
 from __future__ import annotations
 
+import ast
 import json
 from collections import Counter
 from pathlib import Path
+
+import pytest
 
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.import_scope import MODULES_ARE_FILES
@@ -214,7 +217,7 @@ def test_the_table_counts_what_it_leaves_out(tmp_path: Path) -> None:
     for rel in ("main.py", "pkg/rel.py", "tests/test_x.py"):
         _import_scope(tmp_path / rel, analyses[tmp_path / rel], modules, counts)
     assert counts["tie"] >= 1
-    assert counts["sys_dir_and_root"] >= 1
+    assert counts["several_entries"] >= 1
     assert counts["relative_unresolved"] == 1  # ``from .. import beyond`` above ``pkg``
     assert counts["library"] >= 4
     assert counts["recorded"] >= 10
@@ -450,6 +453,8 @@ def test_pytests_configured_pythonpath_is_on_a_test_files_path(tmp_path: Path) -
     )
     test_file = tmp_path / "pkg/tests/sub/test_b.py"
     assert modules.file_for("helpers", test_file) == tmp_path / "pkg/tests/helpers.py"
+    # A second test file of a directory already read reads the same settings.
+    assert modules.file_for("helpers", tmp_path / "pkg/tests/test_a.py") == tmp_path / "pkg/tests/helpers.py"
     assert modules.file_for("shapes", test_file) == tmp_path / "recorded/shapes/__init__.py"
     # The settings put a directory on a TEST run's path, not on a library module's.
     assert modules.file_for("helpers", tmp_path / "pkg/lib.py") is None
@@ -480,3 +485,150 @@ def test_a_reference_in_place_of_a_stub_still_carries_the_calls_mode(tmp_path: P
     })
     (ref,) = [e for e in result.edges if e.edge_type == "references" and e.line == 3]
     assert (ref.meta or {}).get("io_mode") == "w"
+
+
+# --- sys.path entries a file adds itself ----------------------------------------------
+
+_LEDGER_TREE = {
+    "scripts/lib/ledger.py": "def run(): pass\n",
+    "tools/lib/ledger.py": "def run(): pass\n",          # a namesake: a suffix match is tied
+}
+
+
+@pytest.mark.parametrize(("caller", "head"), [
+    ("scripts/a.py", "from pathlib import Path\nsys.path.insert(0, str(Path(__file__).resolve().parent / 'lib'))"),
+    ("scripts/a.py", "import pathlib\nsys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / 'lib'))"),
+    ("scripts/a.py", "from pathlib import Path\nsys.path.insert(0, Path(__file__).absolute().parent / 'lib')"),
+    ("tests/test_a.py", "from pathlib import Path\nsys.path.insert(0, str(Path(__file__).parent.parent / 'scripts' / 'lib'))"),
+    ("tests/test_a.py", "from pathlib import Path\nsys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts/lib'))"),
+    ("scripts/a.py", "import os\nsys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))"),
+    ("scripts/lib/a.py", "import os\nsys.path.insert(0, os.path.dirname(__file__))"),
+    ("tests/test_a.py", (
+        "from pathlib import Path\nREPO_ROOT = Path(__file__).resolve().parent.parent\n"
+        "sys.path.insert(0, str(REPO_ROOT / 'scripts' / 'lib'))"
+    )),
+    ("tests/test_a.py", (
+        "from pathlib import Path\nROOT = Path(__file__).resolve().parent.parent\n"
+        "_src = ROOT / 'scripts/lib'\nif True:\n    sys.path.insert(0, str(_src))"
+    )),
+])
+def test_a_directory_the_file_puts_on_its_path_names_its_imports(
+    tmp_path: Path, caller: str, head: str,
+) -> None:
+    result = _analyze(tmp_path, {
+        **_LEDGER_TREE,
+        caller: f"import sys\n{head}\nfrom ledger import run\ndef go():\n    run()\n",
+    })
+    edges = _edges(result, caller)
+    (target,) = [e.dst for e in edges if e.is_resolved and (e.meta or {}).get("resolved_by") == "import"]
+    assert "/scripts/lib/ledger.py:" in target
+
+
+@pytest.mark.parametrize("head", [
+    "def setup():\n    sys.path.insert(0, str(Path(__file__).parent / 'lib'))",       # runs only if called
+    "LIB = Path(__file__).parent / 'lib'\nLIB = LIB\nsys.path.insert(0, str(LIB))",  # assigned twice
+    "sys.path.insert(0, str(find_lib()))",                                        # a call it cannot evaluate
+    "sys.path.insert(0, 'scripts/lib')",                                          # the working directory's
+    "sys.path.insert(position, str(Path(__file__).parent / 'lib'))",              # position not a constant
+    "sys.path.insert(0, '/elsewhere/lib')",                                       # outside the tree
+])
+def test_an_insert_the_evaluator_cannot_read_binds_nothing(tmp_path: Path, head: str) -> None:
+    result = _analyze(tmp_path, {
+        **_LEDGER_TREE,
+        "scripts/a.py": (
+            f"import sys\nfrom pathlib import Path\nposition = 0\n{head}\n"
+            "from ledger import run\ndef go():\n    run()\n"
+        ),
+    })
+    assert not [e for e in _edges(result, "scripts/a.py") if e.is_resolved]
+
+
+def test_the_first_entry_holding_a_module_is_the_one_python_takes(tmp_path: Path) -> None:
+    files = {
+        "scripts/lib/ledger.py": "def run(): pass\n",
+        "scripts/ledger.py": "def run(): pass\n",
+        "ledger.py": "def run(): pass\n",
+        "scripts/first.py": (
+            "import sys\nfrom pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).parent / 'lib'))\n"
+            "from ledger import run\ndef go():\n    run()\n"
+            "if __name__ == '__main__':\n    go()\n"
+        ),
+        "scripts/last.py": (
+            "import sys\nfrom pathlib import Path\n"
+            "sys.path.append(str(Path(__file__).parent / 'lib'))\n"
+            "from ledger import run\ndef go():\n    run()\n"
+            "if __name__ == '__main__':\n    go()\n"
+        ),
+    }
+    result = _analyze(tmp_path, files)
+    # insert(0, lib) comes before the script's own directory.
+    (first,) = [
+        e.dst for e in _edges(result, "scripts/first.py")
+        if e.is_resolved and (e.meta or {}).get("resolved_by") == "import"
+    ]
+    assert "/scripts/lib/ledger.py:" in first
+    # append(lib) comes after it: the script's own directory answers.
+    (last,) = [
+        e.dst for e in _edges(result, "scripts/last.py")
+        if e.is_resolved and (e.meta or {}).get("resolved_by") == "import"
+    ]
+    assert "/scripts/ledger.py:" in last
+
+
+def test_a_files_path_entries_are_its_own_not_those_of_what_it_imports(tmp_path: Path) -> None:
+    files = {
+        **_LEDGER_TREE,
+        "scripts/lib/helper.py": "from ledger import run\ndef h():\n    run()\n",
+        "scripts/a.py": (
+            "import sys\nfrom pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).parent / 'lib'))\n"
+            "from helper import h\ndef go():\n    h()\n"
+        ),
+    }
+    result = _analyze(tmp_path, files)
+    assert [e for e in _edges(result, "scripts/a.py") if e.is_resolved]
+    # helper.py is not a script and adds nothing: ``ledger`` names no file from it.
+    assert not [e for e in _edges(result, "scripts/lib/helper.py") if e.is_resolved]
+
+
+def test_the_evaluator_counts_what_it_does_not_read(tmp_path: Path) -> None:
+    from hypergumbo_lang_mainstream.py import _sys_path_edits
+
+    source = (
+        "import sys, os\nfrom pathlib import Path\nfrom x import spec\n"
+        "sys.path.insert(0, spec['src'])\n"
+        "sys.path.insert(n, '/a')\n"
+        "sys.path.append()\n"
+        "A = Path(__file__)\nA = A.parent\nsys.path.insert(0, str(A))\n"
+        "sys.path.insert(0, 'rel')\n"
+        "sys.path.insert(0, '/nowhere')\n"
+        "sys.path.insert(0, Path(__file__).parents[99])\n"
+        "sys.path.insert(0, os.fspath(Path(__file__).parent))\n"
+        "sys.path.insert(0, os.path.normpath(os.path.dirname(__file__)))\n"
+        "sys.path.insert(0, 'a' / 'b')\n"
+        "sys.path.insert(0, Path(__file__).parent.resolve(strict=True))\n"
+        "sys.path.insert(0, os.path.join())\n"
+        "get_sys().path.append('/q')\n"
+        "x = [sys.path.insert(0, '/q')]\n"
+        "class C:\n    sys.path.append('/q')\n"
+        "try:\n    pass\nexcept ImportError:\n    sys.path.append(os.path.dirname(__file__))\n"
+    )
+    tree = ast.parse(source)
+    counts: Counter[str] = Counter()
+    py_file = tmp_path / "pkg" / "mod.py"
+    edits = _sys_path_edits(
+        tree, py_file, tmp_path, {"Path": ("pathlib", "Path"), "spec": ("x", "spec")},
+        {"sys": "sys", "os": "os"}, counts,
+    )
+    assert [(e.position, e.directory) for e in edits] == [
+        (0, tmp_path / "pkg"), (0, tmp_path / "pkg"), (None, tmp_path / "pkg"),
+    ]
+    assert counts == Counter({
+        "not a static path expression": 6,
+        "position not an integer constant": 1,
+        "a name assigned more than once": 1,
+        "a relative string (the working directory's)": 1,
+        "outside the tree": 1,
+        "in a function or class body, or inside an expression": 2,
+    })

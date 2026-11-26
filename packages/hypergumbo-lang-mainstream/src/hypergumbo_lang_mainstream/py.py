@@ -319,10 +319,11 @@ binds, or the file declares, is hashed as written.
 """
 import ast
 import builtins
+import os
 import warnings
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Callable, Iterator, Mapping, NamedTuple, Sequence, TypeVar
 
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
@@ -3448,6 +3449,214 @@ def _in_test_tree(py_file: Path, repo_root: Path) -> bool:
     )
 
 
+#: The calls whose value the path evaluator computes, by the canonical name the
+#: file's imports give them (``from pathlib import Path`` makes ``Path``
+#: ``pathlib.Path``; ``import os`` makes ``os.path.join`` itself).
+_PATH_CONSTRUCTORS = frozenset({"pathlib.Path", "pathlib.PurePath", "pathlib.PosixPath"})
+_PATH_STRING_CALLS = frozenset({"str", "os.fspath"})
+_OS_PATH_SAME = frozenset({"os.path.abspath", "os.path.realpath", "os.path.normpath"})
+
+
+class _SysPathEdit(NamedTuple):
+    """One ``sys.path.insert(position, directory)`` (``position`` an int) or
+    ``sys.path.append(directory)`` (``position`` ``None``) a file's own
+    module-level code makes, the directory absolute and inside the tree."""
+
+    position: int | None
+    directory: Path
+
+
+def _sys_path_edits(
+    tree: ast.AST,
+    py_file: Path,
+    repo_root: Path,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+    unread: "Counter[str] | None" = None,
+) -> list[_SysPathEdit]:
+    """The directories ``py_file``'s own module-level code puts on
+    ``sys.path``, in the order the statements run (ADR-0064: a path the file
+    itself adds is the language's own evidence of where its imports load).
+
+    A statement is read when it is ``sys.path.insert(<int>, X)`` or
+    ``sys.path.append(X)`` at module level (also inside a module-level ``if``,
+    ``try``, ``with`` or ``for``, which run with the module), and ``X`` is a
+    STATIC path expression: one this small evaluator computes from the file's
+    own location and constants, with no call it cannot evaluate:
+
+    - ``__file__`` (the file's absolute path) and string constants;
+    - ``Path(x)`` / ``pathlib.Path(x)`` (named as the file's imports bind them),
+      ``.parent``, ``.parents[n]``, ``.resolve()``, ``.absolute()``, ``p / "a"``
+      and ``p / "a/b"``;
+    - ``str(x)``, ``os.fspath(x)``, ``os.path.join(...)``, ``os.path.dirname``,
+      ``os.path.abspath`` / ``realpath`` / ``normpath`` (``import os``);
+    - a module-level NAME assigned exactly once, from such an expression, before
+      the statement that reads it.
+
+    The result must be an absolute directory inside the repository. Not read,
+    and counted in ``unread`` by form (a measurement passes it): an insert in a
+    function or class body (it runs only if called), a position that is not an
+    integer constant, a name assigned more than once or from something else, any
+    other call (``spec["src"]``, ``sys.argv[1]``, an environment variable), a
+    relative string (its meaning is the working directory's), a directory
+    outside the tree. ``.resolve()`` is taken as normalising the path, not
+    following links: the tree is read as its files are found.
+    """
+    if unread is None:
+        unread = Counter()
+    canonical: dict[str, str] = {
+        local: f"{module}.{original}" for local, (module, original) in imports.items()
+    }
+    canonical.update(module_imports)
+
+    def dotted_name(node: ast.expr) -> str | None:
+        parts: list[str] = []
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if not isinstance(node, ast.Name):
+            return None
+        head = canonical.get(node.id, node.id)
+        return ".".join([head, *reversed(parts)])
+
+    env: dict[str, "PurePath | str"] = {}
+
+    def value(node: ast.expr) -> "PurePath | str | None":
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return str(py_file) if node.id == "__file__" else env.get(node.id)
+        if isinstance(node, ast.Attribute) and node.attr == "parent":
+            base = value(node.value)
+            return base.parent if isinstance(base, PurePath) else None
+        if (
+            isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "parents" and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, int)
+        ):
+            base = value(node.value.value)
+            if isinstance(base, PurePath) and 0 <= node.slice.value < len(base.parents):
+                return base.parents[node.slice.value]
+            return None
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            left, right = value(node.left), value(node.right)
+            if isinstance(left, PurePath) and right is not None:
+                return left / right
+            return None
+        if isinstance(node, ast.Call) and not node.keywords:
+            return call_value(node)
+        return None
+
+    def call_value(node: ast.Call) -> "PurePath | str | None":
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute) and func.attr in ("resolve", "absolute")
+            and not node.args
+        ):
+            base = value(func.value)
+            return PurePath(os.path.normpath(base)) if isinstance(base, PurePath) else None
+        name = dotted_name(func)
+        args = [value(a) for a in node.args]
+        if name is None or any(a is None for a in args):
+            return None
+        if name in _PATH_CONSTRUCTORS and len(args) == 1:
+            return PurePath(args[0])
+        if name in _PATH_STRING_CALLS and len(args) == 1:
+            return str(args[0])
+        if name == "os.path.join" and args:
+            return os.path.join(*(str(a) for a in args))
+        if name == "os.path.dirname" and len(args) == 1:
+            return os.path.dirname(str(args[0]))
+        if name in _OS_PATH_SAME and len(args) == 1:
+            return os.path.normpath(str(args[0]))
+        return None
+
+    module_level: list[ast.stmt] = []
+
+    def collect(body: list[ast.stmt]) -> None:
+        for stmt in body:
+            module_level.append(stmt)
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            for field_name in ("body", "orelse", "finalbody"):
+                collect(getattr(stmt, field_name, None) or [])
+            for handler in getattr(stmt, "handlers", None) or []:
+                collect(handler.body)
+
+    collect(tree.body if isinstance(tree, ast.Module) else [])
+    assigned: Counter[str] = Counter()
+    for stmt in module_level:
+        targets = (
+            stmt.targets if isinstance(stmt, ast.Assign)
+            else [stmt.target] if isinstance(stmt, (ast.AnnAssign, ast.AugAssign))
+            else []
+        )
+        for target in targets:
+            for name_node in ast.walk(target):
+                if isinstance(name_node, ast.Name):
+                    assigned[name_node.id] += 1
+
+    def sys_path_call(node: ast.AST) -> ast.Call | None:
+        if (
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("insert", "append")
+            and dotted_name(node.func.value) == "sys.path"
+        ):
+            return node
+        return None
+
+    edits: list[_SysPathEdit] = []
+    top_calls: set[int] = set()
+    for stmt in module_level:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if (
+            isinstance(stmt, (ast.Assign, ast.AnnAssign)) and stmt.value is not None
+        ):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            if len(targets) == 1 and isinstance(targets[0], ast.Name):
+                name = targets[0].id
+                found = value(stmt.value) if assigned[name] == 1 else None
+                if found is not None:
+                    env[name] = found
+            continue
+        call = sys_path_call(stmt.value) if isinstance(stmt, ast.Expr) else None
+        if call is None:
+            continue
+        top_calls.add(id(call))
+        position: int | None = None
+        assert isinstance(call.func, ast.Attribute)
+        if call.func.attr == "insert":
+            first = call.args[0] if len(call.args) == 2 else None
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, int)):
+                unread["position not an integer constant"] += 1
+                continue
+            position = first.value
+        elif len(call.args) != 1:
+            unread["not a static path expression"] += 1
+            continue
+        written = call.args[-1]
+        found = value(written)
+        if found is None:
+            names = {n.id for n in ast.walk(written) if isinstance(n, ast.Name)}
+            unread[
+                "a name assigned more than once" if any(assigned[n] > 1 for n in names)
+                else "not a static path expression"
+            ] += 1
+            continue
+        directory = Path(os.path.normpath(str(found)))
+        if not directory.is_absolute():
+            unread["a relative string (the working directory's)"] += 1
+        elif directory != repo_root and repo_root not in directory.parents:
+            unread["outside the tree"] += 1
+        else:
+            edits.append(_SysPathEdit(position, directory))
+    for node in ast.walk(tree):
+        if sys_path_call(node) is not None and id(node) not in top_calls:
+            unread["in a function or class body, or inside an expression"] += 1
+    return edits
+
+
 class _ModuleFiles:
     """Which file of the tree a dotted module names, by Python's own rule
     (ADR-0064: an import names a FILE, exactly, or nothing of the tree).
@@ -3457,19 +3666,31 @@ class _ModuleFiles:
 
     1. the directory the importer's own run puts first
        (``_importer_sys_path_dir``: pytest's ``prepend`` basedir for a test
-       file, a script's own directory), then, for a file of a test tree, the
-       directories pytest is configured to put on the path
-       (``[tool.pytest.ini_options] pythonpath`` of each ``pyproject.toml``
-       from the file's directory up to the root);
-    2. the module roots: the deepest source root that covers the file
-       (``_module_name_from_path``), every directory named ``src`` above it
-       (a namespace package under ``src/`` is not detected as a source root
-       there), and the repository root. ``pkg/__init__.py`` is also ``pkg``.
+       file, a script's own directory);
+    2. for a file of a test tree, the directories pytest is configured to
+       put on the path (``[tool.pytest.ini_options] pythonpath`` of each
+       ``pyproject.toml`` from the file's directory up to the root), nearest
+       first;
+    3. the module roots, one entry: the deepest source root that covers the
+       file (``_module_name_from_path``), every directory named ``src`` above
+       it (a namespace package under ``src/`` is not detected as a source
+       root there), and the repository root. ``pkg/__init__.py`` is also
+       ``pkg``;
+    4. the directories the importer's OWN module-level code adds
+       (``_sys_path_edits``), applied to the list 1-3 in the order its
+       statements run, as Python applies them: ``sys.path.insert(n, d)``
+       puts ``d`` at index ``n`` of that list (``insert(0, ..)`` before the
+       script's own directory), ``sys.path.append(d)`` after every entry.
 
-    A module is the file it names under (1), else under (2). Two files that
-    carry one module name under (2) (two ``src`` directories each holding
-    ``pkg/util.py``) are a TIE: the module names no file and nothing is bound
-    through it. A module that names no file is a library's, and nothing in
+    A module is the file the FIRST entry holding one gives, as Python takes
+    it: in a directory entry ``d/m/__init__.py`` before ``d/m.py``. Only the
+    roots entry can hold two files of one module name (two ``src``
+    directories each holding ``pkg/util.py``): a TIE, the module names no
+    file and nothing is bound through it. A file's own ``sys.path`` edits
+    apply to its own imports only, not to the modules it imports, although
+    they run in the same interpreter: a module imported by two scripts that
+    add different directories has no one load path, and the edits of the
+    file that imported it first are not known here. A module that names no file is a library's, and nothing in
     the tree is bound to it, however many in-tree modules END with its name:
     the dotted-suffix match this replaces bound ``from app.crud import X`` to
     ``backend.app.crud`` and ``from json import dumps`` to an in-tree
@@ -3480,9 +3701,9 @@ class _ModuleFiles:
     that name, followed to where it is declared (``from .impl import Thing``
     in ``pkg/__init__.py``; a facade module's ``from .tier import parse``).
     The run-wide ``global_symbols`` registry (last file registered wins) is
-    not read for a bind. Not modelled: ``sys.path`` changed by code
-    (``sys.path.insert``), ``.pth`` files, ``setup.cfg`` / ``pytest.ini``
-    pytest settings.
+    not read for a bind. Not modelled: ``sys.path`` changed by code the
+    evaluator does not read (``_sys_path_edits``), ``.pth`` files,
+    ``PYTHONPATH``, ``setup.cfg`` / ``pytest.ini`` pytest settings.
     """
 
     def __init__(
@@ -3498,6 +3719,8 @@ class _ModuleFiles:
         self._files_by_module: dict[str, list[Path]] = {}
         self._sys_dir: dict[Path, str | None] = {}
         self._pytest_dirs: dict[Path, tuple[Path, ...]] = {}
+        self._edits: dict[Path, list[_SysPathEdit]] = {}
+        self._entries: dict[Path, list[tuple[str, Path | None]]] = {}
         for py_file, analysis in analyses.items():
             module_name = _module_name_from_path(py_file, repo_root, source_roots)
             self.module_of[py_file] = module_name
@@ -3525,6 +3748,10 @@ class _ModuleFiles:
                 _importer_sys_path_dir(module_name, tree, module_to_file_id)
                 if tree is not None else None
             )
+            if tree is not None:
+                self._edits[py_file] = _sys_path_edits(
+                    tree, py_file, repo_root, analysis.imports, analysis.module_imports,
+                )
 
     def rel(self, py_file: Path) -> str:
         """``py_file`` spelled as its symbols' ``path`` is once the run
@@ -3553,37 +3780,55 @@ class _ModuleFiles:
         self._pytest_dirs[directory] = tuple(found)
         return self._pytest_dirs[directory]
 
-    def candidates(self, module: str, importer: Path | None) -> tuple[list[Path], list[Path]]:
-        """The files ``module`` can name from ``importer``: under the
-        importer's own ``sys.path`` directory (or, failing it, under the
-        directories pytest puts on the path for a file of a test tree), and
-        under the module roots."""
-        sys_dir = self._sys_dir.get(importer) if importer is not None else None
-        first = (
-            list(self._files_by_module.get(f"{sys_dir}.{module}", ()))
-            if sys_dir else []
-        )
-        if not first and importer is not None and _in_test_tree(importer, self.repo_root):
-            relative = Path(*module.split("."))
-            for directory in self._pytest_pythonpath(importer.parent):
-                for candidate in (
-                    directory / relative.with_suffix(".py"), directory / relative / "__init__.py",
-                ):
-                    if candidate in self.analyses and candidate not in first:
-                        first.append(candidate)
-        return first, list(self._files_by_module.get(module, ()))
+    def entries(self, importer: Path) -> list[tuple[str, Path | None]]:
+        """``importer``'s modelled ``sys.path``, first entry first: ``("sys_dir",
+        None)``, ``("dir", d)``, ``("roots", None)`` (see the class docstring)."""
+        if importer in self._entries:
+            return self._entries[importer]
+        entries: list[tuple[str, Path | None]] = []
+        if self._sys_dir.get(importer):
+            entries.append(("sys_dir", None))
+        if _in_test_tree(importer, self.repo_root):
+            entries += [("dir", d) for d in self._pytest_pythonpath(importer.parent)]
+        entries.append(("roots", None))
+        for edit in self._edits.get(importer, ()):
+            if edit.position is None:
+                entries.append(("dir", edit.directory))
+            else:
+                entries.insert(edit.position, ("dir", edit.directory))
+        self._entries[importer] = entries
+        return entries
 
-    def file_for(self, module: str, importer: Path | None) -> Path | None:
+    def matches(self, module: str, importer: Path) -> list[list[Path]]:
+        """The files ``module`` names under each entry of ``importer``'s path
+        that holds one, in path order; only the first counts."""
+        relative = Path(*module.split("."))
+        out: list[list[Path]] = []
+        for kind, directory in self.entries(importer):
+            if kind == "sys_dir":
+                found = list(self._files_by_module.get(f"{self._sys_dir[importer]}.{module}", ()))
+            elif kind == "roots":
+                found = list(self._files_by_module.get(module, ()))
+            else:
+                assert directory is not None
+                found = [
+                    c for c in (directory / relative / "__init__.py", directory / relative.with_suffix(".py"))
+                    if c in self.analyses
+                ][:1]
+            if found:
+                out.append(found)
+        return out
+
+    def file_for(self, module: str, importer: Path) -> Path | None:
         """The one file ``module`` names from ``importer``, or ``None`` (a
         library's module, or a tie)."""
         if not module:
             return None
-        first, rooted = self.candidates(module, importer)
-        found = first or rooted
-        return found[0] if len(found) == 1 else None
+        found = self.matches(module, importer)
+        return found[0][0] if found and len(found[0]) == 1 else None
 
     def symbol(
-        self, module: str, name: str, importer: Path | None, depth: int = 0,
+        self, module: str, name: str, importer: Path, depth: int = 0,
     ) -> Symbol | None:
         """The declaration ``name`` of ``module`` means from ``importer``."""
         py_file = self.file_for(module, importer)
@@ -3660,11 +3905,11 @@ def _import_scope(
       two bindings of one name the later in walk order is kept, a library's
       included (it then binds nothing in the table).
 
-    ``counts``, when given (a measurement), is told per module looked up: ``recorded``, ``library``
-    (names no file), ``tie`` (several files), ``sys_dir_and_root`` (the
-    importer's ``sys.path`` directory and a module root both hold one; the
-    directory's is taken), ``relative_unresolved`` (a relative import above
-    the top-level module).
+    ``counts``, when given (a measurement), is told per module looked up:
+    ``recorded``, ``library`` (names no file), ``tie`` (several files),
+    ``several_entries`` (two entries of the importer's path hold different
+    files of it; the first is taken), ``relative_unresolved`` (a relative
+    import above the top-level module).
     """
     scope = ImportScope(module_kind=MODULES_ARE_FILES)
     importing_module = modules.module_of[py_file]
@@ -3672,13 +3917,12 @@ def _import_scope(
         counts = Counter()
 
     def file_of(module: str) -> Path | None:
-        first, rooted = modules.candidates(module, py_file)
-        if first and rooted and first != rooted:
-            counts["sys_dir_and_root"] += 1
-        found = first or rooted
-        if len(found) > 1:
+        found = modules.matches(module, py_file)
+        if len({f for files in found for f in files}) > len(found[0] if found else ()):
+            counts["several_entries"] += 1
+        if found and len(found[0]) > 1:
             counts["tie"] += 1
-        return found[0] if len(found) == 1 else None
+        return found[0][0] if found and len(found[0]) == 1 else None
 
     # The names: the analyzer's own maps (``_extract_imports``), which hold the
     # binding of each local name that the file's LAST import of it in walk
