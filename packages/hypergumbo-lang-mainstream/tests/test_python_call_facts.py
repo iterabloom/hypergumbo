@@ -453,3 +453,30 @@ def test_pytests_configured_pythonpath_is_on_a_test_files_path(tmp_path: Path) -
     assert modules.file_for("shapes", test_file) == tmp_path / "recorded/shapes/__init__.py"
     # The settings put a directory on a TEST run's path, not on a library module's.
     assert modules.file_for("helpers", tmp_path / "pkg/lib.py") is None
+
+
+def test_super_naming_another_class_says_nothing_of_the_enclosing_one(tmp_path: Path) -> None:
+    result = _analyze(tmp_path, {
+        "main.py": (
+            "class Other: pass\n"
+            "class C(Other):\n"
+            "    def m(self):\n"
+            "        super(Other, self).go()\n"
+        ),
+    })
+    stub = _stub(_edges(result, "main.py"), "go")
+    assert "super_receiver" not in _facts(stub) and "enclosing_class" not in _facts(stub)
+
+
+def test_a_reference_in_place_of_a_stub_still_carries_the_calls_mode(tmp_path: Path) -> None:
+    """Every stub now carries meta (its ``callee_name``); the one edge of a call
+    that may come with none is the ``references`` edge to an in-tree module
+    constant used as the receiver (WI-hotug), and the call's literal mode is
+    stamped on it all the same."""
+    result = _analyze(tmp_path, {
+        "pkg/__init__.py": "",
+        "pkg/paths.py": "LOG = make()\n",
+        "main.py": "from pkg.paths import LOG\ndef run():\n    LOG.open(mode='w')\n",
+    })
+    (ref,) = [e for e in result.edges if e.edge_type == "references" and e.line == 3]
+    assert (ref.meta or {}).get("io_mode") == "w"
