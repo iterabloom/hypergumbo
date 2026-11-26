@@ -1,0 +1,21 @@
+- op: create  # e8b1
+  at: '2026-11-26T03:34:59Z'  # e8b1
+  by: agent  # e8b1
+  actor: jgstern_agent  # e8b1
+  clock: 1  # e8b1
+  nonce: e8b1  # e8b1
+  data:  # e8b1
+    kind: work_item  # e8b1
+    title: "Ruby: a send to self that is an attr_reader finds no field step in the hierarchy walk (53 open stubs)"  # e8b1
+    status: todo_hard  # e8b1
+    priority: 3  # e8b1
+    parent:  # e8b1
+    tags:  # e8b1
+    - analysis_quality  # e8b1
+    - shared_call_resolution  # e8b1
+    isbefore: []  # e8b1
+    duplicate_of: []  # e8b1
+    not_duplicate_of: []  # e8b1
+    pr_ref:  # e8b1
+    description: "STATEMENT: a send to self that reads an attribute reaches the attribute, own or inherited. OBSERVED: attr_reader / attr_accessor make field symbols; the hierarchy walk for a call with enclosing_class looks for methods only. 53 stubs stay open on three trees, and 11 of the 99 edges batch 5b lost were such sends, bound before to another class's method of the same name (the blind judge read 15 lost edges: all 15 wrong before; several are queued_message, the enclosing class's own attr_reader, bound to Postal::MessageDB::Message#queued_message). The linker already binds an invoked field or property of a settled type for a typed receiver (members_by_name); the own-class walk has no such step. Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # e8b1
+    fields: {}  # e8b1

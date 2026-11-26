@@ -1,0 +1,21 @@
+- op: create  # 69c9
+  at: '2026-11-26T03:35:05Z'  # 69c9
+  by: agent  # 69c9
+  actor: jgstern_agent  # 69c9
+  clock: 1  # 69c9
+  nonce: 69c9  # 69c9
+  data:  # 69c9
+    kind: work_item  # 69c9
+    title: "Ruby rules the shared lookup does not model: top-level def, ::X root, compact class nesting, reopened classes, singleton methods, files without symbols"  # 69c9
+    status: todo_hard  # 69c9
+    priority: 3  # 69c9
+    parent:  # 69c9
+    tags:  # 69c9
+    - analysis_quality  # 69c9
+    - shared_call_resolution  # 69c9
+    isbefore: []  # 69c9
+    duplicate_of: []  # 69c9
+    not_duplicate_of: []  # 69c9
+    pr_ref:  # 69c9
+    description: "STATEMENT: each of these Ruby rules is either modelled or decided against. OBSERVED (from the Ruby adapter's report, none built): a top-level def is a private method of Object, callable from anywhere, and has no owner the bare-call lookup can walk to (0 lost edges on the three trees); the root ::X is not a global root for the lookup (_GLOBAL_ROOTS holds global:: and a backslash), so full paths are handed over unrooted; Ruby's constant lookup is not the declared-name rule: a compact class A::C is ONE nesting level, and the scope's ancestors are searched too; a class reopened in several files is walked one declaration at a time, so the first declaration's ancestors are searched before another declaration's own methods; nothing tells an instance method from a singleton one (a def inside class << self is named X#m); super inside a module method has no fact for which class comes next; a file that declares no symbol is dropped after the first pass and emits no calls and no imports (84 of postal's 283 files); a Rails model's columns and associations are declared nowhere in Ruby source (the name step measured on: 7 right of 15, the wrong ones these). Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 69c9
+    fields: {}  # 69c9
