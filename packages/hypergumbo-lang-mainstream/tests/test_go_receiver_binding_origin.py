@@ -73,7 +73,9 @@ def _read_edges(edges, name: str, module: str = "bufio"):
     return [
         e for e in edges
         if e.edge_type == "calls"
-        and e.dst.startswith(f"go:{module}:")
+        # The slot names the package, or (ADR-0064: with or without a
+        # go.mod) the receiver's library type in it: ``go:bufio.Reader:``.
+        and (e.dst.startswith(f"go:{module}:") or e.dst.startswith(f"go:{module}."))
         and e.dst.split(":")[3] == name
     ]
 
@@ -170,8 +172,10 @@ func fromHTTP(u string) {
         """``net.Dial`` is not a handle wrapper; its ``Read`` keeps its own row.
 
         The receiver is DECLARED so the edge takes the typed-receiver path
-        (``go:net:``) and the binding is consulted; a ``:=`` from ``net.Dial``
-        would leave ``c`` untyped and never reach that path at all."""
+        and the binding is consulted. The slot names the type
+        (``go:net.Conn:``, with or without a go.mod since ADR-0064), so the
+        connection's socket family is read (WI-potog: ``"tcp"`` is a
+        ``net_stream``); the handle-wrapper reader claims nothing."""
         edges = _edges(tmp_path, """
 func fromConn(a string) {
 \tvar c net.Conn
@@ -180,7 +184,7 @@ func fromConn(a string) {
 \tc.Read(buf)
 }
 """)
-        assert _stamps(edges, "Read", module="net") == []
+        assert _stamps(edges, "Read", module="net") == ["net_stream"]
         assert len(_read_edges(edges, "Read", module="net")) == 1
 
 

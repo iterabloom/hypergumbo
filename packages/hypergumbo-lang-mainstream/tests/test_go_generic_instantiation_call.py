@@ -114,7 +114,6 @@ def _only(calls: dict[str, list], caller: str):
 @pytest.mark.parametrize("caller,plain", [
     ("bareConv", "bareInferred"),
     ("bareVariadic", "bareInferred"),
-    ("qualConv", "qualInferred"),
 ])
 def test_an_instantiated_call_binds_like_its_plain_spelling(
         calls: dict[str, list], caller: str, plain: str) -> None:
@@ -125,11 +124,22 @@ def test_an_instantiated_call_binds_like_its_plain_spelling(
     assert edge.is_resolved is True
 
 
-@pytest.mark.parametrize("caller", ["bareIndex", "qualIndex"])
-def test_the_index_spelling_binds_too(calls: dict[str, list], caller: str) -> None:
-    edge = _only(calls, caller)
+def test_a_qualified_instantiated_call_is_reported_like_its_plain_spelling(
+        calls: dict[str, list]) -> None:
+    """``a.Map[int](3)`` and ``a.Map(4)``: one stub each, with the package as
+    the qualifier, which the shared import step binds (ADR-0064)."""
+    edge, plain_edge = _only(calls, "qualConv"), _only(calls, "qualInferred")
+    assert edge.dst == plain_edge.dst == "go:example.com/t/a:0-0:Map:unresolved"
+    assert edge.meta["qualifier"] == plain_edge.meta["qualifier"] == "a"
+    assert edge.meta["call_construct"] == "function"
+
+
+def test_the_index_spelling_binds_too(calls: dict[str, list]) -> None:
+    edge = _only(calls, "bareIndex")
     assert edge.dst.endswith(":Zero:function")
     assert edge.meta["call_construct"] == "function"
+    qualified = _only(calls, "qualIndex")
+    assert (qualified.meta["qualifier"], qualified.meta["call_construct"]) == ("a", "function")
 
 
 def test_control_several_type_arguments_already_bound(calls: dict[str, list]) -> None:

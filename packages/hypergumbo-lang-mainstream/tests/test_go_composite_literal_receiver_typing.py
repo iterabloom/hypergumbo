@@ -441,17 +441,11 @@ func main() {
         analysis = analyze_go(repo)
         assert not analysis.skipped
 
-        exec_edges = _method_edges(analysis, "Exec")
-        assert any("Stage.Exec" in e.dst for e in exec_edges), (
-            "an in-repo package-qualified receiver must still resolve to its own "
-            f"method; got {[e.dst for e in exec_edges]}"
-        )
-
-        # The un-indexed method falls to the module-hint fallback, which strips the
-        # go.mod module prefix so the hint is repo-relative rather than the full path.
-        missing = _method_edges(analysis, "NotIndexed")
-        assert missing, "no edge emitted for the un-indexed method"
-        assert all(
-            e.dst.split(":")[1] in ("notify", "example.com/test/notify")
-            for e in missing
-        ), f"unexpected module slot: {[e.dst for e in missing]}"
+        # ADR-0064: an in-repo receiver's call is reported with its type as the
+        # file writes it, for the shared pass to find the method on that type
+        # (``test_go_call_facts``); a method the type lacks is reported the same.
+        for name in ("Exec", "NotIndexed"):
+            edges = _method_edges(analysis, name)
+            assert [(e.is_resolved, (e.meta or {}).get("receiver_type_hint")) for e in edges] == [
+                (False, "notify.Stage")
+            ], f"{name}: {[(e.dst, e.meta) for e in edges]}"

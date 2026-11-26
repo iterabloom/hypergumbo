@@ -132,9 +132,11 @@ class TestEveryExternalDstIsUnresolved:
     """One rule, asserted at every site that can emit the placeholder."""
 
     @pytest.mark.parametrize(("source", "callee", "marker"), [
-        (_AMBIGUOUS, "Handle", "resolution_quality"),
+        # ADR-0064 deleted the ambiguity guard's count of the name's holders:
+        # the call on an untyped receiver is reported with nothing said of it.
+        (_AMBIGUOUS, "Handle", "callee_name"),
         (_UNEXPORTED, "doWork", "visibility"),
-        (_STDLIB_INTERFACE, "Close", "receiver"),
+        (_STDLIB_INTERFACE, "Close", "stdlib_member_name"),
     ])
     def test_external_dst_is_not_reported_resolved(
         self, tmp_path: Path, go_available, source: str, callee: str, marker: str,
@@ -235,17 +237,19 @@ func setup() {
         (all three were consumed by the WI-jopar identifier guard, whose
         ``receiver: external`` marker already states the flag)."""
         markers = set()
-        for source in (_AMBIGUOUS, _UNEXPORTED, _STDLIB_INTERFACE):
-            sub = tmp_path / f"case{len(markers)}"
+        for number, source in enumerate((_AMBIGUOUS, _UNEXPORTED, _STDLIB_INTERFACE)):
+            sub = tmp_path / f"case{number}"
             sub.mkdir()
             analysis = _analyze(sub, source)
             for edge in _external_call_edges(analysis):
                 meta = edge.meta or {}
-                for key in ("resolution_quality", "visibility", "receiver"):
+                for key in ("visibility", "stdlib_member_name", "receiver_type_hint"):
                     if key in meta:
                         markers.add(f"{key}={meta[key]}")
+        # The ambiguity guard is gone (ADR-0064): its fixture is a plain
+        # untyped-receiver stub and adds no marker.
         assert markers == {
-            "resolution_quality=ambiguous",
             "visibility=unexported",
-            "receiver=stdlib",
+            "stdlib_member_name=True",
+            "receiver_type_hint=B",
         }, f"fixtures collapsed onto the wrong guards: {sorted(markers)}"

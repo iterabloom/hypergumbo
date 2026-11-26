@@ -64,21 +64,36 @@ def go_available():
 
 
 def _var_types_for(source: str, func: str = "main") -> dict[str, str]:
-    """Run production's own var-type extraction over a Go source string."""
+    """Run production's own var-type extraction over a Go source string, with
+    production's call typing (``_go_result_type``) for a file with no go.mod
+    and no other file: every import is a library."""
     import tree_sitter
     import tree_sitter_go
+    from hypergumbo_lang_mainstream.go import (
+        _GoTree, _extract_import_aliases, _go_result_type,
+    )
 
     parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_go.language()))
     raw = source.encode("utf-8")
     tree = parser.parse(raw)
-    return _extract_go_var_types(tree.root_node, raw).get(func, {})
+    aliases = _extract_import_aliases(tree.root_node, raw)
+    go_tree = _GoTree(imports={"/r/m.go": aliases}, root="/r")
+    return _extract_go_var_types(
+        tree.root_node, raw,
+        result_type=lambda call, func_vars: _go_result_type(
+            call, raw, func_vars, "/r/m.go", go_tree, aliases, {},
+        ),
+    ).get(func, {})
 
 
 def _rhs_type(expr: str) -> str | None:
-    """``_type_from_rhs`` on the initializer of ``x := <expr>``."""
+    """What ``x := <expr>`` types ``x`` as: ``_type_from_rhs`` for a literal,
+    production's call typing (``_go_result_type``) for a call, in a file that
+    imports the LIBRARY packages ``bufio`` and ``os`` and declares nothing."""
     import tree_sitter
     import tree_sitter_go
     from hypergumbo_core.analyze.base import iter_tree
+    from hypergumbo_lang_mainstream.go import _GoTree, _go_result_type
 
     src = f"package main\n\nfunc main() {{\n    x := {expr}\n}}\n".encode()
     parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_go.language()))
@@ -86,7 +101,16 @@ def _rhs_type(expr: str) -> str | None:
     decl = next(
         n for n in iter_tree(tree.root_node) if n.type == "short_var_declaration"
     )
-    return _type_from_rhs(decl.children[-1], src)
+    call = next(
+        (n for n in iter_tree(decl) if n.type == "call_expression"), None,
+    )
+    if call is None:
+        return _type_from_rhs(decl.children[-1], src)
+    aliases = {"bufio": "bufio", "os": "os"}
+    return _go_result_type(
+        call, src, {}, "/r/m.go", _GoTree(imports={"/r/m.go": aliases}, root="/r"),
+        aliases, {},
+    )
 
 
 def _make_go_module(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -121,9 +145,12 @@ class TestConstructorCallKeepsItsPackage:
         """
         assert _rhs_type("a.b.NewFoo()") is None
 
-    def test_bare_constructor_is_unchanged(self, go_available: None) -> None:
-        """The in-repo spelling must keep naming the bare type."""
-        assert _rhs_type("NewServer()") == "Server"
+    def test_a_bare_constructor_is_typed_by_its_declaration(self, go_available: None) -> None:
+        """A function of the caller's package is typed by its DECLARED return
+        type (ADR-0064), not by its name: with no declaration in hand,
+        ``NewServer()`` types nothing (``TestGoConstructorTypeInference``
+        pins the declared case)."""
+        assert _rhs_type("NewServer()") is None
 
     def test_non_constructor_call_still_abstains(self, go_available: None) -> None:
         assert _rhs_type("bufio.Flush()") is None
@@ -252,8 +279,12 @@ func (s *Stage) Exec() {}
             if e.edge_type == "calls" and e.dst.split(":")[-2].split(".")[-1] == "Exec"
         ]
         assert execs, "no call edge emitted for s.Exec()"
-        assert [e for e in execs if "Stage.Exec" in e.dst], (
-            f"s.Exec() no longer reaches the repo's own Stage.Exec: {[e.dst for e in execs]}"
+        # ADR-0064: the analyzer reports the call with the receiver's type as
+        # this file writes it (``NewStage``'s declared ``*Stage``, of the
+        # imported package), and the shared pass binds it there
+        # (``test_go_call_facts``).
+        assert [(e.meta or {}).get("receiver_type_hint") for e in execs] == ["notify.Stage"], (
+            f"s.Exec() no longer names the repo's own Stage: {[(e.dst, e.meta) for e in execs]}"
         )
 
 

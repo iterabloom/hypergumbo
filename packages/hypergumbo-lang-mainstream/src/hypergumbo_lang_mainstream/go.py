@@ -16,9 +16,9 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Function references in struct literal fields (cobra, http dispatch), and
   known functions passed as call arguments (``calls`` edges with
   ``evidence_type="function_reference_arg"``; confidence interpolated between
-  the analyzer floor and 0.70 by the resolver's match score (ADR-0039 ruling
-  6) for an own-package function in another file or an import-qualified
-  function, exactly 0.70 for a same-file hit or a method;
+  the analyzer floor and 0.70 by the own-package lookup's match score
+  (ADR-0039 ruling 6) for an own-package function in another file, exactly
+  0.70 for a same-file hit, an import-qualified function or a method;
   ``_extract_function_reference_edges``)
 - A function named as an unkeyed composite-literal element
   (``[]func(){a, b}``) or on the right side of a local binding
@@ -56,92 +56,69 @@ How It Works
 ------------
 1. Check if tree-sitter-go is available
 2. If not available, return skipped result (not an error)
-3. Read go.mod to extract the module path (e.g.,
-   ``github.com/aquasecurity/trivy``).  Strip this prefix from import
-   paths before passing to the resolver so that suffix matching operates
-   on repo-relative paths (``pkg/log``) instead of full module paths.
+3. Read the root ``go.mod``'s module path (e.g.
+   ``github.com/aquasecurity/trivy``). An import path under it names a
+   DIRECTORY of the tree, exactly (the prefix stripped, joined to the
+   ``go.mod``'s directory: ``_GoTree.package_dir``); any other import path
+   is a library's. Only the root ``go.mod`` is read (no nested module, no
+   ``replace``, no ``go.work``); with no ``go.mod`` no import names the tree.
 4. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
+   - Pass 1: Parse all files, extract all symbols
    - Pass 2: Extract variable-type bindings, detect calls, imports, and routes
-5. Receiver-type disambiguation:
-   - Tracks variable types **per function scope** from ``:=`` composite
-     literals, ``NewXxx()`` constructor calls, the return-type registry,
-     ``var`` declarations, function parameters and method receivers
-     (e.g., in ``func foo() { s := &Server{} }``, s has type Server only in foo)
-   - When resolving ``s.Method()``, looks up ``Server.Method``; if that
-     misses, a tracked local receiver gets an unresolved edge (its module
-     slot is the import path plus the type, e.g. ``net/http.Client``, when the
-     type is external) rather than a short-name fallback,
-     preventing incorrect disambiguation when multiple types define the
-     same method name
-   - The return-type registry (``Type.Method`` or function name -> return
-     type, first writer wins) is aggregated from Pass 1, then merged with
-     ``load_library_signatures("go")`` so an in-repo declaration wins over
-     a library row. A receiver that is a catalogued stdlib package variable
-     (``http.DefaultClient.Do``) is typed from the library's
-     ``package_variables`` (``_package_variable_import_path``).
-   - A method called on a call's RESULT (``slog.New(h).Error``,
-     ``json.NewEncoder(w).Encode``) takes the result's type by the same rule
-     a binding does (``_go_call_result_type``: convention, then registry);
-     a type outside the module fills the slot as a typed local's does. A
-     receiver whose type is known to be outside the module -- that result, a
-     stdlib package variable, a struct field -- is never looked up in-repo,
-     where a same-named method under a ``json`` / ``http`` directory would
-     take the call (WI-vinuh).
+5. Calls: what the analyzer binds and what it reports (ADR-0064):
+   - A BARE call is bound here, where Go scoping places it: a local binding
+     in scope (nothing), a declaration of the caller's file (``same_file``),
+     of its package (``same_module``; see WI-bivin below). Anything else is
+     reported: a dot-imported name goes to the shared import step through
+     the file's table.
+   - A call written ON something is reported, never bound by a name: it is
+     emitted unresolved with the facts the shared linkers read, and they
+     bind it through the file's import table (``_go_import_scope``:
+     ``ImportScope`` of the FILE kind, whose modules are directories written
+     with a trailing slash; the caller's own directory is its
+     ``own_namespace``). ``pkg.F()`` carries ``qualifier`` (the package as the
+     file names it); a typed receiver carries ``receiver_type_hint`` (its
+     type as the caller's file writes it: ``log.Logger``, ``Store``); a method
+     name the standard library defines on its interfaces carries
+     ``stdlib_member_name`` (``_GO_STDLIB_INTERFACE_METHODS``). The shared
+     single-holder name step stays off for Go
+     (``_GO_LIBRARY_NAMES_SCREENED``).
+   - Two things the shared resolution has no lookup for are still bound
+     here, by identity: a method of a named type that is no struct or
+     interface (``type Level uint32``: ``_go_named_type_method``), and
+     ``pkg.T(x)`` / ``pkg.V()`` naming a type or a function-valued variable
+     (``_go_package_value``).
+   - Receiver types are tracked **per function scope** from ``:=`` composite
+     literals, ``var`` declarations, function parameters and method receivers
+     (e.g., in ``func foo() { s := &Server{} }``, s has type Server only in
+     foo), and from a call's result: the callee's DECLARED return type when Go
+     places the callee exactly (``_go_result_type``: a function of the
+     caller's package or of a package it dot-imports, ``pkg.F()`` through an
+     import of the tree, ``x.M()`` declared on ``x``'s type), read in the
+     callee's file and spelled again in the caller's (``_GoTree.ref`` /
+     ``spell``). A library callee is typed by
+     ``load_library_signatures("go")`` or the ``pkg.NewXxx`` convention, and
+     a receiver that is a catalogued stdlib package variable
+     (``http.DefaultClient.Do``) from the library's ``package_variables``
+     (``_package_variable_import_path``).
+   - A field-chain receiver (``r.integration.Notify()``) is typed field by
+     field on the struct's identity (its directory and name), each field's
+     type read in its struct's file (``_go_field_chain_type``).
+   - A receiver whose type is OUTSIDE the module keeps its type in the dst's
+     module slot (``net/http.Client``), where the I/O catalogue reads it
+     (INV-vusum); a call on a call's result of unknown type is reported with
+     ``meta["receiver"]="field_chain"``.
    - An explicitly instantiated generic callee (``Map[int](x)``,
      ``pkg.Zero[int]()``) is read as its plain spelling
      (``_go_instantiated_callee``, WI-nulig).
-   - A field-chain receiver (``r.integration.Notify()``) is typed by walking
-     ``field_type_registry`` (struct -> field name -> declared type, from Pass 1)
-     from the root local's type (``_resolve_field_chain``); a hit is a ``calls``
-     edge with ``meta["receiver"]="typed_field"``, and a package-qualified
-     field type with no in-repo method fills the module slot from the import.
-   - A method on an in-repo call's result (``e.NewQuery().Exec()``) is typed
-     through the return-type registry from the inner receiver's tracked type
-     (``resolution_quality: "chained_return_type"``, WI-vadin). A call-result
-     receiver still untyped, with no package hint, gets an unresolved edge
-     with ``meta["receiver"]="field_chain"`` (the chained-call ambiguity guard,
-     so ``c.CoreV1().Endpoints(ns).Update()`` cannot bind a lone
-     ``Manager.Update``).
-   - A qualified type whose package declares no such method takes one promoted
-     through ONE level of embedding, when exactly one embedded type declares
-     it (``_go_promoted_method``, the last step of ``_go_method_of_type``).
-   - A selector call's repo-wide lookup filters its candidates by the call's
-     SHAPE (``admit``) before choosing: a package-qualified ``pkg.F()`` admits
-     no method (``_go_package_member``, which also filters the dot-import and
-     selector-reference lookups), and a call on a value admits only a method
-     or a field whose declared type is a ``func`` (``_go_value_member``, read
-     from ``field_type_registry``, which records function-typed fields for
-     this). A same-file hit for a call on a value passes the same filter.
-6. Ambiguous method call guard:
-   - When a method call ``x.Method()`` has no inferred receiver type and the
-     method name has 2+ candidates in global symbols, creates an unresolved
-     edge with ``evidence_type="ast_call"`` + ``meta={"call_construct":
-     "method", "resolution_quality": "ambiguous"}`` instead of picking
-     an arbitrary candidate (which would produce a false-positive call edge).
-   - EXCEPTION: when at least one candidate is an interface method, the
-     interface-method test is itself the disambiguator, so the call IS
-     resolved — to that interface method, as a ``calls`` edge with
-     ``evidence_type="interface_dispatch"`` at confidence 0.75, or 0.5
-     with ``meta["disambiguation_fallback"]=True``
-     when several interface methods tie (``min`` by symbol id). The
-     ``dispatches_to`` edges then route a slice on to the concrete impls.
-7. Stdlib interface method guard:
-   - When a method call ``x.Lock()`` has no inferred receiver type and the
-     method name matches a well-known Go stdlib interface method (Lock, Close,
-     Read, Write, String, Error, etc.), creates an unresolved edge with
-     ``evidence_type="ast_call"`` + ``meta={"call_construct": "method",
-     "receiver": "stdlib"}`` even if only 1 candidate exists
-     in the repo. This prevents ``sync.Mutex.Lock()`` calls from resolving
-     to ``DirLocker.Lock`` (the only repo candidate), which would give
-     DirLocker.Lock 255+ false in-degree edges.
-   - Between guards 6 and 7, an unexported (lowercase) method name on a
-     receiver of unknown type gets an unresolved edge to the ``external``
-     placeholder, with
-     ``meta={"call_construct": "method", "visibility": "unexported"}``: a
-     package-private method cannot be called from another package, so global
-     resolution would only cross package boundaries and hand a common
-     lowercase name (``recalcRequest.string``) hundreds of spurious callers.
+6. A method call on a receiver of unknown type is reported with nothing
+   said of the receiver; one whose name starts lowercase is marked
+   ``meta["visibility"]="unexported"`` (an unexported method is of the
+   caller's own package).
+7. The standard library's interface method names (``Lock``, ``Close``,
+   ``Read``, ``String``, ``Error``, ...) are marked ``stdlib_member_name``
+   on a call written on a receiver, so that no shared step binds
+   ``sync.Mutex.Lock()`` to the repository's one ``Lock``.
 8. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
@@ -231,9 +208,7 @@ Go scoping answers a bare name exactly: a declaration of the caller's own
 package, a builtin, a dot-imported name, or a local binding -- never another
 package's declaration. So the bare-identifier arms (a call ``New()``, a
 function passed as an argument ``register(handler)``, a struct-literal field
-value ``Command{Run: run}``) do not ask the repo-wide resolver, where a
-same-package callee in another file would compete with every package's
-declaration of that name and could bind a package Go cannot mean.
+value ``Command{Run: run}``) look in the caller's package only.
 
 ``_go_package_scopes`` groups the Pass-1 declarations by PACKAGE -- the
 file's directory AND its ``package`` clause, so the external test package
@@ -246,18 +221,16 @@ precedes the package's. Methods
 and fields are left out: a bare identifier cannot name one, even though the
 file's ``symbol_by_name`` lists a method under its bare name too. Several
 same-package candidates are build-constraint variants of one declaration
-(``p_linux.go`` / ``p_windows.go``); the resolver binds the path-sorted first
-at ``1/sqrt(N)`` with no ambiguity threshold, since every candidate is the
-right package. The dot-import fallback still uses the repo-wide resolver with
-the dot-imported path as its hint, the one way a bare name reaches another
-package. Directory, not go.mod-relative import path, is the identity: one
-directory is one package (plus its ``_test`` twin) in every module layout.
+(``p_linux.go`` / ``p_windows.go``); the path-sorted first is bound at
+``1/sqrt(N)``, as the shared declared-name lookup binds one qualified name
+declared several times (measured on caddy, logrus and pgx at ADR-0064's
+step 5b: 9 calls). A name the caller's package does not declare, in a file
+with dot imports, is reported for the shared import step
+(``add_open_wildcard``), with the first dot import in its dst slot.
 
-A bare call that still resolves nowhere -- no local symbol, nothing (or an
-ambiguity-withheld set) from the resolver, no dot import to claim it -- gets the
-``external`` placeholder edge with ``call_construct="function"``
-(``make_unresolved_edge``, INV-guzuj), so the call site is kept, as every other
-analyzer keeps it.
+A bare call that still resolves nowhere gets the ``external`` placeholder
+edge with ``call_construct="function"`` (``make_unresolved_edge``, INV-guzuj),
+so the call site is kept, as every other analyzer keeps it.
 
 A NAME IS LOCAL ONLY WHERE ITS BINDING IS IN SCOPE (WI-bopiv).
 ``_GoLocalScope`` records, per top-level declaration, the byte ranges over
@@ -276,20 +249,12 @@ A SELECTOR FUNCTION REFERENCE IS RESOLVED BY ITS OPERAND (WI-kibah).
 ``register(pkg.Handler)``, ``r.Get("/x", h.GetAPI)`` and
 ``Command{RunE: o.Run}`` are not resolved by the field name alone, which would
 let ``reg(http.NotFound)`` bind a repo function ``NotFound``. An import
-operand resolves in that package only, a typed operand to its type's method, a
+operand resolves to the one function of that name in the directory the import
+names, a typed operand to the one method of that name declared on its type, a
 type or pointer-type operand to its method (a method expression, ``(*T).m``),
 a composite-literal operand (``(&T{}).M``) to its type's method, anything else
-to nothing. A package hint is also checked on the call arm's resolved emit
-(``_go_in_hinted_package``), so a resolver candidate the hint does not match
-(a repo ``Get`` for ``http.Get(u)``) is never bound. The repo-wide resolver
-withholds a tie of two or more same-named candidates as ``ambiguous``; only
-the own-package resolver binds a tie, whose candidates are build-constraint
-variants. A typed local's or method value's
-``Type.Method`` is taken from the TYPE's package (``_go_method_of_type``):
-symbols are keyed with an unqualified type, so every package's
-``SDConfig.UnmarshalYAML`` shares one key and the first would be bound
-whatever the receiver's package. The field-chain and chained-return-type arms
-do not use it yet: they still take the first global candidate for the bare key.
+to nothing (``_go_selector_reference_target``). A function value is not a
+call, so nothing found makes no stub.
 
 A PACKAGE-LEVEL FUNCTION ALIAS CONTINUES (WI-labik). ``var
 NewWebhook = testutils.NewWebhook`` gets ``calls`` variable -> function
@@ -297,26 +262,23 @@ NewWebhook = testutils.NewWebhook`` gets ``calls`` variable -> function
 keeps its ``module_attr_ref``, anchored on the variable rather than the
 file (``_emit_go_alias_edges``).
 
-Since a bare call resolved in its own package is never a method, the shared
-bare-method deferral (``defer_bare_method_call``, INV-fahub) is not applied in
-Go: a dot-import lookup accepts only exact / path-hint matches, and a hint-less
-selector reaches the resolver only with one candidate. Nor does Go stamp
-``enclosing_class`` on a bare call, which would let the inherited_calls Site-1
-walker bind a bare ``Process()`` inside ``func (c *Caller) Run()`` to an
-embedded type's ``Process`` method when a package-level ``func Process()`` is
-the real callee. Go has no implicit receiver; a promoted method is reached only
-as ``c.Process()``.
+Go stamps no ``enclosing_class`` on a bare call, which would let the
+inherited-calls Site-1 walker bind a bare ``Process()`` inside ``func (c
+*Caller) Run()`` to an embedded type's ``Process`` method when a
+package-level ``func Process()`` is the real callee. Go has no implicit
+receiver; a promoted method is reached only as ``c.Process()``, which the
+shared hierarchy walk serves from the receiver's type.
 """
 from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Container, Final, Iterator, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Container, Final, Iterator, Mapping, NamedTuple, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -363,6 +325,7 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.import_scope import MODULES_ARE_FILES, ImportScope
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.overload_arity import PARAMETERS_KEY, parameter_entry
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -424,6 +387,23 @@ _GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
     # sync.WaitGroup
     "Wait",
 })
+
+
+def _go_library_name(name: str) -> bool:
+    """Whether a method called on a receiver is one the standard library
+    defines on its types (``_GO_STDLIB_INTERFACE_METHODS``): the stub says so
+    (``stdlib_member_name``) and the shared name step does not bind it."""
+    return name in _GO_STDLIB_INTERFACE_METHODS
+
+
+#: ``ImportScope.library_names_screened`` for every Go file: whether a method
+#: name the standard library defines on its types, called on a receiver of
+#: unknown type, is never handed to the shared name step unmarked. The list
+#: above is 51 names of interfaces; the standard library's concrete types
+#: define hundreds more (``strings.Builder.WriteString``, ``time.Time.Unix``,
+#: ``testing.T.Fatalf``, ``bytes.Buffer.Bytes``, ``url.Values.Get``), so it
+#: does not screen them, and the name step stays off for Go.
+_GO_LIBRARY_NAMES_SCREENED: Final = False
 
 # Go web framework HTTP method names
 # Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
@@ -885,9 +865,8 @@ def _read_go_module_path(repo_root: Path) -> str | None:
 
     Go modules declare their module path in ``go.mod`` (e.g.,
     ``module github.com/aquasecurity/trivy``).  This path is the
-    prefix used in all internal import statements.  Stripping this
-    prefix from import paths yields repo-relative directory paths
-    that the suffix-matching resolver can match against file paths.
+    prefix used in all internal import statements: an import path under
+    it names a directory of the tree (``_GoTree.package_dir``).
 
     Returns the module path string, or None if go.mod is absent or
     doesn't contain a module declaration.
@@ -968,57 +947,6 @@ def _parse_require_line(line: str, entries: dict[str, dict]) -> None:
     entries[module_path] = {"direct": not is_indirect}
 
 
-def _strip_module_prefix(import_path: str, module_path: str) -> str:
-    """Strip the Go module path prefix from an import path.
-
-    Given ``import_path="github.com/example/trivy/pkg/log"`` and
-    ``module_path="github.com/example/trivy"``, returns ``"pkg/log"``.
-
-    If the import_path doesn't start with the module_path, returns
-    the original import_path unchanged (it's an external dependency).
-    """
-    if import_path.startswith(module_path + "/"):
-        return import_path[len(module_path) + 1:]
-    if import_path == module_path:
-        return ""
-    return import_path
-
-
-def _go_lookup_through_dot_imports(
-    resolver: ListNameResolver,
-    name: str,
-    dot_imports: list[str],
-    module_path: Optional[str],
-) -> LookupResult:
-    """Resolve a BARE identifier the plain lookup could not, via its dot imports.
-
-    ``import . "example.com/m/alias1"`` puts every exported name of ``alias1``
-    in scope, so a bare ``Helper()`` that is not declared in the calling
-    package is ``alias1.Helper`` -- Go rejects the file otherwise. The plain
-    lookup has no package evidence for a bare name and, once several packages
-    declare a ``Helper``, its ambiguity guard returns nothing -- e.g. a
-    test-helper package re-exporting ``testutils`` through
-    ``var ( NewWebhook = testutils.NewWebhook )`` gives three global candidates
-    (the function plus two alias variables, INV-nopoh), and every call site
-    would fall to an unresolved placeholder. The dot import IS the evidence: each
-    dot-imported in-module path is offered as the ``path_hint`` the qualified
-    arm already uses, and the first package that narrows the name to ONE
-    symbol wins (the alias variable in the dot-imported package, not the
-    function it aliases -- the graph continues from the variable). Only
-    ``exact`` / ``path_hint`` matches are accepted; an external dot import
-    (``. "strings"``) has no in-repo path and is skipped, leaving the caller's
-    existing dot-import placeholder.
-    """
-    for dot_path in dot_imports:
-        hint = _strip_module_prefix(dot_path, module_path) if module_path else dot_path
-        if not hint or "." in hint.split("/", 1)[0]:
-            continue  # external (host-qualified) package: nothing in-repo to match
-        result = resolver.lookup(name, path_hint=hint, admit=_go_package_member)
-        if result.found and result.match_type in ("exact", "path_hint"):
-            return result
-    return LookupResult(symbol=None)
-
-
 def _package_variable_import_path(
     operand_node: "tree_sitter.Node",
     source: bytes,
@@ -1070,19 +998,8 @@ def _external_package_for_type(
 ) -> Optional[str]:
     """Import path of ``type_name``'s package, when that package is OUTSIDE this module.
 
-    A package-qualified receiver type reaches the analyzer in two flavours that look
-    identical and must be resolved oppositely. ``notify.Stage`` names a type in a
-    SIBLING PACKAGE OF THIS REPO, whose methods are in ``global_symbols`` under the
-    unqualified ``Stage.Exec`` — stripping the prefix and looking it up is correct.
-    ``http.Client`` names a type this repo does not define at all; stripping its prefix
-    yields a bare ``Client`` that can collide with any same-named local type, and the
-    resulting edge points at the wrong function while claiming
-    ``resolution_quality: typed_receiver``.
-
-    That collision is not hypothetical: ``q.Set("k","v")`` where ``q`` is a
-    ``url.Values`` can pile spurious in-edges onto one same-named local struct and
-    poison the centrality ranking. A guard keyed on the receiver type being UNKNOWN
-    cannot catch it once external composite literals are typed.
+    Read by the REGISTRATION usage contexts (WI-movur): ``app.Action = run`` on
+    a variable of a library type hands the library the function.
 
     The discriminator is go.mod: an import path inside this module is a prefix match on
     the module path. Returns None when the type is unqualified, when its prefix is not
@@ -1115,6 +1032,229 @@ def _go_path_outside_module(import_path: str, module_path: Optional[str]) -> boo
     return not (
         import_path == module_path or import_path.startswith(module_path + "/")
     )
+
+
+#: A type name as a declaration writes it: ``T`` or ``pkg.T`` (pointer stripped).
+_GO_NAMED_TYPE = re.compile(r"^(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*$")
+
+
+class _GoTypeRef(NamedTuple):
+    """A named type by its IDENTITY: the package and the name. ``package`` is
+    the package's directory (``in_tree``) or, for a library, its import path."""
+
+    package: str
+    name: str
+    in_tree: bool
+
+
+@dataclass
+class _GoTree:
+    """The run's Go packages, by DIRECTORY (ADR-0064).
+
+    An import names a directory, exactly: its path with the root ``go.mod``
+    module path stripped and joined to that ``go.mod``'s directory
+    (``package_dir``). Every lookup the analyzer still makes itself goes
+    through these keys, never through a short name looked up among
+    everything: the declarations of a package (``members``), the methods of a
+    type (``methods``: Go declares a method in its type's package), the
+    fields of a struct (``fields``), and each callable's declared return type
+    as its own file writes it (``returns``). A type written in one file is
+    read in that file's terms (``ref``) and spelled again in the caller's
+    (``spell``): ``Store`` returned by a function of ``pkg/db`` is ``db.Store``
+    in a file that imports ``pkg/db`` as ``db``.
+    """
+
+    module_path: Optional[str] = None
+    module_dir: Optional[str] = None
+    #: The analysis root: a table names a directory relative to it, as the
+    #: linkers spell ``Symbol.path`` (``module``).
+    root: str = ""
+    #: file -> import alias -> import path (``_GoFileAnalysis.import_aliases``).
+    imports: dict[str, dict[str, str]] = dataclass_field(default_factory=dict)
+    #: file -> the import paths it dot-imports (``import . "m/pkg"``).
+    dots: dict[str, list[str]] = dataclass_field(default_factory=dict)
+    #: (directory, name) -> the package-level declarations of that name.
+    members: dict[tuple[str, str], list[Symbol]] = dataclass_field(default_factory=dict)
+    #: (directory, receiver type, method) -> its declarations.
+    methods: dict[tuple[str, str, str], list[Symbol]] = dataclass_field(default_factory=dict)
+    #: (directory, struct) -> field -> (declared type text, declaring file).
+    fields: dict[tuple[str, str], dict[str, tuple[str, str]]] = dataclass_field(default_factory=dict)
+    #: symbol id -> declared return type text, as its own file writes it.
+    returns: dict[str, str] = dataclass_field(default_factory=dict)
+    #: directory -> the ``package`` clauses of its non-test files.
+    clauses: dict[str, set[str]] = dataclass_field(default_factory=dict)
+
+    @classmethod
+    def build(
+        cls,
+        file_analyses: Mapping[Path, "_GoFileAnalysis"],
+        module_path: Optional[str],
+        module_dir: Optional[str],
+        root: str,
+    ) -> "_GoTree":
+        tree = cls(module_path=module_path, module_dir=module_dir, root=root)
+        for go_file, analysis in file_analyses.items():
+            path, directory = str(go_file), str(go_file.parent)
+            tree.imports[path] = analysis.import_aliases
+            tree.dots[path] = analysis.dot_imports
+            if analysis.package_name and not go_file.name.endswith("_test.go"):
+                tree.clauses.setdefault(directory, set()).add(analysis.package_name)
+            for symbol in analysis.symbols:
+                owner, _, name = symbol.name.rpartition(".")
+                if symbol.kind == "method" and owner:
+                    tree.methods.setdefault((directory, owner, name), []).append(symbol)
+                elif symbol.kind not in _GO_MEMBER_KINDS:
+                    tree.members.setdefault((directory, symbol.name), []).append(symbol)
+                returned = analysis.method_return_types.get(symbol.name)
+                if returned and symbol.kind in ("function", "method"):
+                    tree.returns[symbol.id] = returned
+            for struct, struct_fields in analysis.class_field_types.items():
+                tree.fields.setdefault((directory, struct), {}).update({
+                    name: (text, path) for name, text in struct_fields.items()
+                })
+        return tree
+
+    def package_dir(self, import_path: str) -> Optional[str]:
+        """The directory ``import_path`` names in this tree; ``None`` for a
+        path outside the root ``go.mod``'s module (a library), or when the
+        tree has no ``go.mod`` (then nothing can be told apart)."""
+        if not self.module_path or self.module_dir is None:
+            return None
+        if import_path == self.module_path:
+            return self.module_dir
+        if import_path.startswith(self.module_path + "/"):
+            return str(Path(self.module_dir) / import_path[len(self.module_path) + 1:])
+        return None
+
+    def module(self, directory: str) -> str:
+        """``directory`` as a module of a file table: relative to the root,
+        with a trailing slash; ``/`` for the root (``type_visibility.module_keys``)."""
+        rel = normalize_path(os.path.relpath(directory, self.root))
+        return "/" if rel == "." else f"{rel}/"
+
+    def ref(self, written: str, file: str) -> Optional[_GoTypeRef]:
+        """The type ``written`` means in ``file``: ``T`` is the file's own
+        package's, ``a.T`` the package its import ``a`` names. A spelling
+        ``spell`` made for a type the file cannot name (its import path, then
+        the name) is read back. ``None``: a builtin, or not a named type."""
+        if not _GO_NAMED_TYPE.match(written) and "/" not in written:
+            return None
+        owner, _, name = written.rpartition(".")
+        if not owner:
+            if written in _GO_BUILTIN_TYPES or written == "any":
+                return None
+            own = os.path.dirname(file)
+            if (own, written) not in self.members:
+                # Not the file's package's: a package the file dot-imports.
+                dotted = [d for d in self.dot_dirs(file) if (d, written) in self.members]
+                if len(dotted) == 1:
+                    return _GoTypeRef(dotted[0], written, True)
+            return _GoTypeRef(own, written, True)
+        path = self.imports.get(file, {}).get(owner, owner if "/" in owner else None)
+        if path is None:
+            return None
+        directory = self.package_dir(path)
+        if directory is not None:
+            return _GoTypeRef(directory, name, True)
+        return _GoTypeRef(path, name, False)
+
+    def spell(self, ref: _GoTypeRef, file: str) -> str:
+        """``ref`` as ``file`` writes it: bare for a type of its own package,
+        ``a.T`` through its import ``a`` of the type's package. A package the
+        file does not import has no name there: the type is spelled by its
+        import path (``example.com/m/pkg/db.Store``), which names it exactly
+        and which no table of the file binds."""
+        if ref.in_tree and ref.package == os.path.dirname(file):
+            return ref.name
+        if ref.in_tree and ref.package in self.dot_dirs(file) and self.ref(ref.name, file) == ref:
+            return ref.name
+        for alias, path in self.imports.get(file, {}).items():
+            if (self.package_dir(path) if ref.in_tree else path) == ref.package:
+                return f"{alias}.{ref.name}"
+        if ref.in_tree:
+            assert self.module_path is not None and self.module_dir is not None
+            rel = os.path.relpath(ref.package, self.module_dir)
+            path = self.module_path if rel == "." else f"{self.module_path}/{rel}"
+            return f"{path}.{ref.name}"
+        return f"{ref.package}.{ref.name}"
+
+    def dot_dirs(self, file: str) -> list[str]:
+        """The directories of this tree that ``file`` dot-imports."""
+        found = (self.package_dir(path) for path in self.dots.get(file, ()))
+        return [d for d in found if d is not None]
+
+    def imported(self, directory: str, name: str) -> list[Symbol]:
+        """The package-level declarations ``name`` of the package in
+        ``directory``, as an importer sees it: its ``_test.go`` files are not
+        compiled into it."""
+        return [
+            s for s in self.members.get((directory, name), ())
+            if not s.path.endswith("_test.go")
+        ]
+
+    def returned(self, callees: list[Symbol]) -> Optional[_GoTypeRef]:
+        """The type the callees (one declaration, or its build-constraint
+        variants) return, when they agree."""
+        found = {
+            self.ref(self.returns[c.id], c.path) if c.id in self.returns else None
+            for c in callees
+        }
+        return found.pop() if len(found) == 1 else None
+
+
+def _go_import_scope(
+    file: str,
+    import_specs: list[tuple[str, Optional[str]]],
+    tree: _GoTree,
+    counts: Optional[dict[str, int]] = None,
+) -> ImportScope:
+    """The file's import table for the shared call resolution (ADR-0064).
+
+    A Go import names a DIRECTORY (``_GoTree.package_dir``), a module of the
+    table written with a trailing slash. ``import "m/pkg/log"`` binds the
+    package's own name (the ``package`` clause of the directory's non-test
+    files) and ``import l "m/pkg/log"`` the alias; a dot import brings every
+    exported name of the directory into scope; a blank import binds nothing.
+    A path outside the module (a library, ``"C"``) is not recorded, nor is one
+    that names a directory holding no Go file of the analysis. The caller's
+    own package is its directory (``own_namespace``).
+
+    ``import_specs``: (import path, alias as written or ``None``) per import.
+    ``counts``, when given, receives what was left out, by reason (ADR-0064
+    asks each adapter to count it; the analysis itself keeps no count).
+    """
+    scope = ImportScope(
+        module_kind=MODULES_ARE_FILES,
+        own_namespace=tree.module(os.path.dirname(file)),
+        library_names_screened=_GO_LIBRARY_NAMES_SCREENED,
+    )
+
+    def left_out(reason: str) -> None:
+        if counts is not None:
+            counts[reason] = counts.get(reason, 0) + 1
+
+    for import_path, alias in import_specs:
+        if alias == "_":
+            left_out("blank")
+            continue
+        directory = tree.package_dir(import_path)
+        if directory is None:
+            left_out("library" if tree.module_path else "no go.mod")
+            continue
+        clauses = tree.clauses.get(directory)
+        if not clauses:
+            left_out("names no package of the analysis")
+            continue
+        module = tree.module(directory)
+        if alias == ".":
+            scope.add_open_wildcard(module)
+        elif alias is not None:
+            scope.add_namespace(module, alias)
+        elif len(clauses) == 1:
+            scope.add_namespace(module, next(iter(clauses)))
+        else:
+            left_out("several package clauses")
+    return scope
 
 
 def _count_go_method_arity(
@@ -1287,9 +1427,7 @@ def _extract_struct_field_types(
 
         integration Integration      → integration: Integration
         metrics     *Metrics         → metrics: Metrics
-        cache       pkg.Cache        → cache: Cache (unqualified)
-        handler     func(string) err → handler: func(string) err (its text;
-                                        a callable field, WI-surid)
+        cache       pkg.Cache        → cache: pkg.Cache (as written)
         data        map[string]int   → (skipped, not a named type)
 
     Built-in types (string, int, bool, error, etc.) are excluded because
@@ -1343,12 +1481,6 @@ def _extract_struct_field_types(
                 type_name = node_text(tid, source)
                 if type_name not in _GO_BUILTINS:
                     field_types[field_name] = full_text
-        elif actual_type.type == "function_type":
-            # WI-surid: a field holding a function is callable through a
-            # value's selector; its text starts with ``func``, which is what
-            # ``_go_value_member`` asks. No chain walks through it: the text
-            # is no registry key.
-            field_types[field_name] = node_text(actual_type, source)
     return field_types
 
 
@@ -1940,9 +2072,9 @@ def _extract_parsed_go_symbols(
                 analysis.symbol_by_name[method_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-                # WI-kuroj: populate return-type registry for chained
-                # receiver resolution (e.g. x := e.Query() → x has
-                # type Result if Engine.Query returns Result).
+                # WI-kuroj: the declared return type, for chained
+                # receiver typing (e.g. x := e.Query() → x has
+                # type Result if Engine.Query returns Result; _GoTree.returns).
                 if receiver_type and signature:
                     ret_type = _go_return_type_from_signature(signature)
                     if ret_type:
@@ -2204,7 +2336,7 @@ def _extract_parsed_go_symbols(
                     # Extract package-level var aliases as symbols.
                     # Pattern: var Name = expr (has initializer, not blank _)
                     # This makes aliases like `var String = slog.String` visible
-                    # to the resolver when other packages call log.String().
+                    # to a call of log.String() from another package.
                     vname_node = find_child_by_field(child, "name")
                     if vname_node is None:  # pragma: no cover
                         continue
@@ -2594,7 +2726,7 @@ def _get_enclosing_function(
 def _extract_go_var_types(
     root_node: "tree_sitter.Node",
     source: bytes,
-    method_return_type_registry: dict[str, str] | None = None,
+    result_type: "Callable[[tree_sitter.Node, Mapping[str, str]], Optional[str]] | None" = None,
 ) -> dict[str, dict[str, str]]:
     """Extract function-scoped variable-to-type-name mappings from Go code.
 
@@ -2610,22 +2742,19 @@ def _extract_go_var_types(
         var a = &Server{}         → a has type Server (in enclosing func)
         func foo(s *Server)       → s has type Server (in foo)
         func (s *Server) Foo()    → s has type Server (in Server.Foo)
-        x := e.Query()            → x has type Result (via return-type registry,
-                                    when e has type Engine and Engine.Query
-                                    returns Result)
+        x := e.Query()            → x has what Engine.Query returns, as this
+                                    file writes it (``result_type``)
 
     Only the first assignment to a variable within a function wins
     (single-assignment SSA assumption per function scope). Built-in types
     (string, int, etc.) are excluded because they don't correspond to
     user-defined methods.
 
-    When ``method_return_type_registry`` is provided, chained method-call
-    return types are resolved: if the RHS is a call expression with a
-    typed receiver, the receiver type + method name is looked up in the
-    registry and the return type (if any) is assigned to the LHS variable.
-    This enables resolution chains like ``e := NewEngine(); r := e.Query();
-    r.Rows()`` — without the registry, ``r`` has no type and ``r.Rows()``
-    falls through to the unresolved path.
+    ``result_type(call, func_vars)`` types a binding to a CALL (``x :=
+    f()``, ``var x = pkg.F()``): the edge extractor passes
+    ``_go_result_type``, which reads the callee's declared return type when
+    Go places the callee exactly. Without it a call types nothing. This
+    enables chains like ``e := NewEngine(); r := e.Query(); r.Rows()``.
 
     Returns a nested dict: ``{func_name: {var_name: type_name}}``.
     For methods, func_name is qualified (``Type.Method``).
@@ -2671,29 +2800,17 @@ def _extract_go_var_types(
             # prevention in function reference detection.
             type_name = _type_from_rhs(rhs, source)
 
-            # WI-kuroj: when _type_from_rhs can't infer a type from
-            # the RHS (e.g. x := e.Query()), try the return-type
-            # registry.  If the RHS is a method call on a receiver
-            # whose type is already known, look up the return type.
-            #
-            # ``rhs`` is the ``expression_list`` wrapper, never the call
-            # itself, so it is unwrapped through the same helper
-            # ``_type_from_rhs`` uses; the two consumers cannot disagree about
-            # what "the right-hand side" means (WI-jolif). The stale
-            # ``# pragma: no cover - requires Go tree-sitter grammar`` that sat on
-            # this branch is gone with it: the grammar IS installed, and the
-            # pragma was excusing itself on the same false premise that kept the
-            # three end-to-end tests skipped.
+            # WI-kuroj: a call's result, ``x := e.Query()``. ``rhs`` is the
+            # ``expression_list`` wrapper, never the call itself, so it is
+            # unwrapped through the helper ``_type_from_rhs`` uses (WI-jolif).
             _rhs_expr = _unwrap_rhs_expression(rhs)
             if (
                 not type_name
-                and method_return_type_registry
+                and result_type is not None
                 and _rhs_expr is not None
                 and _rhs_expr.type == "call_expression"
             ):
-                type_name = _go_registry_call_type(
-                    _rhs_expr, source, func_vars, method_return_type_registry,
-                )
+                type_name = result_type(_rhs_expr, func_vars)
 
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
@@ -2742,6 +2859,12 @@ def _extract_go_var_types(
             concrete_type = None
             if init_node is not None:
                 concrete_type = _type_from_rhs(init_node, source)
+                _init_expr = _unwrap_rhs_expression(init_node)
+                if (
+                    concrete_type is None and result_type is not None
+                    and _init_expr is not None and _init_expr.type == "call_expression"
+                ):
+                    concrete_type = result_type(_init_expr, func_vars)
 
             declared_type = (
                 _type_identifier_from_node(type_node, source)
@@ -2836,8 +2959,8 @@ def _unwrap_rhs_expression(
     """Peel the ``expression_list`` wrapper off a short-var-declaration RHS.
 
     THE SINGLE ANSWER to "what expression is actually on the right", shared by
-    :func:`_type_from_rhs` and the return-type-registry lookup in
-    :func:`_extract_go_var_types_from_root`. ``short_var_declaration``'s last
+    :func:`_type_from_rhs` and the call-result typing in
+    :func:`_extract_go_var_types`. ``short_var_declaration``'s last
     child is an ``expression_list``, never the expression itself — so
     ``x := e.Query()`` presents as ``expression_list``, not ``call_expression``,
     and a consumer that tests the raw node's type never sees the call (WI-jolif).
@@ -2862,14 +2985,12 @@ def _type_from_rhs(
     """Extract a type name from the right side of a short var declaration.
 
     Handles:
-    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal / call_expression``
+    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal``
     - ``&Server{}`` → unary_expression(&, composite_literal(type_identifier=Server))
     - ``Server{}`` → composite_literal(type_identifier=Server)
-    - ``NewServer()`` → call_expression(identifier("NewServer")) → type "Server"
-    - ``pkg.NewFoo()`` → call_expression(selector_expression("pkg.NewFoo")) → type "Foo"
 
-    Constructor inference follows Go naming convention: ``NewXxx()`` returns
-    ``*Xxx``.  Only simple ``New`` prefix is stripped; ``NewXxxYyy`` → ``XxxYyy``.
+    A call (``NewServer()``) is not typed here: what it returns is its
+    callee's declared type (``_go_result_type``), not what its name suggests.
 
     Returns the type name string or None.
     """
@@ -2906,21 +3027,19 @@ def _type_from_rhs(
         # map[k]v{} / []T{} / struct{}{} — composite types name no receiver type.
         return None
 
-    # NewFoo() or pkg.NewFoo() → constructor return type inference
-    if node.type == "call_expression":
-        return _type_from_constructor_call(node, source)
-
-    return None  # pragma: no cover - defensive for unrecognized RHS
+    return None
 
 
 def _type_from_constructor_call(
     call_node: "tree_sitter.Node",
     source: bytes,
 ) -> str | None:
-    """Infer return type from Go constructor naming convention.
+    """The type a LIBRARY package's constructor returns, by Go's naming
+    convention: ``pkg.NewFoo()`` returns ``pkg.Foo`` (or ``*pkg.Foo``).
 
-    Go convention: ``NewFoo()`` returns ``*Foo`` or ``Foo``.  Also handles
-    package-qualified calls: ``pkg.NewFoo()`` → ``pkg.Foo``.
+    Asked only for a package outside this tree (``_go_result_type``), whose
+    declarations are not here to read; a constructor of this tree is typed
+    by its declared return type instead.
 
     THE QUALIFIER IS PART OF THE ANSWER, as it is in the ``composite_literal``
     branch of :func:`_type_from_rhs` and in :func:`_type_identifier_from_node`:
@@ -2935,109 +3054,20 @@ def _type_from_constructor_call(
     qualifier the calls that actually transfer bytes (``ReadString``) could
     not be catalogued at all (WI-vutav).
 
-    ``a.b.NewFoo()`` ABSTAINS rather than inventing ``a.b.Foo``. Go has no
-    three-segment package selector in expression position, so the operand of that
-    selector is a value and the call is a method, not a package constructor —
-    there is no alias for ``a.b`` in ``import_aliases`` and a qualified name that
-    cannot be resolved is worse than none.
-
     Only matches when the suffix after ``New`` starts with an uppercase letter
     (Go exported type convention).
     """
     func_node = find_child_by_field(call_node, "function")
-    if func_node is None:
-        return None  # pragma: no cover
-
-    # NewFoo() → identifier "NewFoo"
-    if func_node.type == "identifier":
-        name = node_text(func_node, source)
-        if name.startswith("New") and len(name) > 3 and name[3].isupper():
-            return name[3:]
-
-    # pkg.NewFoo() → selector_expression with field_identifier "NewFoo"
-    elif func_node.type == "selector_expression":
-        field = find_child_by_field(func_node, "field")
-        operand = find_child_by_field(func_node, "operand")
-        if field is not None:
-            name = node_text(field, source)
-            if name.startswith("New") and len(name) > 3 and name[3].isupper():
-                # Only a BARE identifier operand can be a package name. Anything
-                # else (a nested selector, an index, a call) is a receiver, so
-                # this is a method call and not a package constructor.
-                if operand is not None and operand.type == "identifier":
-                    return f"{node_text(operand, source)}.{name[3:]}"
-                return None
-
+    if func_node is None or func_node.type != "selector_expression":  # pragma: no cover - asked of ``pkg.F()``
+        return None
+    field = find_child_by_field(func_node, "field")
+    operand = find_child_by_field(func_node, "operand")
+    if field is None or operand is None:  # pragma: no cover - grammar
+        return None
+    name = node_text(field, source)
+    if name.startswith("New") and len(name) > 3 and name[3].isupper():
+        return f"{node_text(operand, source)}.{name[3:]}"
     return None
-
-
-def _go_registry_call_type(
-    call_node: "tree_sitter.Node",
-    source: bytes,
-    var_types: Mapping[str, str],
-    registry: Mapping[str, str],
-) -> str | None:
-    """The return-type registry's answer for what ``call_node`` returns, or None.
-
-    Three call shapes, each keyed as the registry is (library_signatures/go.yaml
-    states the key shape):
-
-    - ``e.Query()`` on a TYPED receiver -> ``Engine.Query`` (WI-kuroj). Keys
-      carry a BARE receiver, values are qualified (WI-doluf), hence the fold.
-    - ``net.Listen(...)``, a PACKAGE-qualified producer -> ``net.Listen``
-      (WI-lalot). ``net`` is a package, not a variable, so the receiver-type
-      lookup finds nothing; without this shape ``ln.Accept()`` and
-      ``c.Start()`` would stay on the ``external`` sentinel. The registry
-      itself is the gate: an ANALYSED go key is a bare
-      function name or ``Receiver.Method`` with a capitalised Go type, so a hit
-      on a lowercase ``package.Func`` key can only come from a library row. The
-      key is the package's name AS THIS FILE SPELLS IT, so a renamed import
-      (``l "log/slog"``) misses -- a disclosed gap, not a guess.
-    - ``makeConn()``, a PLAIN function call -> ``makeConn`` (WI-doluf: the
-      registry holds standalone functions too, so ``res := makeResult();
-      res.Rows()`` is typed rather than sent to ``go:external``).
-
-    Shared by the binding typer (``x := f()``) and the chained-call branch
-    (``f().M()``, WI-vinuh) so the two cannot answer differently.
-    """
-    call_func = find_child_by_field(call_node, "function")
-    if call_func is not None and call_func.type == "selector_expression":
-        operand = find_child_by_field(call_func, "operand")
-        field_node = find_child_by_field(call_func, "field")
-        if operand is None or field_node is None:
-            return None  # pragma: no cover - a parsed selector has both fields
-        recv_name = node_text(operand, source)
-        method_name = node_text(field_node, source)
-        recv_type = var_types.get(recv_name, "")
-        if recv_type:
-            return registry.get(f"{_bare_go_type(recv_type)}.{method_name}")
-        return registry.get(f"{recv_name}.{method_name}")
-    if call_func is not None and call_func.type == "identifier":
-        fn_name = node_text(call_func, source)
-        if fn_name not in _GO_BUILTIN_TYPES and fn_name not in _GO_BUILTIN_FUNCS:
-            return registry.get(fn_name)
-    return None
-
-
-def _go_call_result_type(
-    call_node: "tree_sitter.Node",
-    source: bytes,
-    var_types: Mapping[str, str],
-    registry: Mapping[str, str],
-) -> str | None:
-    """The type ``call_node`` returns, as the binding typer would infer it.
-
-    THE ORDER IS THE BINDING TYPER'S: the ``NewXxx`` constructor convention
-    (:func:`_type_from_constructor_call`) first, then the return-type registry
-    (:func:`_go_registry_call_type`). ``x := f()`` answers through
-    :func:`_type_from_rhs` and then the registry in exactly that order; the
-    chained-call branch asks this function, so ``f().M()`` and
-    ``x := f(); x.M()`` type their receiver identically (WI-vinuh).
-    """
-    return (
-        _type_from_constructor_call(call_node, source)
-        or _go_registry_call_type(call_node, source, var_types, registry)
-    )
 
 
 def _type_identifier_from_node(
@@ -3071,25 +3101,11 @@ def _type_identifier_from_node(
     return None  # pragma: no cover - pointer to non-named type (e.g. *func(), *chan)
 
 
-def _bare_go_type(type_name: str) -> str:
-    """``net.Conn`` -> ``Conn``. The fold, in one place.
-
-    The return-type registry is keyed ``Receiver.Method`` with an UNQUALIFIED
-    receiver, because that is how in-repo symbols are stored. Its VALUES are
-    package-qualified (WI-doluf), because the io-boundary module slot needs the
-    package. So every site that turns a *value* back into a *key*, or into a
-    symbol lookup, folds here -- open-coding ``rsplit`` at each one is how the
-    two forms drift apart.
-    """
-    return type_name.rsplit(".", 1)[-1] if "." in type_name else type_name
-
-
 def _go_return_type_from_signature(signature: str | None) -> str | None:
     """Extract the primary return type from a Go function signature.
 
-    Feeds the return-type registry (WI-kuroj, INV-dihos), which enables
-    chained receiver resolution by letting ``x := obj.Method()`` infer ``x``'s
-    type from the registry when ``obj``'s type is known.
+    Feeds ``_GoTree.returns`` (WI-kuroj, INV-dihos), which types
+    ``x := obj.Method()`` when ``obj``'s type is known (``_go_result_type``).
 
     Handles three forms:
     - ``"(params) ReturnType"``  → ``"ReturnType"``
@@ -3100,16 +3116,13 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
     None.  Pointer-star prefixes are stripped.
 
     PACKAGE-QUALIFIED TYPES KEEP THEIR PACKAGE (``net.Conn`` stays
-    ``net.Conn``; WI-doluf). Symbol names in the symbol registry are
-    unqualified, but the io-boundary MODULE SLOT needs the package: a bare
+    ``net.Conn``; WI-doluf). The io-boundary MODULE SLOT needs the package: a bare
     type gets the ``external`` placeholder, so a receiver typed from a
     factory's return value (``ln.Accept()``'s ``net.Conn``) could never match
     a method row.
 
-    The bare form is DERIVED where it is needed (:func:`_bare_go_type` at
-    the registry-key and symbol-lookup sites). Callers that build a registry
-    key from a type MUST fold it first -- the keys are ``Receiver.Method``
-    with a bare receiver.
+    The text is read in the declaring file's terms (``_GoTree.ref``) before
+    it types anything in another file.
     """
     if not signature:
         return None
@@ -3728,60 +3741,37 @@ def _go_bare_reference_target(
     return None
 
 
-def _go_in_hinted_package(symbol: Symbol, path_hint: Optional[str]) -> bool:
-    """Whether ``symbol`` sits in the package an import-path hint names.
-
-    ``ListNameResolver.lookup`` treats a hint as a FILTER when one candidate
-    shares the name (no match, no symbol). Among two or more that the hint
-    matches none of, a resolver built without ``variants`` withholds the tie
-    as ``ambiguous``; this check still guards the call site, so ``http.Get(u)``
-    with two repo functions named ``Get`` binds neither, as the import says
-    ``net/http``. The resolver's own weakest test is a match on the hint's last component
-    against the candidate's directory; a symbol it returns that fails even
-    that test was not chosen by the hint at all. An empty hint (the module's
-    root package) carries no directory to test, and the resolver's answer
-    stands.
-    """
-    leaf = (path_hint or "").rstrip("/").rsplit("/", 1)[-1]
-    if not leaf:
-        return True
-    parts = [p for p in symbol.path.split("/") if p]
-    return len(parts) >= 2 and parts[-2] == leaf
-
-
 def _go_selector_reference_target(
     selector: "tree_sitter.Node",
     source: bytes,
     *,
     bound: Container[str],
     import_aliases: dict[str, str],
-    var_types: dict[str, str],
-    module_path: Optional[str],
+    var_types: Mapping[str, str],
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, list[Symbol]],
-    resolver: ListNameResolver,
-    caller_dir: str,
+    tree: _GoTree,
+    file_key: str,
 ) -> tuple[Symbol, Optional[float], str] | None:
     """The function or method a SELECTOR in value position names (WI-kibah).
 
     Serves ``register(pkg.Handler)``, ``r.Get("/x", h.GetAPI)`` and
-    ``Command{RunE: o.Run}``, and is resolved by its OPERAND, as the call arm
-    resolves ``pkg.F()`` / ``x.M()``:
+    ``Command{RunE: o.Run}``, and is resolved by its OPERAND, as Go does:
 
-    - a type of the caller's file (a method expression, ``Handler.Serve``):
-      that method;
-    - an import alias that no local shadows here: a function of THAT package
-      (``_go_in_hinted_package``), and nothing for a package outside the repo
-      -- the read is still recorded, as a ``module_attr_ref``;
+    - a type of the caller's file (a method expression, ``Handler.Serve``,
+      ``(*Watcher).readSegment``): that method;
+    - an import alias that no local shadows here: the ONE function of that
+      name in the directory the import names (``_GoTree.imported``), and
+      nothing for a package outside the tree -- the read is still recorded, as
+      a ``module_attr_ref``;
     - an operand with a tracked type, or a composite literal (``(&T{}).M``),
-      which names its own type: that type's method (a method value), and
-      nothing for a type outside this module;
+      which names its own type: the method declared on that type
+      (``_go_typed_method_value``);
     - anything else (an untyped value, a field chain, a call result): nothing.
 
-    The field name alone is never looked up repo-wide, where a name declared
-    once anywhere would bind -- ``reg(http.NotFound)`` would reach a repo
-    function ``NotFound`` in a package the caller never imports -- and two
-    candidates would bind the path-sorted first.
+    The field name is never looked up among everything: ``reg(http.NotFound)``
+    would reach a repository function ``NotFound`` in a package the caller
+    never imports. A value reference makes no stub when nothing is found: it
+    is not a call, and most identifiers in argument position are values.
     """
     operand = find_child_by_field(selector, "operand")
     field = find_child_by_field(selector, "field")
@@ -3811,10 +3801,7 @@ def _go_selector_reference_target(
             if operand.type in ("composite_literal", "unary_expression")
             else None
         )
-        return _go_typed_method_value(
-            literal_type, name, import_aliases, module_path, local_symbols,
-            global_symbols, caller_dir,
-        )
+        return _go_typed_method_value(literal_type, name, tree, file_key)
     alias = node_text(operand, source)
     if alias not in bound:
         # A method expression, ``Handler.Serve``: the operand is the type.
@@ -3822,132 +3809,61 @@ def _go_selector_reference_target(
         if method_expr is not None and method_expr.kind == "method":
             return method_expr, None, resolved_by.QUALIFIED
     if alias in import_aliases and alias not in bound:
-        path = import_aliases[alias]
-        hint = _strip_module_prefix(path, module_path) if module_path else path
-        found = resolver.lookup(name, path_hint=hint, admit=_go_package_member)
-        if (
-            found.symbol is not None
-            and found.symbol.kind == "function"
-            and _go_in_hinted_package(found.symbol, hint)
-        ):
-            # The import's path filters the candidates; the module's root
-            # package (an empty hint) filters nothing.
-            return (
-                found.symbol, found.confidence,
-                resolved_by.IMPORT if hint else found.resolved_by,
-            )
+        directory = tree.package_dir(import_aliases[alias])
+        functions = [
+            s for s in tree.imported(directory, name) if s.kind == "function"
+        ] if directory is not None else []
+        if len(functions) == 1:
+            return functions[0], None, resolved_by.IMPORT
         return None
-    return _go_typed_method_value(
-        var_types.get(alias), name, import_aliases, module_path,
-        local_symbols, global_symbols, caller_dir,
-    )
+    return _go_typed_method_value(var_types.get(alias), name, tree, file_key)
+
+
+def _go_named_type_method(ref: _GoTypeRef, name: str, tree: _GoTree) -> Optional[Symbol]:
+    """The method ``name`` of a NAMED TYPE that is no struct or interface
+    (``type Level uint32``, ``type HandlerFunc func(...)``: symbol kind
+    ``type``), declared on it in its own directory; ``None`` for any other
+    type, or when it does not declare exactly one.
+
+    The shared linkers take a type only of a kind ``symbol_kinds`` calls
+    type-like, which ``type`` is not, so a ``receiver_type_hint`` naming one
+    binds nothing there. Such a type has no embedded fields: the methods
+    declared on it are all it has, and Go declares them in its package.
+    """
+    declarations = tree.members.get((ref.package, ref.name), [])
+    if not declarations or any(d.kind != "type" for d in declarations):
+        return None
+    methods = tree.methods.get((ref.package, ref.name, name), [])
+    return methods[0] if len(methods) == 1 else None
+
+
+def _go_package_value(members: list[Symbol]) -> Optional[Symbol]:
+    """The one declaration a package-qualified (or dot-imported) name means,
+    when it is not a function: a type, converted to (``caddy.Duration(x)``),
+    or a variable holding a function (``pkg.Hook()``). The shared import step
+    binds a function only; a function is left to it."""
+    return members[0] if len(members) == 1 and members[0].kind != "function" else None
 
 
 def _go_typed_method_value(
     receiver_type: Optional[str],
     name: str,
-    import_aliases: dict[str, str],
-    module_path: Optional[str],
-    local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, list[Symbol]],
-    caller_dir: str,
+    tree: _GoTree,
+    file_key: str,
 ) -> tuple[Symbol, Optional[float], str] | None:
-    """``Type.name`` as a method value, for a receiver of a known in-module type.
-
-    None for an unknown type and for a type outside this module, whose methods
-    the repo cannot declare (``_external_package_for_type``): an unqualified
-    lookup of its bare name would only find an impostor.
+    """``Type.name`` as a method value, for a receiver of a known type of
+    this tree: the ONE method of that name declared on that type, in the
+    type's own directory (Go declares a method in its type's package). None
+    for an unknown type, a library's, and a method the type has only by
+    embedding (which the shared hierarchy walk serves for a call, not here).
     """
-    if not receiver_type or _external_package_for_type(
-        receiver_type, import_aliases, module_path,
-    ) is not None:
+    ref = tree.ref(receiver_type, file_key) if receiver_type else None
+    if ref is None or not ref.in_tree:
         return None
-    target = _go_method_of_type(
-        receiver_type, name, caller_dir=caller_dir,
-        import_aliases=import_aliases, module_path=module_path,
-        local_symbols=local_symbols, global_symbols=global_symbols,
-    )
-    if target is None or target.kind != "method":
+    methods = tree.methods.get((ref.package, ref.name, name), [])
+    if len(methods) != 1:
         return None
-    return target, None, resolved_by.RECEIVER_TYPE
-
-
-def _go_method_of_type(
-    receiver_type: str,
-    name: str,
-    *,
-    caller_dir: str,
-    import_aliases: dict[str, str],
-    module_path: Optional[str],
-    local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, list[Symbol]],
-) -> Optional[Symbol]:
-    """The ``Type.name`` symbol declared in the TYPE'S OWN package.
-
-    Symbols are keyed ``Type.Method`` with an unqualified type, so every
-    package's ``SDConfig.UnmarshalYAML`` shares one key (prometheus has
-    twenty), and taking the first of them whatever the receiver's package
-    would let ``var config SDConfig`` in package consul bind eureka's method.
-    The caller's file wins first. A QUALIFIED type (``record.Decoder``)
-    names its package through the import, so only a candidate in that package
-    (``_go_in_hinted_package``) answers, and none means none. An UNQUALIFIED
-    type is the caller's own package's when one there declares it; otherwise
-    the first candidate stands, because an unqualified type can
-    also arrive from the return-type registry, which names a callee's type in
-    the CALLEE's package without a qualifier. A qualified type whose package
-    declares no such method may still have it by EMBEDDING
-    (``_go_promoted_method``).
-    """
-    qualified = f"{_bare_go_type(receiver_type)}.{name}"
-    local = local_symbols.get(qualified)
-    if local is not None:
-        return local
-    candidates = global_symbols.get(qualified) or []
-    if "." in receiver_type:
-        path = import_aliases.get(receiver_type.split(".", 1)[0])
-        if path is None:  # an unimported qualifier: nothing to test against
-            return candidates[0] if candidates else None
-        hint = _strip_module_prefix(path, module_path) if module_path else path
-        in_package = [c for c in candidates if _go_in_hinted_package(c, hint)]
-        if in_package:
-            return in_package[0]
-        return _go_promoted_method(
-            _bare_go_type(receiver_type), name, hint, global_symbols,
-        )
-    own = [c for c in candidates if os.path.dirname(c.path) == caller_dir]
-    if own:
-        return own[0]
-    return candidates[0] if candidates else None
-
-
-def _go_promoted_method(
-    type_name: str,
-    name: str,
-    path_hint: str,
-    global_symbols: dict[str, list[Symbol]],
-) -> Optional[Symbol]:
-    """``name`` promoted into ``type_name`` (of the hinted package) by embedding.
-
-    ``type AcceptanceTest struct{ *testutils.AcceptanceTest }`` has every
-    method of the embedded type; ``at.Collector()`` names
-    ``testutils.AcceptanceTest.Collector`` though no ``AcceptanceTest.Collector``
-    is declared in ``at``'s own package. The struct symbol's
-    ``meta["base_classes"]`` lists the embedded types by their UNQUALIFIED
-    name (``_extract_struct_embeddings``), so a promoted method is answered
-    only when exactly one method of that name exists on an embedded type's
-    name; two or more name nothing. One level of embedding only.
-    """
-    for struct in global_symbols.get(type_name) or []:
-        if struct.kind != "struct" or not _go_in_hinted_package(struct, path_hint):
-            continue
-        for base in (struct.meta or {}).get("base_classes", []):
-            found = [
-                c for c in global_symbols.get(f"{base}.{name}") or []
-                if c.kind == "method"
-            ]
-            if len(found) == 1:
-                return found[0]
-    return None
+    return methods[0], None, resolved_by.RECEIVER_TYPE
 
 
 def _extract_function_reference_edges(
@@ -3955,8 +3871,6 @@ def _extract_function_reference_edges(
     source: bytes,
     current_function: Symbol,
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, list[Symbol]],
-    resolver: ListNameResolver,
     line: int,
     edges: list[Edge],
     run: AnalysisRun,
@@ -3965,8 +3879,8 @@ def _extract_function_reference_edges(
     own_package: ListNameResolver,
     bound_names: Container[str],
     import_aliases: dict[str, str] | None = None,
-    module_path: Optional[str] = None,
-    caller_dir: str = "",
+    tree: _GoTree,
+    file_key: str,
 ) -> list[tuple[int, "tree_sitter.Node", Symbol]]:
     """Detect function identifiers passed as arguments and create call edges.
 
@@ -4005,9 +3919,8 @@ def _extract_function_reference_edges(
             target = _go_selector_reference_target(
                 arg, source, bound=bound_names,
                 import_aliases=import_aliases or {},
-                var_types=scoped_vars or {}, module_path=module_path,
-                local_symbols=local_symbols, global_symbols=global_symbols,
-                resolver=resolver, caller_dir=caller_dir,
+                var_types=scoped_vars or {},
+                local_symbols=local_symbols, tree=tree, file_key=file_key,
             )
         else:
             continue
@@ -4052,10 +3965,8 @@ def _emit_go_alias_edges(
     local_symbols: dict[str, Symbol],
     own_package: ListNameResolver,
     import_aliases: dict[str, str],
-    module_path: Optional[str],
-    global_symbols: dict[str, list[Symbol]],
-    resolver: ListNameResolver,
-    caller_dir: str,
+    tree: _GoTree,
+    file_key: str,
 ) -> None:
     """``calls`` alias -> target for each package-level ``var x = <function>``.
 
@@ -4096,9 +4007,7 @@ def _emit_go_alias_edges(
             target = _go_selector_reference_target(
                 value_node, source, bound=_GO_NO_LOCALS,
                 import_aliases=import_aliases, var_types={},
-                module_path=module_path, local_symbols=local_symbols,
-                global_symbols=global_symbols, resolver=resolver,
-                caller_dir=caller_dir,
+                local_symbols=local_symbols, tree=tree, file_key=file_key,
             )
         else:
             continue
@@ -4116,94 +4025,119 @@ def _emit_go_alias_edges(
             ))
 
 
-def _registry_type_key(
-    type_name: str,
-    field_type_registry: dict[str, dict[str, str]],
-    import_aliases: dict[str, str],
-    module_path: Optional[str],
-) -> Optional[str]:
-    """The key ``field_type_registry`` holds ``type_name`` under, or ``None``.
-
-    ``field_type_registry`` is built from ANALYSED declarations, so its keys are
-    BARE type names — ``Tester``, never ``caddytest.Tester``. Receiver typing
-    preserves the package qualifier (so that external types reach the I/O
-    catalogue at all), so a qualified IN-REPO type must be folded to match its
-    own entry: ``tester := caddytest.NewTester(t)`` then
-    ``tester.Client.Get(proxyURL)`` needs the chain's first lookup to find
-    ``Tester``, or the call loses its ``net_send`` tag.
-
-    THE BARE FALLBACK IS GATED, and the gate is the whole point. Stripping a
-    package prefix off an EXTERNAL type is the collision
-    :func:`_external_package_for_type` exists to prevent: a bare ``Values`` from
-    ``url.Values`` can pile spurious in-edges onto one same-named struct and
-    poison the centrality ranking. So the bare key is tried only when the
-    qualifier is NOT a definitively out-of-module package.
-    """
-    if type_name in field_type_registry:
-        return type_name
-    if "." not in type_name:
-        return None
-    if _external_package_for_type(type_name, import_aliases, module_path) is not None:
-        return None
-    bare = type_name.split(".")[-1]
-    return bare if bare in field_type_registry else None
-
-
-def _resolve_field_chain(
+def _go_field_chain_type(
     operand_node: "tree_sitter.Node",
     source: bytes,
-    var_types: dict[str, str],
-    field_type_registry: dict[str, dict[str, str]],
-    import_aliases: Optional[dict[str, str]] = None,
-    module_path: Optional[str] = None,
-) -> str | None:
-    """Resolve a chained selector expression to a field type.
+    var_types: Mapping[str, str],
+    file_key: str,
+    tree: _GoTree,
+) -> Optional[_GoTypeRef]:
+    """The type of the field chain ``r.a.b`` (the receiver of ``r.a.b.M()``).
 
-    Given the operand of a call like ``r.integration.Notify()``, walks
-    the selector chain to resolve the receiver type:
-
-    1. Decompose ``r.integration`` into segments ``["r", "integration"]``
-    2. Look up root ``r`` in ``var_types`` → ``RetryStage``
-    3. Walk ``field_type_registry["RetryStage"]["integration"]`` → ``Integration``
-
-    Returns the resolved type name (e.g., ``"Integration"``) or ``None``
-    if any step fails.
+    The root ``r`` is a local the caller's file types; each field is looked
+    up on its struct BY IDENTITY (``_GoTree.fields``: the struct's directory
+    and name) and its declared type is read in the file that declares the
+    struct, where its package qualifier means something. ``None`` when a
+    step is not known: an untyped root, a library struct (its fields are not
+    in the tree), a field the struct does not declare directly (promoted
+    from an embedded struct: not followed), or a field whose type is not a
+    named type (a map, a slice, a function).
     """
-    # Decompose nested selector_expression into segments from leaf to root.
-    # r.integration → ["r", "integration"]
-    # r.inner.field → ["r", "inner", "field"]
     segments: list[str] = []
     current = operand_node
     while current is not None and current.type == "selector_expression":
         field = find_child_by_field(current, "field")
-        if field is None:  # pragma: no cover — Go AST always has field
+        if field is None:  # pragma: no cover - Go AST always has field
             return None
         segments.append(node_text(field, source))
         current = find_child_by_field(current, "operand")
-
     if current is None or current.type != "identifier":
         return None
+    root_type = var_types.get(node_text(current, source))
+    ref = tree.ref(root_type, file_key) if root_type else None
+    for field_name in reversed(segments):
+        if ref is None or not ref.in_tree:
+            return None
+        declared = tree.fields.get((ref.package, ref.name), {}).get(field_name)
+        ref = tree.ref(*declared) if declared is not None else None
+    return ref
 
-    root_name = node_text(current, source)
-    segments.reverse()  # Now ["r", "integration"] for r.integration
 
-    # Resolve root variable to its type
-    current_type = var_types.get(root_name)
-    if current_type is None:
+def _go_result_type(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: Mapping[str, str],
+    file_key: str,
+    tree: _GoTree,
+    import_aliases: Mapping[str, str],
+    package_scope: GoPackageScope,
+) -> Optional[str]:
+    """What ``call_node`` returns, as the caller's file writes the type.
+
+    Read from the callee's DECLARED return type when Go places the callee
+    exactly, spelled again in the caller's terms (``_GoTree.spell``):
+
+    - ``f()``: the function ``f`` of the caller's package (its
+      build-constraint variants, when they agree);
+    - ``pkg.F()`` with ``pkg`` an import of this tree: the function ``F`` of
+      the directory the import names;
+    - ``x.M()`` with ``x`` a local of a type of this tree: the method ``M``
+      declared on that type (a method the type has only by embedding is not
+      followed).
+
+    A library callee is typed from the library catalogue (WI-lalot:
+    ``net.Listen`` -> ``net.Listener``; ``Listener.Accept`` -> ``net.Conn``)
+    or, failing a row, by the ``NewXxx`` convention for ``pkg.NewXxx()``
+    (``bufio.NewReader`` -> ``bufio.Reader``, WI-vutav): the module slot of a
+    library stub, which the I/O catalogue reads. No callee of this tree is
+    typed by a name: a function or a method found among everything would
+    carry the type of whichever declaration was registered first.
+    """
+    call_func = find_child_by_field(call_node, "function")
+    if call_func is None:  # pragma: no cover - a parsed call has a function
         return None
-
-    # Walk through field chain using the registry
-    for field_name in segments:
-        key = _registry_type_key(
-            current_type, field_type_registry, import_aliases or {}, module_path,
-        )
-        if key is None:
-            return None
-        current_type = field_type_registry[key].get(field_name)
-        if current_type is None:
-            return None
-
-    return current_type
+    # ``pkg.Func`` keyed by the package's name, ``Type.Method`` by the type's
+    # bare name (``library_signatures/go.yaml``).
+    library = load_library_signatures("go")
+    if call_func.type == "identifier":
+        name = node_text(call_func, source)
+        functions = [s for s in package_scope.get(name, ()) if s.kind == "function"]
+        if not package_scope.get(name):
+            # Not the caller's package's: the one package it dot-imports
+            # that declares it.
+            supplied = [
+                [s for s in tree.imported(d, name) if s.kind == "function"]
+                for d in tree.dot_dirs(file_key)
+            ]
+            supplied = [f for f in supplied if f]
+            functions = supplied[0] if len(supplied) == 1 else []
+        found = tree.returned(functions) if functions else None
+        return tree.spell(found, file_key) if found is not None else None
+    if call_func.type != "selector_expression":
+        return None
+    operand = find_child_by_field(call_func, "operand")
+    field_node = find_child_by_field(call_func, "field")
+    if operand is None or field_node is None or operand.type != "identifier":
+        return None
+    operand_name, name = node_text(operand, source), node_text(field_node, source)
+    receiver_type = var_types.get(operand_name)
+    if receiver_type is None and operand_name in import_aliases:
+        directory = tree.package_dir(import_aliases[operand_name])
+        if directory is None:
+            return (
+                _type_from_constructor_call(call_node, source)
+                or library.get(f"{operand_name}.{name}")
+            )
+        functions = [s for s in tree.imported(directory, name) if s.kind == "function"]
+        found = tree.returned(functions) if functions else None
+        return tree.spell(found, file_key) if found is not None else None
+    ref = tree.ref(receiver_type, file_key) if receiver_type else None
+    if ref is None:
+        return None
+    if not ref.in_tree:
+        return library.get(f"{ref.name}.{name}")
+    found = tree.returned(tree.methods.get((ref.package, ref.name, name), []))
+    return tree.spell(found, file_key) if found is not None else None
 
 
 #: How the call arm reads a callee node, by node type (WI-nulig). An explicitly
@@ -4220,48 +4154,6 @@ _GO_CALLEE_SHAPES: Final[Mapping[str, str]] = {
 #: What a Go generic instantiation can name: a package-level function or type.
 _GO_INSTANTIABLE_KINDS: Final[frozenset[str]] = frozenset(
     {"function", "struct", "interface", "type"})
-
-
-def _go_package_member(sym: Symbol) -> bool:
-    """A package-qualified ``pkg.F()`` reaches a package member, never a method.
-
-    The shared resolver's call-shape filter (WI-jomik): methods share the
-    short-name registry with package functions, so ``log.Err()`` would see both
-    ``func Err`` and ``(*Handler) Err`` in ``pkg/log`` -- a tie the resolver
-    does not guess -- though only one of them can be called that way.
-    """
-    return sym.kind != "method"
-
-
-def _go_value_member(
-    field_type_registry: "dict[str, dict[str, str]] | None",
-) -> Callable[[Symbol], bool]:
-    """``admit`` for a call on a VALUE (``x.F()``): a method, or a func-typed field.
-
-    Go reaches a method of the value's type, or a field of it that holds a
-    function, through a selector; never a package function, a struct or a
-    named type (WI-surid: otherwise cert-manager's ``corev1.SchemeGroupVersion
-    .WithResource("secrets")``, a method on an external package variable the
-    analyzer cannot type, binds ``func WithResource`` in ``pkg/logs``). Rust's
-    analyzer applies the same rule. A field's declared type is read from
-    ``field_type_registry`` (struct -> field -> type text), its declared home:
-    the field symbol's ``signature`` is display-only (ADR-0058). A data field
-    is refused: ``x.Name()`` cannot call a ``string``. Known gap, measured at
-    1 edge in 4 repos: a field typed by a NAMED function type (``Decode
-    PostingsDecoder``, ``type PostingsDecoder func(...)``) holds the name, not
-    ``func``, and is refused too.
-    """
-    registry = field_type_registry or {}
-
-    def admit(sym: Symbol) -> bool:
-        if sym.kind == "method":
-            return True
-        if sym.kind != "field":
-            return False
-        owner, _, field = sym.name.rpartition(".")
-        return registry.get(owner, {}).get(field, "").startswith("func")
-
-    return admit
 
 
 def _go_selector_parts(
@@ -4426,46 +4318,43 @@ def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, list[Symbol]],
     run: AnalysisRun,
     import_aliases: dict[str, str] | None = None,
-    resolver: ListNameResolver | None = None,
-    module_path: str | None = None,
-    field_type_registry: dict[str, dict[str, str]] | None = None,
-    interface_method_sets: dict[str, set[tuple[str, int, int]]] | None = None,
-    method_return_type_registry: dict[str, str] | None = None,
+    *,
+    tree: _GoTree | None = None,
     dot_imports: list[str] | None = None,
     file_symbols: list[Symbol] | None = None,
     package_scope: GoPackageScope | None = None,
     usage_contexts: list[UsageContext] | None = None,
+    import_scopes: dict[str, ImportScope] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
-    Uses import_aliases to disambiguate when multiple files define the same symbol.
-    Tracks variable types from assignments and parameters to disambiguate
-    method calls when multiple types define the same method name.
 
-    When ``field_type_registry`` is provided (aggregated from Pass 1), chained
-    field access calls like ``r.integration.Notify()`` are resolved through the
-    registry: r's type → field "integration" → type "Integration" → symbol
-    "Integration.Notify".
+    WHAT IS BOUND HERE AND WHAT IS REPORTED (ADR-0064). A BARE name is bound
+    here, where Go scoping places it: a local binding in scope (nothing), a
+    declaration of the caller's file, a declaration of its package
+    (``package_scope``, WI-bivin). Every call written ON something -- a
+    package (``pkg.F()``), a typed value, a field, a call's result, a value of
+    unknown type -- is emitted unresolved with the facts the shared linkers
+    read: ``qualifier`` (the package as the file names it),
+    ``receiver_type_hint`` (the receiver's type as the caller's file writes
+    it), ``stdlib_member_name``. The linkers bind it through the file's import
+    table, which this function fills into ``import_scopes`` under the file's
+    path (``_go_import_scope``).
 
-    When ``method_return_type_registry`` is provided (aggregated from Pass 1),
-    chained method calls like ``x := e.Query(); x.Rows()`` are resolved: the
-    return type of ``Engine.Query`` is looked up and assigned to ``x`` in
-    var_types, enabling ``x.Rows()`` to resolve to ``Result.Rows``.
+    A receiver's type is read where it is written and spelled again in the
+    caller's terms (``_GoTree``): a local's declaration, a composite literal,
+    a parameter, a receiver; a callee's declared return type when the callee
+    is one Go scoping or an import places exactly (``result_type``); a
+    struct field's declared type, read in its struct's file
+    (``_go_field_chain_type``).
 
-    When ``module_path`` is provided (from go.mod), import path hints are
-    transformed by stripping the module prefix so that suffix matching in
-    the resolver operates on repo-relative paths (e.g., ``pkg/log``)
-    instead of full module paths (e.g., ``github.com/example/trivy/pkg/log``).
-
-    ``package_scope`` (WI-bivin) is the caller's own package's package-level
-    declarations (``_go_package_scopes``), the only scope a BARE identifier
-    resolves in -- the repo-wide ``resolver`` is never asked about one, save
-    through a dot import. A direct caller that passes none gets this file's own
-    declarations as the scope: what is known of its package, never another's.
+    ``tree`` (built in ``_analyze_go_impl``; a direct caller that passes none
+    gets an empty one: no package but the caller's file is known) is also
+    where a function VALUE (``register(pkg.Handler)``, ``h.GetAPI``) is
+    looked up, by the directory an import names and the type a value has.
 
     ``usage_contexts`` (WI-movur), when given, receives the REGISTRATION usage
     contexts of the file: a local function or method handed to library code,
@@ -4478,8 +4367,6 @@ def _extract_edges_from_file(
     when a usage row could match its name (``usage_row_names_call``).
     """
     # Every declaration of this file, by position (INV-midag).
-    # WI-surid: what a call on a value may reach (see _go_value_member).
-    _value_admit = _go_value_member(field_type_registry)
     own_decls = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
@@ -4488,32 +4375,30 @@ def _extract_edges_from_file(
         package_scope = {}
         _add_to_package_scope(package_scope, own_decls)
     # No ambiguity threshold: every candidate is the caller's own package, so
-    # several are build-constraint variants of ONE declaration, and binding the
-    # path-sorted first at 1/sqrt(N) beats withholding a call Go scoping places.
-    # A package declares a name once per build: same-named entries are
-    # build-constraint variants of one function (WI-jomik), so a tie binds.
+    # several are build-constraint variants of ONE declaration (WI-jomik),
+    # and the path-sorted first is bound at 1/sqrt(N).
     own_package = ListNameResolver(package_scope, variants=True)
     if import_aliases is None:
         import_aliases = {}
-    if resolver is None:
-        resolver = ListNameResolver(global_symbols, ambiguity_threshold=3)
-    if field_type_registry is None:
-        field_type_registry = {}
-    if interface_method_sets is None:
-        interface_method_sets = {}
-    if method_return_type_registry is None:
-        method_return_type_registry = {}
+    file_key = str(file_path)
+    if tree is None:
+        tree = _GoTree(imports={file_key: import_aliases})
+    module_path = tree.module_path
+    import_specs: list[tuple[str, Optional[str]]] = []
 
+    def result_type(call: "tree_sitter.Node", var_types: Mapping[str, str]) -> Optional[str]:
+        """What ``call`` returns, as the caller's file writes the type."""
+        return _go_result_type(
+            call, source, var_types, file_key, tree, import_aliases, package_scope,
+        )
     try:
         source = file_path.read_bytes()
-        tree = parser.parse(source)
+        parsed = parser.parse(source)
     except (OSError, IOError):
         return []
 
     edges: list[Edge] = []
     file_id = make_file_id("go", str(file_path))
-    # The caller's package directory: where an unqualified type is declared.
-    caller_dir = os.path.dirname(str(file_path))
     # The file's pseudo-symbol: src of ``imports`` edges, anchor of
     # module_attr_refs outside any callable, and (INV-nopoh) anchor of last
     # resort for a package-level call whose ``var`` has no symbol.
@@ -4531,8 +4416,7 @@ def _extract_edges_from_file(
 
     # Extract function-scoped variable-to-type bindings for receiver disambiguation
     scoped_var_types = _extract_go_var_types(
-        tree.root_node, source,
-        method_return_type_registry=method_return_type_registry,
+        parsed.root_node, source, result_type=result_type,
     )
 
     # INV-guzuj / WI-bopiv: the local scopes of each top-level declaration,
@@ -4604,10 +4488,7 @@ def _extract_edges_from_file(
                 value_node, source, bound=_bound_names(site),
                 import_aliases=import_aliases,
                 var_types=scoped_var_types.get(current_function.name, {}),
-                module_path=module_path,
-                local_symbols=local_symbols,
-                global_symbols=global_symbols, resolver=resolver,
-                caller_dir=caller_dir,
+                local_symbols=local_symbols, tree=tree, file_key=file_key,
             )
         else:
             return None
@@ -4626,43 +4507,36 @@ def _extract_edges_from_file(
         ))
         return current_function, target[0]
 
-    for node in iter_tree(tree.root_node):
+    for node in iter_tree(parsed.root_node):
         # Detect import statements
         if node.type == "import_declaration":
-            # Handle both single imports and import blocks
-            for child in node.children:
-                if child.type == "import_spec":
-                    path_node = find_child_by_field(child, "path")
-                    if path_node:
-                        import_path = node_text(path_node, source).strip('"')
-                        # ``import ""`` names no package: no edge, rather than a
-                        # dst with an empty path slot (WI-sagur).
-                        if import_path:
-                            edges.append(Edge.create(
-                                src=file_id,
-                                dst=f"go:{import_path}:0-0:package:package",
-                                edge_type="imports",
-                                line=child.start_point[0] + 1,
-                                evidence_type="import_declaration",
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
-                elif child.type == "import_spec_list":
-                    for spec in child.children:
-                        if spec.type == "import_spec":
-                            path_node = find_child_by_field(spec, "path")
-                            if path_node:
-                                import_path = node_text(path_node, source).strip('"')
-                                if import_path:
-                                    edges.append(Edge.create(
-                                        src=file_id,
-                                        dst=f"go:{import_path}:0-0:package:package",
-                                        edge_type="imports",
-                                        line=spec.start_point[0] + 1,
-                                        evidence_type="import_declaration",
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                    ))
+            # Single imports and import blocks: one ``imports`` edge per spec
+            # (``import ""`` names no package: no edge, rather than a dst
+            # with an empty path slot, WI-sagur), and the spec for the table.
+            specs = [c for c in node.children if c.type == "import_spec"] + [
+                spec for c in node.children if c.type == "import_spec_list"
+                for spec in c.children if spec.type == "import_spec"
+            ]
+            for spec in specs:
+                path_node = find_child_by_field(spec, "path")
+                if path_node is None:  # pragma: no cover - grammar
+                    continue
+                import_path = node_text(path_node, source).strip('"')
+                if not import_path:
+                    continue
+                name_node = find_child_by_field(spec, "name")
+                import_specs.append((
+                    import_path, node_text(name_node, source) if name_node else None,
+                ))
+                edges.append(Edge.create(
+                    src=file_id,
+                    dst=f"go:{import_path}:0-0:package:package",
+                    edge_type="imports",
+                    line=spec.start_point[0] + 1,
+                    evidence_type="import_declaration",
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
 
         # Detect function calls
         # WI-nulig: ``Map[int](x)`` parses as a generic TYPE conversion; it is
@@ -4690,38 +4564,32 @@ def _extract_edges_from_file(
                     else find_child_by_field(node, "function")
                 )
                 callee_shape = _GO_CALLEE_SHAPES.get(func_node.type) if func_node else None
+                #: The call is reported on a package or a type of this tree.
+                in_tree_callee = False
                 if func_node:
                     callee_name = None
-                    import_path_hint = None
-                    # Set only when the hint was derived from the RECEIVER's own
-                    # tracked type (``q`` is a ``url.Values``), as opposed to from a
-                    # package alias in operand position (``url.Parse(...)``). The
-                    # WI-jopar guard below needs to tell those apart: a typed local
-                    # receiver must terminate resolution either way, and the module
-                    # slot it terminates with should name the real package instead of
-                    # the ``external`` placeholder when we know it.
-                    receiver_module_hint: Optional[str] = None
-                    # INV-vusum: the receiver's TYPE when it is external and
-                    # known by a route other than a typed local -- a stdlib
-                    # package variable (``net/http.Client`` for
-                    # ``http.DefaultClient``) or a struct field
-                    # (``e.logger`` of type ``*slog.Logger``). For the dst
-                    # only; ``full_import_path`` stays the package because the
-                    # handle-kind reader takes the package name from it.
-                    receiver_owner: Optional[str] = None
-                    # WI-nunab: the target kind a PACKAGE-VARIABLE receiver
-                    # names by itself (``os.Stdout.Write`` -> ``std_stream``).
-                    receiver_handle_kind: Optional[str] = None
-                    # WI-vinuh: the receiver's type is known and OUTSIDE this
-                    # module (a call's result, a stdlib package variable, a
-                    # struct field), so no in-repo symbol can be the callee --
-                    # the rule the typed-local guard (WI-jopar) already keeps.
-                    receiver_type_is_external = False
-                    full_import_path = None
-                    # INV-tanom: the operand is an imported PACKAGE, not a value.
-                    # Such a call is a function call (ADR-0059: called on the
-                    # module itself), and the construct stamp says so below.
+                    # What the call is written on, as facts for the shared call
+                    # resolution (ADR-0064). The analyzer binds a BARE name
+                    # itself (Go scoping places it: a local, the caller's file,
+                    # its package); every call written on something is reported
+                    # with these and bound, or not, by the linkers.
+                    #: ``pkg.F()``: the import path of ``pkg``.
+                    full_import_path: Optional[str] = None
+                    #: INV-tanom: the operand is an imported PACKAGE, not a
+                    #: value; the construct stamp says ``function`` below.
                     package_qualified = False
+                    #: The receiver's type, by identity, when it is known.
+                    recv_ref: Optional[_GoTypeRef] = None
+                    #: The receiver is a local the analyzer tracks (WI-jopar),
+                    #: typed or not: ``x.M()``.
+                    typed_local: Optional[str] = None
+                    #: WI-nunab: the target kind a PACKAGE-VARIABLE receiver
+                    #: names by itself (``os.Stdout.Write`` -> ``std_stream``).
+                    receiver_handle_kind: Optional[str] = None
+                    #: The receiver is a call's result of unknown type.
+                    result_unknown = False
+                    #: The selector's operand when it is a name: a package or a local.
+                    alias: Optional[str] = None
 
                     if callee_shape == "identifier":
                         # Simple call: helper()
@@ -4735,137 +4603,33 @@ def _extract_edges_from_file(
                         operand_node, field_node = _go_selector_parts(func_node)
                         if field_node:
                             callee_name = node_text(field_node, source)
-                        # Check if operand is a package alias
-                        if operand_node and operand_node.type in (
-                            "identifier", "package_identifier",
+                        alias = (
+                            node_text(operand_node, source)
+                            if operand_node is not None and operand_node.type in (
+                                "identifier", "package_identifier",
+                            ) else None
+                        )
+                        if (
+                            alias is not None and alias in import_aliases
+                            and alias not in _bound_names(node)
                         ):
-                            alias = node_text(operand_node, source)
-                            if (
-                                alias in import_aliases
-                                and alias not in _bound_names(node)
-                            ):
-                                full_import_path = import_aliases[alias]
-                                # SAME TEST AS THE MODULE SLOT, deliberately:
-                                # an alias that names an import is the package
-                                # here, as it already is for the slot -- unless
-                                # a parameter or local of that name is in
-                                # scope at this call (WI-kugap). Asked by
-                                # POSITION (``_GoLocalScope``), not of
-                                # ``var_types``, which is per function: the
-                                # ``url.Parse`` that DEFINES a local ``url``
-                                # runs before the local exists, and is the
-                                # package's.
-                                package_qualified = True
-                                if module_path:
-                                    import_path_hint = _strip_module_prefix(
-                                        full_import_path, module_path,
-                                    )
-                                else:
-                                    import_path_hint = full_import_path
-                            # Check if operand has an inferred type for
-                            # receiver-type method disambiguation
-                            elif alias in var_types:
-                                receiver_type = var_types[alias]
-                                # A type from OUTSIDE this module cannot be defined
-                                # by this repo, so the unqualified lookup below would
-                                # only ever find an impostor. Take the import-path
-                                # hint directly. (_strip_module_prefix is a no-op on
-                                # an out-of-module path by construction.)
-                                _external = _external_package_for_type(
-                                    receiver_type, import_aliases, module_path,
-                                )
-                                if _external is not None:
-                                    full_import_path = _external
-                                    import_path_hint = _external
-                                    # INV-vusum: the slot names the TYPE, not
-                                    # only its package. ``net/http`` alone would
-                                    # let the package function ``net/http.Get``
-                                    # win over ``net/http.Client.Get`` by
-                                    # declaration order, and match
-                                    # ``Transport.Do`` to ``Client.Do``. Always
-                                    # the full import path plus the type: a
-                                    # bare leaf (``Client``) matches eight rows
-                                    # through _module_matches' suffix arm.
-                                    receiver_module_hint = (
-                                        f"{_external}."
-                                        f"{receiver_type.rsplit('.', 1)[-1]}"
-                                    )
-                                else:
-                                    # Strip package prefix from qualified types
-                                    # (e.g. "notify.Stage" → "Stage") since symbol
-                                    # names in global_symbols are unqualified.
-                                    bare_recv = (
-                                        receiver_type.rsplit(".", 1)[-1]
-                                        if "." in receiver_type
-                                        else receiver_type
-                                    )
-                                    qualified_name = f"{bare_recv}.{callee_name}"
-                                    # Try qualified name in local or global symbols
-                                    if qualified_name in local_symbols:
-                                        callee = local_symbols[qualified_name]
-                                        edges.append(Edge.create(
-                                            src=current_function.id,
-                                            dst=callee.id,
-                                            edge_type="calls",
-                                            line=node.start_point[0] + 1,
-                                            evidence_type="ast_call",
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
-                                            resolved_by=resolved_by.RECEIVER_TYPE,
-                                        ))
-                                        callee_name = None  # Already resolved
-                                    elif qualified_name in global_symbols:
-                                        # Direct lookup by qualified name, in the
-                                        # receiver type's own package (WI-kugap
-                                        # sweep: ``_go_method_of_type``).
-                                        _typed = _go_method_of_type(
-                                            receiver_type, str(callee_name),
-                                            caller_dir=caller_dir,
-                                            import_aliases=import_aliases,
-                                            module_path=module_path,
-                                            local_symbols=local_symbols,
-                                            global_symbols=global_symbols,
-                                        )
-                                        if _typed is not None:
-                                            edges.append(Edge.create(
-                                                src=current_function.id,
-                                                dst=_typed.id,
-                                                edge_type="calls",
-                                                line=node.start_point[0] + 1,
-                                                evidence_type="ast_call",
-                                                origin=PASS_ID,
-                                                origin_run_id=run.execution_id,
-                                                meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
-                                                resolved_by=resolved_by.RECEIVER_TYPE,
-                                            ))
-                                            callee_name = None  # Already resolved
-                                    # Fallback: a qualified type whose package we
-                                    # could not classify as out-of-module (no go.mod
-                                    # module path). Recover the import path so the
-                                    # unresolved edge still gets a module hint
-                                    # instead of "external".
-                                    elif "." in receiver_type:
-                                        pkg_prefix = receiver_type.split(".")[0]
-                                        if pkg_prefix in import_aliases:
-                                            full_import_path = import_aliases[
-                                                pkg_prefix
-                                            ]
-                                            if module_path:
-                                                import_path_hint = (
-                                                    _strip_module_prefix(
-                                                        full_import_path,
-                                                        module_path,
-                                                    )
-                                                )
-                                            else:
-                                                import_path_hint = full_import_path
-                                            receiver_module_hint = import_path_hint
+                            # An alias that names an import is the package
+                            # here, unless a parameter or local of that name
+                            # is in scope at this call (WI-kugap). Asked by
+                            # POSITION (``_GoLocalScope``), not of
+                            # ``var_types``, which is per function: the
+                            # ``url.Parse`` that DEFINES a local ``url`` runs
+                            # before the local exists, and is the package's.
+                            full_import_path = import_aliases[alias]
+                            package_qualified = True
+                        elif alias is not None and alias in var_types:
+                            typed_local = var_types[alias]
+                            recv_ref = (
+                                tree.ref(typed_local, file_key) if typed_local else None
+                            )
                         # WI-jikik: a method on a stdlib PACKAGE VARIABLE,
-                        # ``http.DefaultClient.Do(req)``. The root is a
-                        # package, so the field-chain walk below finds no
-                        # type, and the call would fall to the ``external``
-                        # slot where no catalogue row can reach it.
+                        # ``http.DefaultClient.Do(req)``, typed from the
+                        # library catalogue.
                         elif (
                             operand_node is not None
                             and operand_node.type == "selector_expression"
@@ -4875,508 +4639,54 @@ def _extract_edges_from_file(
                                 _bound_names(node),
                             )) is not None
                         ):
-                            _pv_path, receiver_owner = _pv
-                            receiver_type_is_external = _go_path_outside_module(
-                                _pv_path, module_path,
+                            _pv_path, _pv_owner = _pv
+                            recv_ref = _GoTypeRef(
+                                _pv_path, _pv_owner.rsplit(".", 1)[-1], False,
                             )
                             receiver_handle_kind = _go_classify_handle_text(
                                 node_text(operand_node, source),
                             )
-                            full_import_path = _pv_path
-                            import_path_hint = (
-                                _strip_module_prefix(_pv_path, module_path)
-                                if module_path else _pv_path
-                            )
-                        # Chained field access: r.integration.Notify()
-                        # Walk selector chain through field_type_registry
-                        # to resolve the receiver type.
+                        # A field chain, ``r.integration.Notify()``: the type
+                        # of the last field, each field read in the file that
+                        # declares its struct (``_go_field_chain_type``).
                         elif (
-                            operand_node
+                            operand_node is not None
                             and operand_node.type == "selector_expression"
-                            and callee_name
-                            and current_function
-                            and field_type_registry
                         ):
-                            resolved_type = _resolve_field_chain(
-                                operand_node, source, var_types,
-                                field_type_registry,
-                                import_aliases=import_aliases,
-                                module_path=module_path,
+                            recv_ref = _go_field_chain_type(
+                                operand_node, source, var_types, file_key, tree,
                             )
-                            if resolved_type:
-                                # For cross-package qualified types
-                                # (e.g. "notify.Stage"), symbol names in
-                                # global_symbols are unqualified ("Stage.Exec",
-                                # not "notify.Stage.Exec").  Strip the package
-                                # prefix before constructing the method name.
-                                bare_type = (
-                                    resolved_type.rsplit(".", 1)[-1]
-                                    if "." in resolved_type
-                                    else resolved_type
-                                )
-                                qualified_name = f"{bare_type}.{callee_name}"
-                                target = local_symbols.get(qualified_name)
-                                if target is None and qualified_name in global_symbols:
-                                    candidates = global_symbols[qualified_name]
-                                    if candidates:
-                                        target = candidates[0]
-                                if target is not None:
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=target.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        evidence_type="ast_call",
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        meta={"call_construct": "method", "receiver": "typed_field"},
-                                        resolved_by=resolved_by.RECEIVER_TYPE,
-                                    ))
-                                    callee_name = None  # Already resolved
-                                # Fallback: if resolved_type is a qualified
-                                # type like "http.Client" (from a struct field
-                                # with package-qualified type), extract the
-                                # package prefix and recover the import path.
-                                elif "." in resolved_type:
-                                    pkg_prefix = resolved_type.split(".")[0]
-                                    if pkg_prefix in import_aliases:
-                                        full_import_path = import_aliases[
-                                            pkg_prefix
-                                        ]
-                                        _field_ext = _external_package_for_type(
-                                            resolved_type, import_aliases, module_path,
-                                        )
-                                        if _field_ext is not None:
-                                            receiver_type_is_external = True
-                                            receiver_owner = (
-                                                f"{_field_ext}."
-                                                f"{resolved_type.rsplit('.', 1)[-1]}"
-                                            )
-                                        if module_path:
-                                            import_path_hint = (
-                                                _strip_module_prefix(
-                                                    full_import_path,
-                                                    module_path,
-                                                )
-                                            )
-                                        else:
-                                            import_path_hint = full_import_path
-                        # Chained call: f(args).Method(). WI-vinuh: the
-                        # receiver is the inner call's RESULT, typed by the
-                        # binding typer's own rule (_go_call_result_type), so
-                        # ``slog.New(h).Error`` takes ``log/slog.Logger``'s
-                        # slot as ``l := slog.New(h); l.Error`` does, and not
-                        # the bare package, where the package FUNCTION
-                        # ``Error`` would win by declaration order (INV-vusum).
-                        # A type from outside the module cannot be defined
-                        # here, so no in-repo symbol is looked up for it
-                        # (``receiver_type_is_external``); otherwise
-                        # ``internal/json``'s ``Encode`` would take
-                        # ``json.NewEncoder(w).Encode`` through the path
-                        # hint's last component.
-                        elif (
-                            operand_node
-                            and operand_node.type == "call_expression"
-                            and (_result_type := _go_call_result_type(
-                                operand_node, source, var_types,
-                                method_return_type_registry,
-                            ))
-                            and (_result_pkg := _external_package_for_type(
-                                _result_type, import_aliases, module_path,
-                            )) is not None
-                        ):
-                            full_import_path = _result_pkg
-                            import_path_hint = _result_pkg
-                            receiver_owner = (
-                                f"{_result_pkg}.{_bare_go_type(_result_type)}"
+                        # A call's result, ``f(args).Method()`` (WI-vinuh):
+                        # typed by the rule a binding is (``result_type``).
+                        elif operand_node is not None and operand_node.type == "call_expression":
+                            _result = result_type(operand_node, var_types)
+                            recv_ref = tree.ref(_result, file_key) if _result else None
+                            result_unknown = recv_ref is None
+                            # Only the inner call's PACKAGE is known
+                            # (``lib.Func(args).Method()``): the stub names it.
+                            _inner = find_child_by_field(operand_node, "function")
+                            _inner_operand = (
+                                find_child_by_field(_inner, "operand")
+                                if _inner is not None and _inner.type == "selector_expression"
+                                else None
                             )
-                            receiver_type_is_external = True
-                        # Otherwise only the inner call's PACKAGE is known
-                        # (``pkg.Func(args).Method()``): propagate its import
-                        # path so .Method() doesn't falsely resolve to a local
-                        # method with the same name.
-                        elif operand_node and operand_node.type == "call_expression":
-                            inner_func = find_child_by_field(
-                                operand_node, "function",
-                            )
-                            if inner_func and inner_func.type == "selector_expression":
-                                inner_operand = find_child_by_field(
-                                    inner_func, "operand",
-                                )
-                                if (
-                                    inner_operand
-                                    and inner_operand.type == "identifier"
-                                    and node_text(inner_operand, source)
-                                    in import_aliases
-                                ):
-                                    import_path_hint = import_aliases[
-                                        node_text(inner_operand, source)
-                                    ]
-                        # WI-vadin: Before the chained-call ambiguity guard,
-                        # try to resolve via the return-type registry.
-                        # For e.NewQuery().Exec(), if e's type is Engine
-                        # and the registry maps Engine.NewQuery → Query,
-                        # resolve .Exec() as Query.Exec.
-                        if (
-                            callee_name
-                            and import_path_hint is None
-                            and operand_node is not None
-                            and operand_node.type == "call_expression"
-                            and method_return_type_registry
-                        ):
-                            inner_func = find_child_by_field(
-                                operand_node, "function",
+                            _inner_path = (
+                                import_aliases.get(node_text(_inner_operand, source))
+                                if _inner_operand is not None and _inner_operand.type == "identifier"
+                                else None
                             )
                             if (
-                                inner_func is not None
-                                and inner_func.type == "selector_expression"
+                                result_unknown and _inner_path is not None
+                                and tree.package_dir(_inner_path) is None
                             ):
-                                inner_operand = find_child_by_field(
-                                    inner_func, "operand",
-                                )
-                                inner_field = find_child_by_field(
-                                    inner_func, "field",
-                                )
-                                if inner_operand is not None and inner_field is not None:
-                                    recv_name = node_text(inner_operand, source)
-                                    inner_method = node_text(inner_field, source)
-                                    recv_type = var_types.get(recv_name, "")
-                                    if recv_type:
-                                        # Both folds: key from a value, then a
-                                        # symbol lookup from a value (WI-doluf).
-                                        qualified = (
-                                            f"{_bare_go_type(recv_type)}"
-                                            f".{inner_method}"
-                                        )
-                                        ret_type = method_return_type_registry.get(
-                                            qualified
-                                        )
-                                        if ret_type:
-                                            outer_qualified = (
-                                                f"{_bare_go_type(ret_type)}"
-                                                f".{callee_name}"
-                                            )
-                                            target = local_symbols.get(outer_qualified)
-                                            if target is None and outer_qualified in global_symbols:
-                                                candidates = global_symbols[outer_qualified]
-                                                if candidates:
-                                                    target = candidates[0]
-                                            if target is not None:
-                                                edges.append(Edge.create(
-                                                    src=current_function.id,
-                                                    dst=target.id,
-                                                    edge_type="calls",
-                                                    line=node.start_point[0] + 1,
-                                                    evidence_type="ast_call",
-                                                    origin=PASS_ID,
-                                                    origin_run_id=run.execution_id,
-                                                    # INV-tadup: the CONSTRUCT is a method call;
-                                                    # "chained_return_type" names HOW the receiver
-                                                    # type was resolved, which is the
-                                                    # ``resolution_quality`` axis.
-                                                    meta={
-                                                        "call_construct": "method",
-                                                        "resolution_quality": "chained_return_type",
-                                                    },
-                                                    resolved_by=resolved_by.RECEIVER_TYPE,
-                                                ))
-                                                callee_name = None
-
-                        # Chained-call ambiguity guard: when the receiver
-                        # is a call_expression but we couldn't determine its
-                        # package (import_path_hint still None), the receiver
-                        # type is a return value of unknown type.  Resolving
-                        # to a single global candidate is almost certainly
-                        # wrong (e.g. c.CoreV1().Endpoints(ns).Update() →
-                        # Manager.Update is false positive).  Emit as
-                        # unresolved instead.
-                        if (
-                            callee_name
-                            and import_path_hint is None
-                            and operand_node is not None
-                            and operand_node.type == "call_expression"
-                        ):
-                            dst_id = (
-                                f"go:external:0-0:{callee_name}:unresolved"
-                            )
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ast_call",
-                                is_resolved=False,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                meta={"call_construct": "method", "receiver": "field_chain"},
-                            ))
-                            callee_name = None  # Already handled
-
-                        # WI-jopar: receiver-type guard. When the operand is a
-                        # simple identifier that the analyzer is tracking as a
-                        # local variable (regardless of whether it inferred a
-                        # concrete type), the typed lookup above
-                        # already tried qualified resolution and failed.
-                        # Falling through to the short-name dispatch guard
-                        # would emit a wrong edge to a local Interface.Set or
-                        # Alerts.Set just because the method names collide
-                        # (e.g. ``q.Set("k", "v")`` where ``q`` is a
-                        # ``url.Values``), which can pile spurious in-edges
-                        # onto one struct and poison the centrality ranking.
-                        # Emit an unresolved
-                        # external edge instead — cross-language linkers can
-                        # still match it later, but no false intra-repo edge
-                        # is created.
-                        #
-                        # Note: var_types may map ``alias`` to an empty string
-                        # when the analyzer recognised the variable but not
-                        # its type. The empty-string entry is still meaningful
-                        # — it tells us the operand is a tracked local, not a
-                        # free-floating identifier — so the guard fires on key
-                        # presence, not value truthiness.
-                        #
-                        # WHY THE CONDITION IS NOT ``import_path_hint is None``.
-                        # Hint-absence is no proxy for "the receiver is a tracked
-                        # local": a qualified composite literal (``url.Values{}``)
-                        # types its receiver and so sets the hint, and a guard
-                        # keyed on the hint would stop firing exactly where it is
-                        # most needed (a false ``AlertStore.Set`` edge). The
-                        # guard's real subject is the RECEIVER, so it keys on
-                        # the receiver directly and terminates with the package it
-                        # knows instead of the ``external`` placeholder.
-                        if (
-                            callee_name
-                            and (
-                                import_path_hint is None
-                                or receiver_module_hint is not None
-                            )
-                            and operand_node is not None
-                            and operand_node.type == "identifier"
-                        ):
-                            _alias = node_text(operand_node, source)
-                            if _alias in var_types:
-                                _slot = receiver_module_hint or "external"
-                                # WI-vutav: what THIS read touches, resolved through the
-                                # receiver's binding; the catalogue row cannot see it.
-                                _meta_b: dict[str, object] = {
-                                    "call_construct": "method", "receiver": "external",
-                                }
-                                _handle_b = _go_receiver_handle_kind(
-                                    node, source, _alias, import_aliases,
-                                    var_types=var_types,
-                                )
-                                # WI-nunab: an ``*os.File`` receiver IS the
-                                # handle, so its own binding says what it is
-                                # (``os.Create`` -> host_path, ``os.Pipe()`` ->
-                                # pipe). A parameter has no binding and stamps
-                                # nothing: the rows abstain to fs_write.
-                                if _handle_b is None and _slot in _GO_HANDLE_TYPES:
-                                    _bound = _go_last_binding(node, source, _alias)
-                                    if _bound is not None:
-                                        _handle_b = _go_classify_handle_text(_bound[0])
-                                if _handle_b is None and _slot in _GO_CONN_TYPES:
-                                    _handle_b = _go_target_kind_from_expression(
-                                        node, source, _alias,
-                                        import_aliases=import_aliases,
-                                        var_types=var_types,
-                                        use_line=node.start_point[0] + 1,
-                                    )
-                                if _handle_b:
-                                    _meta_b["io_target_kind"] = _handle_b
-                                dst_id = (
-                                    f"go:{_slot}:0-0:{callee_name}:unresolved"
-                                )
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=dst_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    # Stated, not inherited. Edge.create defaults
-                                    # is_resolved=True, which would mint a
-                                    # "resolved" edge onto a dst whose kind slot
-                                    # reads ``unresolved`` — the incoherence
-                                    # INV-fazim is filed for. It is an
-                                    # out-of-repo target by construction.
-                                    is_resolved=False,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta=_meta_b,
-                                ))
-                                callee_name = None  # Already handled
-
-                        # Unified ambiguity guard for ALL selector expressions:
-                        # covers simple identifiers (x.Close()), chained calls
-                        # (getWriter().Close()), field access (resp.Body.Close()),
-                        # and index expressions (items[0].Close()).
-                        # When receiver type is unknown and 2+ types define the
-                        # method, produce an unresolved edge instead of picking
-                        # an arbitrary candidate.  The threshold is 2 because
-                        # 2-candidate collisions (e.g. Close(), Error(),
-                        # String()) cause widespread false positives that
-                        # inflate centrality rankings.
-                        #
-                        # Exception: if one of the ambiguous candidates is an
-                        # interface method, prefer it.  The type hierarchy linker
-                        # creates dispatches_to edges from interface methods to
-                        # concrete implementations, so resolving to the interface
-                        # method enables slice traversal through the dispatch.
-                        if (
-                            callee_name
-                            and import_path_hint is None
-                            and callee_name in global_symbols
-                            and len(global_symbols[callee_name]) >= 2
-                        ):
-                            # Collect all interface-method candidates. When
-                            # the short-name resolves to >=2 global symbols
-                            # and >=2 of them are interface methods, the
-                            # interface-method preference does not uniquely
-                            # disambiguate — pick deterministically by id and
-                            # flag the edge as INV-zuhub fallback (confidence
-                            # <=0.5 + meta["disambiguation_fallback"]=True).
-                            # When exactly one is an interface method, the
-                            # interface-method test IS the precision
-                            # disambiguator — keep confidence=0.75.
-                            _iface_candidates = [
-                                _cand for _cand in global_symbols[callee_name]
-                                if "." in _cand.name
-                                and _cand.name.rsplit(".", 1)[0] in interface_method_sets
-                            ]
-                            if _iface_candidates:
-                                _is_iface_fallback = len(_iface_candidates) > 1
-                                _iface_candidate = (
-                                    min(_iface_candidates, key=lambda s: s.id)
-                                    if _is_iface_fallback
-                                    else _iface_candidates[0]
-                                )
-                                # Resolve to the interface method instead of
-                                # unresolved — dispatches_to edges will route
-                                # the slice to concrete implementations.
-                                _iface_confidence = 0.5 if _is_iface_fallback else 0.75
-                                _iface_meta = (
-                                    # INV-tadup: the construct is a method call. The
-                                    # interface-dispatch PATHWAY is already carried by
-                                    # ``evidence_type="interface_dispatch"`` on this same
-                                    # edge, so naming it again here would duplicate one
-                                    # value across two axes.
-                                    {"call_construct": "method", "disambiguation_fallback": True}
-                                    if _is_iface_fallback
-                                    else {"call_construct": "method"}
-                                )
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=_iface_candidate.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="interface_dispatch",
-                                    confidence=_iface_confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta=_iface_meta,
-                                    # The method's bare name among the repo's
-                                    # declarations; the interface test checks it.
-                                    resolved_by=resolved_by.NAME,
-                                ))
-                                callee_name = None  # Already handled
-                            else:
-                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=dst_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    # INV-fazim: an ``external`` path slot carries no
-                                    # module evidence and the kind slot reads
-                                    # ``unresolved``, so the edge is NOT resolved.
-                                    # Edge.create defaults the flag to True, and
-                                    # under ADR-0037 ruling 4 that flag is
-                                    # authoritative — a consumer may not re-derive
-                                    # the verdict from the dst string. Left to the
-                                    # default, this would mint a "resolved" edge that
-                                    # taint's propagation lookup takes into the ungated
-                                    # ``if not path_module: return hits[0]``
-                                    # bare-name fallback, never reaching the F3 gate.
-                                    is_resolved=False,
-                                    # WI-nurun: confidence stays EXPLICIT and stays
-                                    # 0.50. It is not the derived unresolved base
-                                    # (0.40) because this call did resolve — to 2+
-                                    # candidates — which is strictly more evidence
-                                    # than "no idea", and the ambiguity is carried in
-                                    # meta. An explicit value also means the
-                                    # is_resolved correction above cannot move it.
-                                    confidence=0.50,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method", "resolution_quality": "ambiguous"},
-                                ))
-                                callee_name = None  # Already handled
-
-                        # Go visibility guard: lowercase methods are unexported
-                        # (package-private).  When receiver type is unknown and
-                        # the callee starts with a lowercase letter, global
-                        # resolution would cross package boundaries — producing
-                        # false positives (e.g. hundreds of spurious callers for
-                        # recalcRequest.string).  Emit an unresolved edge instead.
-                        if (
-                            callee_name
-                            and import_path_hint is None
-                            and callee_shape == "selector_expression"
-                            and callee_name[0].islower()
-                        ):
-                            dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ast_call",
-                                # INV-fazim: the ``external`` placeholder means no
-                                # package was attributed, so the edge is unresolved.
-                                # This guard exists precisely BECAUSE resolution
-                                # would have been wrong (crossing package
-                                # boundaries), which makes claiming resolution here
-                                # self-contradictory.
-                                is_resolved=False,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                meta={"call_construct": "method", "visibility": "unexported"},
-                            ))
-                            callee_name = None  # Already handled
-
-                        # Go stdlib interface method guard: When receiver type
-                        # is unknown and the method name matches a well-known
-                        # stdlib interface method (Lock, Close, Read, Write,
-                        # String, Error, etc.), treat it as ambiguous even with
-                        # only 1 repo candidate.  Most .Lock() calls are
-                        # sync.Mutex.Lock(), not DirLocker.Lock — without this
-                        # guard, DirLocker.Lock absorbs 255+ false in-degree
-                        # edges.  Only applies to selector expressions (method
-                        # calls), not package-qualified calls.
-                        if (
-                            callee_name
-                            and import_path_hint is None
-                            and callee_shape == "selector_expression"
-                            and callee_name in _GO_STDLIB_INTERFACE_METHODS
-                        ):
-                            dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=dst_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="ast_call",
-                                # INV-fazim: same rule as the sibling guards. This
-                                # one fires when the receiver type is UNKNOWN and the
-                                # method name merely looks like a stdlib interface
-                                # method — the weakest evidence of the three, so
-                                # reporting it resolved would be the least defensible.
-                                is_resolved=False,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                meta={"call_construct": "method", "receiver": "stdlib"},
-                            ))
-                            callee_name = None  # Already handled
+                                full_import_path = _inner_path
+                                result_unknown = False
+                        if recv_ref is not None and not recv_ref.in_tree:
+                            full_import_path = full_import_path or recv_ref.package
+                        in_tree_callee = (recv_ref is not None and recv_ref.in_tree) or (
+                            package_qualified and full_import_path is not None
+                            and tree.package_dir(full_import_path) is not None
+                        )
 
                     # WI-bivin: a BARE name with a local binding in scope here
                     # (a closure, a parameter, a range variable) is that local
@@ -5396,58 +4706,91 @@ def _extract_edges_from_file(
 
                     # WI-nulig: ``handlers[k](x)`` on a package VARIABLE calls an
                     # element, not ``handlers``; only a function or a type can be
-                    # instantiated. Resolved as the binding below would resolve it,
-                    # and silent when it names a value.
+                    # instantiated. Silent when the name is a value of the
+                    # caller's package, or of the package an import names.
                     if callee_name and instantiated is not None:
                         _named = (
-                            own_package.lookup(callee_name)
+                            [own_package.lookup(callee_name).symbol]
                             if callee_shape == "identifier"
-                            else resolver.lookup(
-                                callee_name, path_hint=import_path_hint,
-                                admit=_go_package_member if package_qualified else _value_admit,
-                            )
-                        ).symbol
-                        if _named is not None and _named.kind not in _GO_INSTANTIABLE_KINDS:
+                            else tree.imported(_package_dir, callee_name)
+                            if full_import_path is not None
+                            and (_package_dir := tree.package_dir(full_import_path)) is not None
+                            else []
+                        )
+                        if any(
+                            s is not None and s.kind not in _GO_INSTANTIABLE_KINDS
+                            for s in _named
+                        ):
                             callee_name = None
 
                     # WI-kugap: the construct is how the call is WRITTEN
                     # (ADR-0059): on the package itself, or bare, is a
-                    # function; on a value is a method. The resolved and
-                    # unresolved emits below both use this stamp, so
-                    # ``xs[k].Frob()`` bound to ``Thing.Frob`` reads as a
-                    # method call.
+                    # function; on a value is a method.
                     call_construct = (
                         "function"
                         if callee_shape == "identifier" or package_qualified
                         else "method"
                     )
 
-                    if callee_name:
-                        # Check local symbols first — but NOT when the call
-                        # is package-qualified (import_path_hint set), because
-                        # e.g. bug.AddComment() should resolve to the imported
-                        # package, not a local method named AddComment. Nor,
-                        # for a BARE call, when the file's hit is a method or
-                        # field listed under its bare name (WI-bivin): a bare
-                        # identifier cannot name one.
-                        # WI-surid: nor, on a VALUE, when the file's hit is
-                        # not a method or a func-typed field.
-                        if (
-                            callee_name in local_symbols
-                            and import_path_hint is None
-                            and not (
-                                callee_shape == "identifier"
-                                and local_symbols[callee_name].kind in _GO_MEMBER_KINDS
-                            )
-                            and not (
-                                call_construct == "method"
-                                and not _value_admit(local_symbols[callee_name])
-                            )
-                        ):
-                            callee = local_symbols[callee_name]
+                    # What the shared resolution has no lookup for is bound
+                    # here, on Go's own evidence (ADR-0064: reported as what
+                    # the shared layer lacks): a method of a named type that
+                    # is no struct or interface (``_go_named_type_method``),
+                    # and ``pkg.T(x)`` / ``pkg.V()`` naming a type or a
+                    # function-valued variable (``_go_package_value``).
+                    unshared: Optional[tuple[Symbol, str]] = None
+                    if callee_name and recv_ref is not None and recv_ref.in_tree:
+                        _method = _go_named_type_method(recv_ref, callee_name, tree)
+                        unshared = (_method, resolved_by.RECEIVER_TYPE) if _method else None
+                    elif (
+                        callee_name and package_qualified and full_import_path is not None
+                        and (_package := tree.package_dir(full_import_path)) is not None
+                    ):
+                        _value = _go_package_value(tree.imported(_package, callee_name))
+                        unshared = (_value, resolved_by.IMPORT) if _value else None
+                    elif callee_name and callee_shape == "identifier" and dot_imports and not (
+                        callee_name in local_symbols or package_scope.get(callee_name)
+                    ):
+                        _value = _go_package_value([
+                            s for d in tree.dot_dirs(file_key)
+                            for s in tree.imported(d, callee_name)
+                        ])
+                        unshared = (_value, resolved_by.IMPORT) if _value else None
+                    if unshared is not None:
+                        # A typed bind says so (``resolution_quality``), which
+                        # keeps it out of the receiver-blind magnet demotion.
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=unshared[0].id,
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta=(
+                                {"call_construct": call_construct, "resolution_quality": "typed_receiver"}
+                                if unshared[1] == resolved_by.RECEIVER_TYPE
+                                else {"call_construct": call_construct}
+                            ),
+                            resolved_by=unshared[1],
+                        ))
+                        callee_name = None
+
+                    if callee_name and callee_shape == "identifier":
+                        # Go scoping places a bare name: the caller's file,
+                        # then its package (WI-bivin). A method or field the
+                        # file lists under its bare name is not one a bare
+                        # identifier can name.
+                        _local = local_symbols.get(callee_name)
+                        lookup_result = (
+                            LookupResult(symbol=None)
+                            if _local is not None and _local.kind not in _GO_MEMBER_KINDS
+                            else own_package.lookup(callee_name)
+                        )
+                        if _local is not None and _local.kind not in _GO_MEMBER_KINDS:
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=callee.id,
+                                dst=_local.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
@@ -5456,172 +4799,239 @@ def _extract_edges_from_file(
                                 meta={"call_construct": call_construct},
                                 resolved_by=resolved_by.SAME_FILE,
                             ))
-                        # Check global symbols with disambiguation via ListNameResolver
+                        elif lookup_result.symbol is not None:
+                            # The caller's own package. Several declarations
+                            # there are build-constraint variants of one
+                            # (``p_linux.go`` / ``p_windows.go``): the
+                            # path-sorted first, at ``1/sqrt(N)``.
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                resolution_score=lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta={"call_construct": call_construct},
+                                resolved_by=resolved_by.SAME_MODULE,
+                            ))
+                        # WI-vovum / WI-mafik: bare-identifier call whose name
+                        # may have been dot-imported (``import . "strings"`` +
+                        # ``Contains(...)``). The stub names the first
+                        # dot-imported package; the file's table holds every
+                        # dot import of the tree's packages, which the shared
+                        # resolution reads (``add_open_wildcard``).
+                        elif dot_imports:
+                            source_pkg = dot_imports[0]
+                            ref = ExternalRef(
+                                lang="go",
+                                module_path=source_pkg,
+                                name=callee_name,
+                            )
+                            dst_id = f"go:{source_pkg}:0-0:{callee_name}:unresolved"
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                is_resolved=False,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta={
+                                    "call_construct": "function", "binding": "dot_import",
+                                    "callee_name": callee_name,
+                                },
+                                dst_ref=ref,
+                            ))
+                        # INV-guzuj: a bare name that no local declaration and
+                        # nothing of the caller's package holds still names a
+                        # CALL, so it gets the ``external`` placeholder rather
+                        # than vanishing.
                         else:
-                            # WI-bivin: a BARE call resolves in the caller's own
-                            # package and nowhere else (bar the dot-import
-                            # fallback below); only a selector asks repo-wide.
-                            lookup_result = (
-                                LookupResult(symbol=None)
-                                if receiver_type_is_external
-                                else own_package.lookup(callee_name)
-                                if callee_shape == "identifier"
-                                else resolver.lookup(
-                                callee_name, path_hint=import_path_hint,
-                                admit=_go_package_member if package_qualified else _value_admit,
+                            edges.append(make_unresolved_edge(
+                                "go", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID,
+                                run.execution_id,
+                                call_construct="function",
+                            ))
+                    elif callee_name and typed_local is not None and full_import_path is None:
+                        # WI-jopar: a local the analyzer tracks. Its type, as
+                        # the caller's file writes it, is the stub's
+                        # ``receiver_type_hint``; the shared resolution finds
+                        # the method on that type (or does not). A type from
+                        # outside the module fills the dst slot instead
+                        # (``net/http.Client``), where the catalogue reads it.
+                        if recv_ref is not None and recv_ref.in_tree:
+                            edges.append(make_unresolved_edge(
+                                "go", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                receiver_type_hint=typed_local,
+                                call_construct="method",
+                                stdlib_member_name=_go_library_name(callee_name),
+                            ))
+                        else:
+                            # A local whose type is not known: nothing is
+                            # said of the receiver.
+                            _meta_b: dict[str, object] = {
+                                "call_construct": "method", "receiver": "external",
+                                "callee_name": callee_name,
+                            }
+                            if typed_local:
+                                _meta_b["receiver_type_hint"] = typed_local
+                            if _go_library_name(callee_name):
+                                _meta_b["stdlib_member_name"] = True
+                            # WI-vutav: what THIS read touches, resolved through the
+                            # receiver's binding; the catalogue row cannot see it.
+                            _handle_b = _go_receiver_handle_kind(
+                                node, source, str(alias), import_aliases,
+                                var_types=var_types,
                             )
+                            if _handle_b:
+                                _meta_b["io_target_kind"] = _handle_b
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=f"go:external:0-0:{callee_name}:unresolved",
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                is_resolved=False,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta=_meta_b,
+                            ))
+                    elif callee_name and typed_local is not None:
+                        # A typed local of a type from OUTSIDE this module.
+                        # WI-nunab: an ``*os.File`` receiver IS the handle, so
+                        # its own binding says what it is (``os.Create`` ->
+                        # host_path, ``os.Pipe()`` -> pipe).
+                        _alias = str(alias)
+                        assert recv_ref is not None
+                        _slot = f"{recv_ref.package}.{recv_ref.name}"
+                        _meta_e: dict[str, object] = {
+                            "call_construct": "method", "receiver": "external",
+                            "callee_name": callee_name,
+                            "receiver_type_hint": typed_local,
+                        }
+                        if _go_library_name(callee_name):
+                            _meta_e["stdlib_member_name"] = True
+                        _handle_e = _go_receiver_handle_kind(
+                            node, source, _alias, import_aliases,
+                            var_types=var_types,
+                        )
+                        if _handle_e is None and _slot in _GO_HANDLE_TYPES:
+                            _bound = _go_last_binding(node, source, _alias)
+                            if _bound is not None:
+                                _handle_e = _go_classify_handle_text(_bound[0])
+                        if _handle_e is None and _slot in _GO_CONN_TYPES:
+                            _handle_e = _go_target_kind_from_expression(
+                                node, source, _alias,
+                                import_aliases=import_aliases,
+                                var_types=var_types,
+                                use_line=node.start_point[0] + 1,
                             )
-                            # A bare name: the caller's own package. ``pkg.F()``:
-                            # the import's path (none for the module root). A
-                            # value's hint is the package that made the value,
-                            # a nearness heuristic for where its method lives.
-                            _by = (
-                                resolved_by.SAME_MODULE if callee_shape == "identifier"
-                                else resolved_by.IMPORT
-                                if package_qualified and import_path_hint
-                                else resolved_by.NAME
+                        if _handle_e:
+                            _meta_e["io_target_kind"] = _handle_e
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=f"go:{_slot}:0-0:{callee_name}:unresolved",
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            is_resolved=False,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta=_meta_e,
+                        ))
+                    elif callee_name and recv_ref is not None and recv_ref.in_tree:
+                        # A field's or a call result's type of this tree, as
+                        # the caller's file writes it (or by its import path,
+                        # when the file does not import its package).
+                        edges.append(make_unresolved_edge(
+                            "go", current_function.id, callee_name,
+                            node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            receiver_type_hint=tree.spell(recv_ref, file_key),
+                            call_construct="method",
+                            stdlib_member_name=_go_library_name(callee_name),
+                        ))
+                    elif callee_name and result_unknown:
+                        # The receiver is a call's result whose type is not
+                        # known here (``c.CoreV1().Endpoints(ns).Update()``).
+                        _meta_r: dict[str, object] = {
+                            "call_construct": "method", "receiver": "field_chain",
+                            "callee_name": callee_name,
+                        }
+                        if _go_library_name(callee_name):
+                            _meta_r["stdlib_member_name"] = True
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=f"go:external:0-0:{callee_name}:unresolved",
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            is_resolved=False,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta=_meta_r,
+                        ))
+                    elif callee_name:
+                        # ``pkg.F()`` (``qualifier``: the package as the file
+                        # names it, which its table binds when the package is
+                        # the tree's), a value of a library type, or a value
+                        # nobody could type. The dst names the package or the
+                        # library type when known: the catalogue reads it.
+                        receiver_owner = (
+                            f"{recv_ref.package}.{recv_ref.name}"
+                            if recv_ref is not None else None
+                        )
+                        _meta: dict[str, object] = {
+                            "call_construct": call_construct,
+                            "callee_name": callee_name,
+                        }
+                        if package_qualified:
+                            _meta["qualifier"] = alias
+                        else:
+                            if _go_library_name(callee_name):
+                                _meta["stdlib_member_name"] = True
+                            if callee_name[0].islower() and full_import_path is None:
+                                # An unexported method: of the caller's own
+                                # package, whatever the receiver.
+                                _meta["visibility"] = "unexported"
+                        # WI-lipis: what this call site actually
+                        # touches, where the catalogue row cannot say.
+                        _handle = _go_wrapped_handle_kind(
+                            node, source,
+                            (full_import_path or "").rsplit("/", 1)[-1],
+                            callee_name,
+                            import_aliases=import_aliases,
+                            var_types=var_types,
+                        ) or receiver_handle_kind
+                        if _handle:
+                            _meta["io_target_kind"] = _handle
+                        _first_new = len(edges)
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=(
+                                f"go:{receiver_owner or full_import_path or 'external'}"
+                                f":0-0:{callee_name}:unresolved"
+                            ),
+                            edge_type="calls",
+                            line=node.start_point[0] + 1,
+                            evidence_type="ast_call",
+                            is_resolved=False,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta=_meta,
+                        ))
+                        # WI-ninuz: ``os.OpenFile``'s flags decide
+                        # read vs write, as ``open``'s mode string does.
+                        # A conversion-spelled instantiation (WI-nulig)
+                        # has no ``function`` / ``arguments`` fields.
+                        if node.type == "call_expression":
+                            stamp_io_mode_from_call(
+                                edges, _first_new, node, source, "go",
                             )
-                            if (
-                                not lookup_result.found
-                                and import_path_hint is None
-                                and callee_shape == "identifier"
-                                and dot_imports
-                            ):
-                                # A bare name the ambiguity guard withheld, in a
-                                # file with dot imports: the dot-imported package
-                                # is the binding (see _go_lookup_through_dot_imports).
-                                lookup_result = _go_lookup_through_dot_imports(
-                                    resolver, callee_name, dot_imports, module_path,
-                                )
-                                _by = resolved_by.IMPORT
-                            # INV-fahub's bare-method deferral (defer_bare_method_call
-                            # + an ``enclosing_class`` stamp for the inherited_calls
-                            # Site-1 walker) is NOT applied here, and cannot fire
-                            # (WI-bivin): a bare name resolves in its own package,
-                            # which holds no methods, or through a dot import, which
-                            # accepts only exact / path-hint matches; a selector with
-                            # no hint reaches this lookup only with one candidate
-                            # (the ambiguity guard above takes two or more), an exact
-                            # match. Go has no implicit receiver for Site 1 to
-                            # recover; the stamp would let it bind a bare
-                            # ``Process()`` to an embedded type's method.
-                            # WI-kibah: a hint is package EVIDENCE. A symbol the
-                            # resolver returns from outside the hinted package is
-                            # not the callee: the call is to the hinted package
-                            # and stays unresolved below. (The resolver itself
-                            # withholds a tie of 2+ candidates the hint matched
-                            # none of.)
-                            if (
-                                lookup_result.symbol is not None
-                                and _go_in_hinted_package(
-                                    lookup_result.symbol, import_path_hint,
-                                )
-                            ):
-                                # Scale base confidence by resolver's confidence multiplier
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    resolution_score=lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta={"call_construct": call_construct},
-                                    resolved_by=_by,
-                                ))
-                            # Create an edge for external/unresolved method calls
-                            # This enables linkers to potentially match across languages
-                            elif callee_shape == "selector_expression":
-                                # For s.Method() where Method is external, create unresolved edge
-                                # Use the FULL import path (not stripped) to keep the ID meaningful
-                                unresolved_path = full_import_path if full_import_path else import_path_hint
-                                if unresolved_path:
-                                    # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
-                                    dst_id = (
-                                        f"go:{receiver_owner or unresolved_path}"
-                                        f":0-0:{callee_name}:unresolved"
-                                    )
-                                else:
-                                    # Fallback: use "external" as the path
-                                    dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                                _meta: dict[str, object] = {
-                                    "call_construct": call_construct,
-                                }
-                                # WI-lipis: what this call site actually
-                                # touches, where the catalogue row cannot say.
-                                _handle = _go_wrapped_handle_kind(
-                                    node, source,
-                                    (unresolved_path or "").rsplit("/", 1)[-1],
-                                    callee_name,
-                                    import_aliases=import_aliases,
-                                    var_types=var_types,
-                                ) or receiver_handle_kind
-                                if _handle:
-                                    _meta["io_target_kind"] = _handle
-                                _first_new = len(edges)
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=dst_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    is_resolved=False,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta=_meta,
-                                ))
-                                # WI-ninuz: ``os.OpenFile``'s flags decide
-                                # read vs write, as ``open``'s mode string does.
-                                # A conversion-spelled instantiation (WI-nulig)
-                                # has no ``function`` / ``arguments`` fields.
-                                if node.type == "call_expression":
-                                    stamp_io_mode_from_call(
-                                        edges, _first_new, node, source, "go",
-                                    )
-                            # WI-vovum / WI-mafik: bare-identifier call whose
-                            # name was dot-imported (``import . "strings"`` +
-                            # ``Contains(...)``). Attribute it to the first
-                            # dot-imported package — we don't know which
-                            # specific package exported the symbol, but
-                            # surfacing one of the dot-import paths gives
-                            # downstream linkers the right place to look.
-                            elif callee_shape == "identifier" and dot_imports:
-                                source_pkg = dot_imports[0]
-                                ref = ExternalRef(
-                                    lang="go",
-                                    module_path=source_pkg,
-                                    name=callee_name,
-                                )
-                                dst_id = f"go:{source_pkg}:0-0:{callee_name}:unresolved"
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=dst_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    is_resolved=False,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    meta={"call_construct": "function", "binding": "dot_import"},
-                                    dst_ref=ref,
-                                ))
-                            # INV-guzuj: a bare name that is no local symbol, that
-                            # the resolver placed nowhere (absent, or withheld by
-                            # its ambiguity guard) and that no dot import can
-                            # claim still names a CALL, so it gets the
-                            # ``external`` placeholder rather than vanishing, as
-                            # every other analyzer mints it here (Python:
-                            # INV-foluz). (A name bound in the enclosing
-                            # declaration never gets here: see WI-bivin above.)
-                            # ``callee_shape`` is ``identifier`` on this arm.
-                            else:
-                                edges.append(make_unresolved_edge(
-                                    "go", current_function.id, callee_name,
-                                    node.start_point[0] + 1, PASS_ID,
-                                    run.execution_id,
-                                    call_construct="function",
-                                ))
 
                 # Detect function references passed as arguments
                 # e.g., register(handler), r.Get("/path", ViewIssue)
@@ -5635,23 +5045,25 @@ def _extract_edges_from_file(
                 if args_node and current_function is not None:
                     passed = _extract_function_reference_edges(
                         args_node, source, current_function,
-                        local_symbols, global_symbols, resolver,
-                        node.start_point[0] + 1, edges, run,
+                        local_symbols, node.start_point[0] + 1, edges, run,
                         scoped_vars=var_types,
                         own_package=own_package,
                         bound_names=_bound_names(node),
                         import_aliases=import_aliases,
-                        module_path=module_path,
-                        caller_dir=caller_dir,
+                        tree=tree, file_key=file_key,
                     )
                     # WI-movur: a local function handed to LIBRARY code
                     # (``r.Use(auth)``, ``c.AddFunc(spec, sweep)``). A call
                     # to repository code that takes a callback is ordinary
                     # code with its ordinary edge.
                     own_call = edges[call_edges_start:len(edges) - len(passed)]
+                    # A call reported on a package or a type of this tree
+                    # is the repository's too, bound or not.
                     reg_callee = _go_registration_callee(
                         node, source, import_aliases, _bound_names(node),
-                    ) if own_call and not any(e.is_resolved for e in own_call) else None
+                    ) if own_call and not in_tree_callee and not any(
+                        e.is_resolved for e in own_call
+                    ) else None
                     if reg_callee is not None:
                         callee_name_written, callee_receiver, callee_method = reg_callee
                         for arg_index, arg_node, arg_target in passed:
@@ -5672,9 +5084,7 @@ def _extract_edges_from_file(
             _emit_go_alias_edges(
                 node, source, edges, run,
                 local_symbols=local_symbols, own_package=own_package,
-                import_aliases=import_aliases, module_path=module_path,
-                global_symbols=global_symbols, resolver=resolver,
-                caller_dir=caller_dir,
+                import_aliases=import_aliases, tree=tree, file_key=file_key,
             )
 
         # Detect function references in struct literal fields
@@ -5781,7 +5191,7 @@ def _extract_edges_from_file(
     }
     if attr_imports:
         emit_module_attribute_refs(
-            tree.root_node,
+            parsed.root_node,
             source,
             attr_imports,
             file_pseudo_symbol,
@@ -5805,6 +5215,8 @@ def _extract_edges_from_file(
             is_local_value=lambda base: node_text(base, source) in _bound_names(base),
         )
 
+    if import_scopes is not None:
+        import_scopes[file_key] = _go_import_scope(file_key, import_specs, tree)
     return edges
 
 
@@ -7123,10 +6535,8 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             skip_reason_code=PASS_CRASHED,
         )
 
-    # Read go.mod for module path — used to strip module prefix from
-    # import paths so that the ListNameResolver's suffix matching
-    # operates on repo-relative paths (e.g., "pkg/log" instead of
-    # "github.com/aquasecurity/trivy/pkg/log").
+    # The root go.mod's module path: an import path under it names a
+    # directory of this tree (``_GoTree.package_dir``); any other is a library.
     go_module_path = _read_go_module_path(repo_root)
 
     # Parse go.mod dependencies for tier classification of boundary nodes
@@ -7154,56 +6564,15 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         else:
             files_skipped += 1
 
-    # Build global symbol registry - store ALL symbols with same name
-    # This enables disambiguation using import paths
-    global_symbols: dict[str, list[Symbol]] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            if short_name not in global_symbols:
-                global_symbols[short_name] = []
-            global_symbols[short_name].append(symbol)
-            if symbol.name != short_name:
-                if symbol.name not in global_symbols:
-                    global_symbols[symbol.name] = []
-                global_symbols[symbol.name].append(symbol)
-
-    # WI-bivin: the same declarations grouped by PACKAGE, the scope a bare
-    # identifier resolves in.
+    # WI-bivin: the declarations grouped by PACKAGE, the scope a bare
+    # identifier resolves in; and the packages by directory, for what an
+    # import, a type or a field names (ADR-0064).
     package_scopes = _go_package_scopes(file_analyses)
-
-    # Aggregate field type registry from all files for chained field
-    # access resolution (e.g., r.integration.Notify() → Integration.Notify).
-    field_type_registry: dict[str, dict[str, str]] = {}
-    for analysis in file_analyses.values():
-        for class_name, fields in analysis.class_field_types.items():
-            if class_name not in field_type_registry:
-                field_type_registry[class_name] = {}
-            for fname, ftype in fields.items():
-                field_type_registry[class_name].setdefault(fname, ftype)
-
-    # WI-kuroj: aggregate return-type registry across all files for
-    # chained method call resolution (e.g. x := e.Query() → x has
-    # type Result if Engine.Query returns Result).  First writer wins
-    # (same convention as field_type_registry).
-    method_return_type_registry: dict[str, str] = {}
-    for analysis in file_analyses.values():
-        for key, ret_type in analysis.method_return_types.items():
-            method_return_type_registry.setdefault(key, ret_type)
-    # WI-lalot: the library rows, merged AFTER the analysed ones so an in-repo
-    # declaration always wins. `analyze_go` keeps its own aggregation rather than
-    # using the base class's, so the merge has to happen here too -- go is the
-    # language whose inert rows (net.Listener.Accept, exec.Cmd.Start) this
-    # catalogue exists for.
-    for key, ret_type in load_library_signatures("go").items():
-        method_return_type_registry.setdefault(key, ret_type)
-
-    # Aggregate interface_method_sets across all files for the ambiguity
-    # guard's interface-dispatch preference (go.py ambiguity guard).
-    all_interface_method_sets: dict[str, set[tuple[str, int, int]]] = {}
-    for analysis in file_analyses.values():
-        all_interface_method_sets.update(analysis.interface_method_sets)
+    go_tree = _GoTree.build(
+        file_analyses, go_module_path, str(repo_root) if go_module_path else None,
+        str(repo_root),
+    )
+    import_scopes: dict[str, ImportScope] = {}
 
     # Pass 2: Extract edges, routes, and usage contexts
     all_symbols: list[Symbol] = []
@@ -7220,15 +6589,13 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         all_symbols.extend(analysis.symbols)
 
         edges = _extract_edges_from_file(
-            go_file, parser, analysis.symbol_by_name, global_symbols, run,
-            analysis.import_aliases, module_path=go_module_path,
-            field_type_registry=field_type_registry,
-            interface_method_sets=all_interface_method_sets,
-            method_return_type_registry=method_return_type_registry,
+            go_file, parser, analysis.symbol_by_name, run,
+            analysis.import_aliases, tree=go_tree,
             dot_imports=analysis.dot_imports,
             file_symbols=analysis.symbols,
             package_scope=package_scopes[_go_package_key(go_file, analysis.package_name)],
             usage_contexts=registration_contexts,
+            import_scopes=import_scopes,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes
@@ -7431,4 +6798,5 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         usage_contexts=all_usage_contexts,
         run=run,
         dependency_manifest=go_dep_manifest if go_dep_manifest.entries else None,
+        import_scopes=import_scopes,
     )

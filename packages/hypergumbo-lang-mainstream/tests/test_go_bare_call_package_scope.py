@@ -163,7 +163,10 @@ def test_build_constraint_variants_stay_in_the_package(tmp_path: Path) -> None:
 
 
 def test_a_dot_import_still_reaches_the_imported_package(tmp_path: Path) -> None:
-    """A dot import is the one way a bare name names another package."""
+    """A dot import is the one way a bare name names another package. The
+    analyzer reports the call (ADR-0064): the file's table names the
+    dot-imported directory as a wildcard, and the shared import step binds it
+    there (``test_go_call_facts``), never to ``c``'s namesake."""
     repo = _repo(tmp_path, {
         "a/a.go": "package a\n\nfunc Helper() int { return 1 }\n",
         "c/c.go": "package c\n\nfunc Helper() int { return 3 }\n",
@@ -173,7 +176,9 @@ def test_a_dot_import_still_reaches_the_imported_package(tmp_path: Path) -> None
         ),
     })
     [edge] = _calls_from(repo, "UseB")
-    assert _dst_path(edge) == "a/a.go"
+    assert (edge.is_resolved, (edge.meta or {}).get("binding")) == (False, "dot_import")
+    scope = analyze_go(repo).import_scopes[str(repo / "b" / "use.go")]
+    assert scope.wildcard_modules == ("a/",)
 
 
 def test_a_method_in_the_callers_file_is_not_a_bare_target(tmp_path: Path) -> None:

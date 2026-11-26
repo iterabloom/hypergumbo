@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Go analyzer."""
+import types
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -7,6 +9,40 @@ from unittest.mock import patch, MagicMock
 from hypergumbo_lang_mainstream import go as go_module
 from hypergumbo_core.identity_schemes import SHAPE_ID_PREFIX, STABLE_ID_PREFIX
 from hypergumbo_core.ir import sanitize_id_name_segment
+
+
+def _shared(root: Path) -> "types.SimpleNamespace":
+    """The ``calls`` edges of the whole pipeline over ``root``, shaped as
+    ``analyze_go``'s (``edges`` with ``edge_type``, ``src``, ``dst``,
+    ``evidence_type``, ``confidence``, ``meta``, ``is_resolved``).
+
+    ADR-0064: the analyzer reports a call written on a typed value or on a
+    package, and the shared linkers bind it through the file's import
+    table, so a test of WHICH method such a call reaches runs them too. A
+    stub a linker answered (``superseded_by``) is left out, as the map's
+    readers leave it out.
+    """
+    import json
+    from types import SimpleNamespace
+    from hypergumbo_core.cli import run_behavior_map
+
+    out = root.parent / f"{root.name}.shared.json"
+    run_behavior_map(repo_root=root, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+    edges = [
+        SimpleNamespace(
+            edge_type=e["type"], src=e["src"], dst=e["dst"],
+            evidence_type=(e.get("meta") or {}).get("evidence_type"),
+            confidence=e.get("confidence"), meta=e.get("meta") or {},
+            is_resolved=e.get("is_resolved"), line=e.get("line"),
+        )
+        for e in data["edges"] if not (e.get("meta") or {}).get("superseded_by")
+    ]
+    symbols = [
+        SimpleNamespace(id=n["id"], name=n.get("name"), kind=n.get("kind"), path=n.get("path"))
+        for n in data["nodes"]
+    ]
+    return SimpleNamespace(edges=edges, symbols=symbols)
 
 
 class TestFindGoFiles:
@@ -657,7 +693,7 @@ class TestGoFileReadErrors:
         go_file.write_text("package main\nfunc test() {}")
 
         with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(go_file, parser, {}, {}, run)
+            result = _extract_edges_from_file(go_file, parser, {}, run)
 
         assert result == []
 
@@ -2609,35 +2645,30 @@ class TestGoModulePathHelpers:
             result = _read_go_module_path(tmp_path)
         assert result is None
 
-    def test_strip_module_prefix_local(self) -> None:
-        """Strips module prefix from local import paths."""
-        from hypergumbo_lang_mainstream.go import _strip_module_prefix
+    def test_an_import_under_the_module_names_its_directory(self) -> None:
+        """An import path under the module path names a directory, exactly."""
+        from hypergumbo_lang_mainstream.go import _GoTree
 
-        result = _strip_module_prefix(
-            "github.com/example/trivy/pkg/log",
-            "github.com/example/trivy",
-        )
-        assert result == "pkg/log"
+        tree = _GoTree(module_path="github.com/example/trivy", module_dir="/r", root="/r")
+        assert tree.package_dir("github.com/example/trivy/pkg/log") == "/r/pkg/log"
 
-    def test_strip_module_prefix_exact_match(self) -> None:
-        """Returns empty string when import equals module path."""
-        from hypergumbo_lang_mainstream.go import _strip_module_prefix
+    def test_the_module_path_itself_names_the_root(self) -> None:
+        """The module path itself names the go.mod's directory."""
+        from hypergumbo_lang_mainstream.go import _GoTree
 
-        result = _strip_module_prefix(
-            "github.com/example/trivy",
-            "github.com/example/trivy",
-        )
-        assert result == ""
+        tree = _GoTree(module_path="github.com/example/trivy", module_dir="/r", root="/r")
+        assert tree.package_dir("github.com/example/trivy") == "/r"
 
-    def test_strip_module_prefix_external(self) -> None:
-        """Returns unchanged path for external imports."""
-        from hypergumbo_lang_mainstream.go import _strip_module_prefix
+    def test_an_import_outside_the_module_names_no_directory(self) -> None:
+        """A library's import path, and a path that only shares a prefix
+        string with the module's, name nothing in the tree; nor does any
+        path when the tree has no go.mod."""
+        from hypergumbo_lang_mainstream.go import _GoTree
 
-        result = _strip_module_prefix(
-            "github.com/stretchr/testify/assert",
-            "github.com/example/trivy",
-        )
-        assert result == "github.com/stretchr/testify/assert"
+        tree = _GoTree(module_path="github.com/example/trivy", module_dir="/r", root="/r")
+        assert tree.package_dir("github.com/stretchr/testify/assert") is None
+        assert tree.package_dir("github.com/example/trivyx/pkg") is None
+        assert _GoTree(root="/r").package_dir("github.com/example/trivy/pkg") is None
 
 
 class TestParseGoModDependencies:
@@ -3408,10 +3439,13 @@ class TestGoPackageQualifiedCallResolution:
     """
 
     def test_package_call_not_hijacked_by_local_method(self, tmp_path: Path) -> None:
-        """bug.AddComment() resolves to the imported package, not a local method.
+        """bug.AddComment() is a call of the imported package, not of a local method.
 
         The local-first check must not match ``AddComment`` in local
         symbols (from ``BugCache.AddComment``) and ignore the import alias.
+        With no go.mod the import path ``entities/bug`` names no directory
+        exactly (ADR-0064: a suffix of a path is not evidence), so the call is
+        reported with its qualifier and stays unresolved.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -3463,16 +3497,13 @@ func (bc *BugCache) AddComment(text string) error {
             f"Should have at least one call edge from BugCache.AddComment, "
             f"got edges: {[(e.src, e.dst) for e in result.edges if e.edge_type == 'calls']}"
         )
-        # The target should be the package-level AddComment, not the local method
+        # Reported on the package, never bound to the local method.
         targets = [e.dst for e in call_edges]
-        assert pkg_add.id in targets, (
-            f"Call should resolve to package-level bug.AddComment ({pkg_add.id}), "
-            f"not local BugCache.AddComment. Got targets: {targets}"
-        )
         assert bc_add.id not in targets, (
             "Call should NOT self-resolve to BugCache.AddComment"
         )
-
+        assert [(e.meta or {}).get("qualifier") for e in call_edges] == ["bug"]
+        assert pkg_add.id not in targets
 
 class TestGoGenericInterfaceAssertions:
     """Tests for generic interface assertion detection.
@@ -3603,7 +3634,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         # Find call edges from main function
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
@@ -3648,7 +3679,7 @@ func process(s *Server) {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         process_calls = [e for e in call_edges if "process" in e.src]
@@ -3688,7 +3719,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
@@ -3725,7 +3756,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
@@ -3757,15 +3788,17 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
         run_calls = [e for e in main_calls if "Run" in e.dst]
         assert len(run_calls) >= 1
 
-        assert (run_calls[0].evidence_type == "ast_call" and run_calls[0].meta.get("call_construct") == "method" and run_calls[0].meta.get("resolution_quality") == "typed_receiver"), (
-            f"Expected evidence_type='typed_receiver_call', got '{run_calls[0].evidence_type}'"
+        # ADR-0064: the analyzer reports the call with the receiver's type and
+        # the shared pass binds it on that type (Site 2).
+        assert (run_calls[0].evidence_type == "ast_call_type_inferred" and run_calls[0].meta.get("resolved_by") == "receiver_type"), (
+            f"Expected the shared typed bind, got '{run_calls[0].evidence_type}'"
         )
 
     def test_disambiguates_cross_file_via_global_symbols(self, tmp_path: Path) -> None:
@@ -3803,7 +3836,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
@@ -3847,7 +3880,7 @@ func bar() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         foo_calls = [e for e in call_edges if "foo" in e.src]
@@ -3889,7 +3922,7 @@ func second(s *Client) {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         first_calls = [e for e in call_edges if "first" in e.src]
@@ -3934,7 +3967,7 @@ func send() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         send_calls = [e for e in call_edges if "send" in e.src]
@@ -3965,7 +3998,7 @@ func run() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         run_calls = [e for e in call_edges if "run" in e.src]
@@ -3997,7 +4030,7 @@ func process(name string, s *Server) {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         process_calls = [e for e in call_edges if "process" in e.src]
@@ -4026,7 +4059,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
@@ -4359,7 +4392,7 @@ func cleanup(x interface{}) {
         # The edge should be UNRESOLVED (ambiguous_method_call), not resolved
         # to any specific type
         for edge in close_calls:
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous"), (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.is_resolved is False), (
                 f"x.Close() with 3+ candidates should have evidence_type='ambiguous_method_call', "
                 f"got '{edge.evidence_type}'"
             )
@@ -4415,7 +4448,7 @@ func start(x interface{}) {
 
         # Should be marked as ambiguous_method_call
         for edge in run_calls:
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous"), (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.is_resolved is False), (
                 f"2-candidate method should trigger ambiguity guard, "
                 f"got '{edge.evidence_type}'"
             )
@@ -4478,7 +4511,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
@@ -4572,12 +4605,12 @@ func handle() {
             )
 
     def test_chained_call_operand_ambiguous(self, tmp_path: Path) -> None:
-        """getWriter().Close() with 3+ types → unresolved edge.
+        """getServer().Close() with 3+ types reaches Server.Close.
 
-        When the operand is a call expression (not a simple identifier),
-        the receiver type cannot be inferred. The guard should still fire
-        for method names with 3+ candidates, preventing false-positive
-        edges to arbitrary implementations.
+        ADR-0064: the receiver is a call's result, typed by the callee's
+        DECLARED return type (``*Server``), which the shared pass reads as a
+        typed receiver. (Before, the receiver of a call result was left
+        untyped and the call unresolved.)
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -4599,7 +4632,7 @@ func cleanup() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
@@ -4609,19 +4642,8 @@ func cleanup() {
             f"cleanup should have a call edge for Close(), found: {cleanup_calls}"
         )
 
-        # Should be unresolved — chained-call guard fires before ambiguity guard
-        for edge in close_calls:
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "field_chain"), (
-                f"Chained call Close() with 3+ candidates should be "
-                f"method_call_field_chain (post-Cluster-B fold), got '{edge.evidence_type}'"
-            )
-            assert edge.is_resolved is False, (
-                f"Chained call Close() with 3+ candidates should be unresolved, "
-                f"got is_resolved={edge.is_resolved}"
-            )
-            assert "Server.Close" not in edge.dst
-            assert "Client.Close" not in edge.dst
-            assert "Worker.Close" not in edge.dst
+        assert [e.dst.split(":")[-2] for e in close_calls] == ["Server.Close"]
+        assert close_calls[0].meta.get("resolved_by") == "receiver_type"
 
     def test_chained_call_single_candidate_unresolved(self, tmp_path: Path) -> None:
         """getClient().Update() with 1 candidate → unresolved edge.
@@ -4736,7 +4758,7 @@ func process(resp Response) {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         process_calls = [e for e in call_edges if "process" in e.src]
@@ -4748,7 +4770,7 @@ func process(resp Response) {
 
         # Field chain resolves: resp → Response → Body → Server → Server.Close
         for edge in close_calls:
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "typed_field"), (
+            assert edge.meta.get("resolved_by") == "receiver_type", (
                 f"resp.Body.Close() should resolve via field chain, "
                 f"got '{edge.evidence_type}'"
             )
@@ -4790,7 +4812,7 @@ func closeAll(items []interface{}) {
 
         # Should be unresolved — NOT resolved to any specific type
         for edge in close_calls:
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "ambiguous"), (
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.is_resolved is False), (
                 f"Index operand Close() with 3+ candidates should be "
                 f"ambiguous_method_call, got '{edge.evidence_type}'"
             )
@@ -4828,7 +4850,7 @@ func marshalLocal(m *MarshalEncoder, data interface{}) {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         write_json_calls = [e for e in call_edges if "writeJSON" in e.src]
@@ -4879,7 +4901,7 @@ func runQuery(e *Engine) {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         run_calls = [e for e in call_edges if "runQuery" in e.src]
@@ -4933,7 +4955,7 @@ type Query struct{}
 func (q *Query) Exec() {}
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         run_calls = [e for e in call_edges if "runQuery" in e.src]
@@ -4971,7 +4993,7 @@ func (s *Server) Cleanup() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         cleanup_calls = [e for e in call_edges if "Cleanup" in e.src]
@@ -4987,7 +5009,7 @@ func (s *Server) Cleanup() {
             f"found: {[e.dst for e in close_calls]}"
         )
         for edge in close_calls:
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver"), (
+            assert edge.meta.get("resolved_by") == "receiver_type", (
                 f"Self-method call should use typed_receiver_call, "
                 f"got '{edge.evidence_type}'"
             )
@@ -5097,7 +5119,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         main_calls = [e for e in call_edges if "main:function" in e.src]
@@ -5233,7 +5255,7 @@ func getData(x interface{}) {
         assert len(load_calls) >= 1
         for edge in load_calls:
             assert "Cache.Load" not in edge.dst
-            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("receiver") == "stdlib")
+            assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("stdlib_member_name") is True)
 
 
 class TestGoPrivateMethodScope:
@@ -5302,13 +5324,14 @@ func handleRequest(x interface{}) {
                 f"unresolved, got dst={edge.dst}"
             )
 
-    def test_uppercase_method_still_resolves_globally(self, tmp_path: Path) -> None:
-        """x.Format() (uppercase, non-stdlib) SHOULD still resolve globally.
+    def test_uppercase_method_is_not_bound_by_its_name(self, tmp_path: Path) -> None:
+        """x.Format() on a receiver of unknown type is reported, not bound.
 
-        Exported (uppercase) methods can be called from any package, so
-        global resolution is valid for them. This tests that the private
-        method guard only affects lowercase callees.  Uses 'Format' which
-        is not in the stdlib interface method set (unlike 'String').
+        It used to bind the repository's one ``Format`` by its name. ADR-0064
+        moves that bind to the shared name step, which is off for Go (its
+        screen of standard-library method names is the interfaces' only:
+        ``_GO_LIBRARY_NAMES_SCREENED``), so the call stays unresolved; the
+        stub is not marked unexported (``Format`` starts uppercase).
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -5340,12 +5363,8 @@ func handleFormat(x interface{}) {
             f"found: {handler_calls}"
         )
 
-        # Uppercase non-stdlib method — should resolve to Formatter.Format
-        assert any("Formatter.Format" in e.dst for e in format_calls), (
-            f"Uppercase method x.Format() should resolve to Formatter.Format, "
-            f"found: {[e.dst for e in format_calls]}"
-        )
-
+        assert [e.is_resolved for e in format_calls] == [False]
+        assert "visibility" not in (format_calls[0].meta or {})
 
 class TestGoBuiltinTypeConversions:
     """Tests that Go builtin type conversions don't resolve to user symbols.
@@ -5790,7 +5809,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         # Find the Execute symbol
         execute_sym = next(
@@ -5879,7 +5898,7 @@ func main() {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         # Find the standalone Err function in pkg/log
         log_err = next(
@@ -6684,15 +6703,13 @@ type Any interface{}
     def test_interface_call_via_range_resolves_to_interface_method(
         self, tmp_path: Path
     ) -> None:
-        """Calling a method on a range-loop variable of interface type should
-        resolve to the interface method symbol, not produce an unresolved edge.
+        """A method called on a range-loop variable is reported, not bound by
+        its name.
 
-        When Plugin.Eval, BlockPlugin.Eval, and AllowPlugin.Eval all exist
-        in global_symbols, iterating over ``[]Plugin`` and calling
-        ``p.Eval()`` reaches the ambiguity guard, which would otherwise
-        produce ``go:external:0-0:Eval:unresolved``.  It should instead
-        prefer the interface method ``Plugin.Eval`` because dispatches_to
-        edges will route the slice to concrete implementations.
+        ``p`` (an element of ``[]Plugin``) is not typed by the analyzer, and
+        ADR-0064 deleted the pick of an interface method among the name's
+        holders (it bound ``Plugin.Eval`` by name, whatever ``p`` was): the
+        call stays unresolved, with nothing said of the receiver.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -6727,16 +6744,9 @@ func applyPlugins(plugins []Plugin, data string) string {
             f"applyPlugins should have a call edge for p.Eval(), found: {apply_calls}"
         )
 
-        # The edge should resolve to the interface method Plugin.Eval,
-        # NOT to unresolved
         for edge in eval_calls:
-            assert "unresolved" not in edge.dst, (
-                f"p.Eval() should resolve to Plugin.Eval interface method, "
-                f"not to unresolved. Got dst={edge.dst}"
-            )
-            assert "Plugin.Eval" in edge.dst, (
-                f"p.Eval() should resolve to Plugin.Eval, got dst={edge.dst}"
-            )
+            assert edge.is_resolved is False
+            assert edge.evidence_type != "interface_dispatch"
 
     def test_interface_method_symbols_enable_dispatches_to(
         self, tmp_path: Path
@@ -6951,11 +6961,11 @@ func (r *RetryStage) exec() {
 
 func main() {}
 """)
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         typed_edges = [
             e for e in result.edges
-            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
+            if e.meta.get("resolved_by") == "receiver_type"
         ]
         assert len(typed_edges) == 1
         edge = typed_edges[0]
@@ -6989,11 +6999,11 @@ func (s *Server) handle() {
 
 func main() {}
 """)
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         typed_edges = [
             e for e in result.edges
-            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
+            if e.meta.get("resolved_by") == "receiver_type"
         ]
         assert len(typed_edges) == 1
         assert typed_edges[0].confidence == 0.85
@@ -7022,11 +7032,11 @@ func (a *App) handle() {
 
 func main() {}
 """)
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         typed_edges = [
             e for e in result.edges
-            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "typed_field")
+            if e.meta.get("resolved_by") == "receiver_type"
         ]
         assert len(typed_edges) == 1
         edge = typed_edges[0]
@@ -7241,7 +7251,7 @@ func (d *Dispatcher) Run() string {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         # Verify the interface method symbol exists
         stage_exec = [s for s in result.symbols if s.name == "Stage.Exec"]
@@ -7274,7 +7284,7 @@ func (d *Dispatcher) Run() string {
             f"d.stage.Exec() should resolve to Stage.Exec symbol, "
             f"got dst={exec_edge.dst}"
         )
-        assert (exec_edge.evidence_type == "ast_call" and exec_edge.meta.get("call_construct") == "method" and exec_edge.meta.get("receiver") == "typed_field")
+        assert exec_edge.meta.get("resolved_by") == "receiver_type"
 
     def test_cross_package_interface_param_resolves_to_interface_method(
         self, tmp_path: Path,
@@ -7323,7 +7333,7 @@ func RunStage(s notify.Stage) string {
 }
 """)
 
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         stage_exec = [s for s in result.symbols if s.name == "Stage.Exec"]
         assert len(stage_exec) == 1
@@ -7374,11 +7384,11 @@ func main() {
     s.Run()
 }
 """)
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         typed_calls = [
             e for e in result.edges
-            if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "typed_receiver")
+            if e.meta.get("resolved_by") == "receiver_type"
             and "Server.Run" in e.dst
         ]
         assert len(typed_calls) == 1
@@ -7404,7 +7414,7 @@ func main() {
     go d.Run()
 }
 """)
-        result = analyze_go(tmp_path)
+        result = _shared(tmp_path)
 
         run_calls = [
             e for e in result.edges
@@ -7412,7 +7422,7 @@ func main() {
             and e.edge_type == "calls"
         ]
         assert len(run_calls) >= 1
-        assert any((e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "typed_receiver") for e in run_calls)
+        assert any(e.meta.get("resolved_by") == "receiver_type" for e in run_calls)
 
 
 class TestGoShapeId:
@@ -7928,7 +7938,8 @@ func main() {
 
 class TestINVZuhubConformanceForInterfaceDispatch:
     """WI-kogid: INV-zuhub item 1 conformance for the Go analyzer's
-    short-name interface_dispatch fallback in ``go.py``.
+    short-name interface_dispatch fallback in ``go.py``, which ADR-0064
+    deleted: the tests now pin that no such pick is made.
 
     When ``x.Method()`` cannot be resolved to a typed receiver and the
     short name resolves to >=2 global candidates, the analyzer preferentially
@@ -7973,24 +7984,15 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        iface_edges = [
+        # ADR-0064: the pick of an interface method among the name's holders
+        # is deleted. ``w`` is a package-level variable, which the analyzer
+        # does not type, so ``w.Run()`` is reported with nothing said of
+        # its receiver and stays unresolved.
+        run_calls = [
             e for e in result.edges
-            if e.evidence_type == "interface_dispatch"
+            if e.edge_type == "calls" and e.dst.split(":")[-2] == "Run"
         ]
-        assert len(iface_edges) >= 1, (
-            f"Expected at least one interface_dispatch edge; "
-            f"got edges: {[(e.evidence_type, e.dst) for e in result.edges if e.edge_type == 'calls']}"
-        )
-        for edge in iface_edges:
-            assert edge.confidence == 0.75, (
-                f"Single interface-method candidate is a precision "
-                f"disambiguator — confidence must be 0.75, got "
-                f"{edge.confidence} on edge {edge.dst}"
-            )
-            assert not (edge.meta or {}).get("disambiguation_fallback"), (
-                f"Precision edge must not carry disambiguation_fallback; "
-                f"got meta={edge.meta}"
-            )
+        assert [(e.evidence_type, e.is_resolved) for e in run_calls] == [("ast_call", False)]
 
     def test_multi_interface_method_fallback(
         self, tmp_path: Path,
@@ -8025,25 +8027,15 @@ func main() {
 
         result = analyze_go(tmp_path)
 
-        iface_edges = [
+        # ADR-0064: the pick of an interface method among the name's holders
+        # is deleted. ``w`` is a package-level variable, which the analyzer
+        # does not type, so ``w.Run()`` is reported with nothing said of
+        # its receiver and stays unresolved.
+        run_calls = [
             e for e in result.edges
-            if e.evidence_type == "interface_dispatch"
+            if e.edge_type == "calls" and e.dst.split(":")[-2] == "Run"
         ]
-        assert len(iface_edges) >= 1, (
-            f"Expected at least one interface_dispatch edge; "
-            f"got edges: {[(e.evidence_type, e.dst) for e in result.edges if e.edge_type == 'calls']}"
-        )
-        for edge in iface_edges:
-            assert edge.confidence <= 0.5, (
-                f"Multi interface-method candidates must produce fallback "
-                f"edge with confidence <= 0.5, got {edge.confidence} on "
-                f"edge {edge.dst}"
-            )
-            assert (edge.meta or {}).get("disambiguation_fallback") is True, (
-                f"Fallback edge must carry meta['disambiguation_fallback']"
-                f"=True; got meta={edge.meta}"
-            )
-
+        assert [(e.evidence_type, e.is_resolved) for e in run_calls] == [("ast_call", False)]
 
 class TestGoDocstring:
     """Symbol.docstring on Go callable symbols (INV-jahiv)."""
