@@ -5,12 +5,14 @@
 evidence that chose a call-family edge's target. One fixture line per route:
 
 * ``local m = require("x"); m.f()`` is ``import``;
-* ``a:m()`` on a local whose table is known is ``receiver_type``;
-* ``Account.new()``, looked up under the table the call site names, is
-  ``qualified``;
-* ``self:m()`` with no typed receiver falls to the name lookup and finds a
-  method of the caller's own table: ``own_type``; a bare ``f()`` found by
-  name across the repository is ``name``.
+* ``a:m()`` on a local constructed from a table is ``receiver_type``;
+* ``Account.new()`` on the caller's own local table ``Account``, and a bare
+  call of a ``local function``, are ``lexical_scope``;
+* ``self:m()`` finds a method of the caller's own table: ``own_type``.
+
+Since ADR-0064 the analyzer marks no ``name`` bind: a call of a GLOBAL
+(``Account`` and ``helper2`` of another file) goes out unresolved, for the
+shared linkers (the name step).
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/lua.py
 from __future__ import annotations
@@ -49,6 +51,24 @@ local function run()
   a:deposit(5)
 end
 """,
+    "local.lua": """local Account = {}
+
+function Account.new()
+  return setmetatable({}, {__index = Account})
+end
+
+function Account:deposit(v)
+end
+
+local function helper2()
+end
+
+local function run()
+  local a = Account.new()
+  a:deposit(5)
+  helper2()
+end
+""",
 }
 
 
@@ -71,7 +91,17 @@ def _mark(edges: list[Edge], path: str, line: int, dst_name: str) -> str:
 def test_every_route(tmp_path: Path) -> None:
     edges = _edges(tmp_path)
     assert _mark(edges, "main.lua", 4, "M.greet") == "import"
-    assert _mark(edges, "main.lua", 5, "Account.new") == "qualified"
-    assert _mark(edges, "main.lua", 6, "Account.deposit") == "receiver_type"
+    assert _mark(edges, "local.lua", 14, "Account.new") == "lexical_scope"
+    assert _mark(edges, "local.lua", 15, "Account.deposit") == "receiver_type"
+    assert _mark(edges, "local.lua", 16, "helper2") == "lexical_scope"
     assert _mark(edges, "account.lua", 11, "Account.deposit") == "own_type"
-    assert _mark(edges, "account.lua", 12, "helper2") == "name"
+    # Globals of another file: unresolved, the receiver's type as written.
+    unresolved = {
+        (e.line, e.dst.split(":")[-2]): e.meta for e in edges
+        if e.edge_type == "calls" and not e.is_resolved and ":main.lua:" in e.src
+    }
+    assert set(unresolved) == {(5, "Account.new"), (6, "deposit")}
+    assert unresolved[(6, "deposit")]["receiver_type_hint"] == "Account"
+    assert not any(
+        e.is_resolved for e in edges if e.edge_type == "calls" and e.line == 12 and ":account.lua:" in e.src
+    )

@@ -82,7 +82,7 @@ def test_php_untyped_receiver_is_unresolved_and_this_is_own_type(tmp_path: Path)
         False]
 
 
-def test_lua_untyped_receiver_is_name_and_self_is_own_type(tmp_path: Path) -> None:
+def test_lua_untyped_receiver_is_unresolved_and_self_is_own_type(tmp_path: Path) -> None:
     _write(tmp_path, {"store.lua": (
         "Store = {}\n\n"
         "function Store:persist()\nend\n\n"
@@ -91,7 +91,10 @@ def test_lua_untyped_receiver_is_name_and_self_is_own_type(tmp_path: Path) -> No
     )})
     edges = analyze_lua(tmp_path).edges
     assert _mark(edges, "Store.viaSelf", "Store.persist") == "own_type"
-    assert _mark(edges, "Store.viaOther", "Store.persist") == "name"
+    # ADR-0064: an untyped receiver is not bound by the analyzer; it goes out
+    # unresolved on a receiver, for the shared name step.
+    (other,) = [e for e in edges if e.edge_type == "calls" and e.src.endswith(":Store.viaOther:method")]
+    assert (other.is_resolved, other.meta["call_construct"]) == (False, "method")
 
 
 _CSHARP = {

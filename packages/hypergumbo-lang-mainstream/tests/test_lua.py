@@ -123,9 +123,16 @@ end
         result = analyze_lua(tmp_path)
 
         edges = result.edges
-        # main calls greet
+        # main calls greet. Both are GLOBAL functions: the analyzer does not
+        # bind a global by its name (ADR-0064; the shared name step does, for
+        # a name the file's table binds), so the call goes out unresolved.
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert any(e.dst.endswith("greet:function") for e in call_edges)
+        (greet,) = [e for e in call_edges if e.dst.endswith(":greet:unresolved")]
+        assert greet.src.endswith(":main:function")
+        # A local function is bound by Lua's scoping.
+        make_lua_file(tmp_path, "main.lua", "local function greet() end\nlocal function main() greet() end\n")
+        bound = [e for e in analyze_lua(tmp_path).edges if e.edge_type == "calls" and e.is_resolved]
+        assert [(e.dst.split(":")[-2], e.meta["resolved_by"]) for e in bound] == [("greet", "lexical_scope")]
 
     def test_detect_method_call(self, tmp_path: Path) -> None:
         """Detect method call edges (obj:method())."""
@@ -189,12 +196,11 @@ end
         )
         assert method_edge is not None, "Method call edge to process not found"
         assert direct_edge is not None, "Direct call edge to helper not found"
-        # Untyped method call confidence should be lower than direct call
-        assert method_edge.confidence < direct_edge.confidence
-        # Untyped method call should be <= 0.50 (ambiguous, no receiver type)
-        assert method_edge.confidence <= 0.50
-        # Direct call should remain at 0.85 (name-only but less ambiguous)
-        assert direct_edge.confidence >= 0.80
+        # Neither is bound by its name any more (ADR-0064): an untyped
+        # receiver and a global function go out unresolved, at 0.50.
+        assert not method_edge.is_resolved and not direct_edge.is_resolved
+        assert method_edge.confidence <= 0.50 and direct_edge.confidence <= 0.50
+        assert method_edge.meta["call_construct"] == "method"
 
 
 class TestLuaImportEdges:
@@ -475,8 +481,9 @@ end
         assert process_edge.confidence >= 0.70, (
             f"Typed method call should have confidence >= 0.70, got {process_edge.confidence}"
         )
-        # Evidence type should indicate typed resolution
-        assert (process_edge.evidence_type == "ast_call" and process_edge.meta.get("call_construct") == "method" and process_edge.meta.get("resolution_quality") == "typed")
+        # ``obj`` is the local table itself (an alias): its field, by scope.
+        assert (process_edge.evidence_type == "ast_call" and process_edge.meta.get("call_construct") == "method")
+        assert process_edge.meta["resolved_by"] == "lexical_scope"
 
     def test_untyped_cross_table_method_call_deferred(self, tmp_path: Path) -> None:
         """INV-fahub: an untyped ``obj:method()`` whose short name only
@@ -509,12 +516,14 @@ end
             (e for e in call_edges if "send" in e.dst), None
         )
         assert send_edge is not None, "Call edge to send not found"
-        # Magnet withheld: unresolved (deferred), not a bind to Handler.send.
+        # Magnet withheld: unresolved, not a bind to Handler.send.
         assert not send_edge.is_resolved
         assert "unresolved" in send_edge.dst
         assert send_edge.confidence <= 0.50
-        # Bare-function caller has no owning table → no enclosing_class stamp.
+        # An explicit receiver is not ``self``: no enclosing_class stamp. And
+        # ``send`` is a cosocket method (OPENRESTY_VALUE_METHODS).
         assert (send_edge.meta or {}).get("enclosing_class") is None
+        assert send_edge.meta["stdlib_member_name"] is True
 
     def test_dot_index_assignment_type_tracking(self, tmp_path: Path) -> None:
         """Track type from dot_index_expression assignment (e.g., ngx.socket.tcp).
@@ -548,9 +557,12 @@ end
             (e for e in call_edges if "send" in e.dst), None
         )
         assert send_edge is not None, "Call edge to send not found"
-        # Should resolve with higher confidence because sock = ngx_socket.tcp()
-        # returns ngx_socket (the table that has :send defined)
-        assert (send_edge.evidence_type == "ast_call" and send_edge.meta.get("call_construct") == "method" and send_edge.meta.get("resolution_quality") == "typed")
+        # ``ngx_socket.tcp()`` returns whatever ``tcp`` returns; the value of a
+        # call is not typed by the table the function sits in (that was a
+        # guess: ``local x = utils.get_conf()`` is no ``utils``). Unresolved,
+        # with no receiver type.
+        assert not send_edge.is_resolved
+        assert "receiver_type_hint" not in send_edge.meta
 
     def test_constructor_pattern_type_tracking(self, tmp_path: Path) -> None:
         """Track type from constructor call (MyClass:new()).
@@ -586,6 +598,7 @@ end
         assert speak_edge is not None, "Call edge to Animal.speak not found"
         # Constructor pattern should resolve type: dog → Animal
         assert (speak_edge.evidence_type == "ast_call" and speak_edge.meta.get("call_construct") == "method" and speak_edge.meta.get("resolution_quality") == "typed")
+        assert speak_edge.meta["resolved_by"] == "receiver_type"
         assert speak_edge.confidence >= 0.70
 
     def test_type_tracking_does_not_affect_direct_calls(self, tmp_path: Path) -> None:
@@ -593,7 +606,7 @@ end
         from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
-function helper()
+local function helper()
     return 42
 end
 
@@ -889,13 +902,13 @@ return M
 
 
 class TestLuaBareMethodMagnetGate:
-    """INV-fahub: a bare / implicit-``self`` / untyped-receiver call whose short
-    name only *suffix*-matches a method of a DIFFERENT Lua table must not bind a
-    ``calls`` edge to that unrelated def (a magnet: dozens of call sites → one
-    arbitrary def). Both name-lookup magnet paths — the untyped ``obj:method()``
-    name-only fallback and the direct ``func()`` lookup — defer such a call to
-    the Site-1 ``inherited_calls`` walker via an ``enclosing_class`` hint, while
-    same-table implicit calls and free functions still bind directly.
+    """INV-fahub: a bare / untyped-receiver call whose short name matches a
+    method of a DIFFERENT Lua table must not bind a ``calls`` edge to that
+    unrelated def (a magnet: dozens of call sites → one arbitrary def). Since
+    ADR-0064 no call is looked up by its name at all: a bare call is a local
+    or a global, ``self:m()`` is the enclosing table's own member, and
+    anything else goes out unresolved. Lua has no implicit receiver, so a bare
+    call carries no ``enclosing_class``.
     """
 
     def test_bare_direct_cross_table_method_deferred(self, tmp_path: Path) -> None:
@@ -936,7 +949,8 @@ end
             and e.dst.endswith(":delete:unresolved")
         ]
         assert len(deferred) == 1, [e.dst for e in result.edges if "boot" in e.src]
-        assert (deferred[0].meta or {}).get("enclosing_class") == "Controller"
+        # A bare ``delete()`` is a global (Lua has no implicit ``self``).
+        assert (deferred[0].meta or {}).get("enclosing_class") is None
 
     def test_untyped_method_call_cross_table_deferred(self, tmp_path: Path) -> None:
         """Path 1 (``obj:method()`` name-only fallback): an untyped
@@ -976,12 +990,16 @@ end
             and e.dst.endswith(":delete:unresolved")
         ]
         assert len(deferred) == 1, [e.dst for e in result.edges if "remove" in e.src]
-        assert (deferred[0].meta or {}).get("enclosing_class") == "Controller"
+        # ``x`` is a parameter, not ``self``: no enclosing_class; a call on a
+        # receiver, and ``delete`` is a shared-dictionary method.
+        assert (deferred[0].meta or {}).get("enclosing_class") is None
+        assert deferred[0].meta["call_construct"] == "method"
+        assert deferred[0].meta["stdlib_member_name"] is True
 
-    def test_bare_direct_same_table_method_still_binds(self, tmp_path: Path) -> None:
-        """Recall guard (path 2): a bare ``helper()`` inside ``Controller:boot``
-        that suffix-matches a method of its OWN table (``Controller.helper``)
-        still resolves — the gate only withholds CROSS-table magnets."""
+    def test_bare_direct_same_table_method_is_not_bound(self, tmp_path: Path) -> None:
+        """A bare ``helper()`` inside ``Controller:boot`` is the GLOBAL
+        ``helper``, not ``Controller.helper``: Lua has no implicit receiver.
+        (It was bound to the table's method before ADR-0064.)"""
         from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "controller.lua", """
@@ -1005,7 +1023,7 @@ end
             if e.edge_type == "calls" and e.dst == helper.id
             and "boot" in e.src and e.is_resolved
         ]
-        assert len(resolved) == 1, [
+        assert resolved == [], [
             (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
         ]
 
@@ -1039,20 +1057,19 @@ end
         assert len(resolved) == 1, [
             (e.dst, e.is_resolved) for e in result.edges if "boot" in e.src
         ]
-        # Path-1 (name-only) bind, not typed resolution.
-        assert resolved[0].meta.get("call_construct") == "function"
+        # The enclosing table's own member, on the implicit receiver.
+        assert resolved[0].meta.get("call_construct") == "method"
+        assert resolved[0].meta["resolved_by"] == "own_type"
 
     def test_bare_free_function_from_method_still_binds(self, tmp_path: Path) -> None:
         """Recall guard: a bare ``greet()`` inside ``Controller:boot`` binds to a
-        free FUNCTION (kind ``function``, not ``method``) even though the caller
-        has an enclosing table — the gate keys on candidate kind, so callable
-        free functions are never withheld."""
+        local FUNCTION even though the caller has an enclosing table."""
         from hypergumbo_lang_mainstream.lua import analyze_lua
 
         make_lua_file(tmp_path, "main.lua", """
 local Controller = {}
 
-function greet()
+local function greet()
     return "hi"
 end
 
