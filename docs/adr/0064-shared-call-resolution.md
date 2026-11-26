@@ -186,6 +186,58 @@ Batch 5a's judge found the linkers binding a typed call to the LAST overload of 
 
 **What is still wrong and why.** The wrong-both-times edges, and most wrong new ones (of 15 newly resolved per language 9, 8 and 6 were right, read before the recovery linker's fix below, which removed six of Kotlin's seven wrong ones), need what was not built: the arguments' types (`String` against `byte[]`, a lambda's shape), a call's explicit type arguments (`Policy.Timeout<T>(..)` is the generic overload), and the overloads of a library supertype (`InputStream.read(byte[])` is the callee where the repository declares only `read(byte[], int, int)`). Kotlin's one right-to-wrong edge is a two-parameter overload taking a trailing lambda "exactly" by count where the right one substitutes a default. The recovery linker, once it chose by count, added second edges for other receivers' calls of the same name (18 wrong of 19 read); it now leaves a stub alone when the caller already reaches an overload of that name on the hinted class.
 
+## What batch 5b built and measured (step 5b; perl, ruby, lua, go; python follows on its own)
+
+Maps of 11 repositories (git's Perl, postgresql's test tree, openssl's util; postal, two of mastodon's trees; kong, pandoc's Lua engine; caddy, logrus, pgx) before (dev ed0583978) and after (the batch branch at 5b5d0304b). Samples are drawn with one seed from what MOVED and were read in the source by a judge given call and target only, shuffled, not told which side a pair came from.
+
+**The five languages of the batch are not one family.** The plan grouped them as "path-based imports". An inventory of each analyzer, made before any design, says otherwise: a Go import names a DIRECTORY, a Lua `require` a file, and Ruby and Perl bind nothing by `require` / `use` at all: Ruby finds a constant through the enclosing modules (C#'s rule), Perl a sub in its package, where packages do not nest (Java's rule). So two adapters hand over a table of namespaces and two a table of files, and Python (a table of files) is its own pull request: its first round lost 176 resolved calls on this repository's own map, 15 of 15 read right before, because scripts reach `scripts/lib` through a `sys.path.insert` the exact module lookup did not read; the gates of this repository read those edges.
+
+**The adapters.** Each analyzer binds a call itself only on what the language's own rule gives it in hand, and reports the rest with facts:
+- Perl: a call that writes its package in full (`Pkg::f()`, `Pkg->m()`, a value typed by `Pkg->new` or `$self`), by the exact key; `use M qw(f)` and M's `@EXPORT` fill the table, and the shared lookup binds a bare call through it or to the caller's own package. Perl symbols now record `qualified_name` (the value their stable id already hashed: no id moved).
+- Ruby: a send to `self` whose method the enclosing class declares in the same file, and `Const.m` / `Const.new` after Ruby's constant lookup; everything else goes to the hierarchy walk with `enclosing_class`, `qualifier` or `receiver_type_hint`. The table is empty: `require` binds no name.
+- Lua: a local function in scope (a scope binder, the manual's section 3.5), a field of what a required file RETURNS, `self:f()` on the enclosing table, a local built with `R.new()` / `setmetatable`. The caller of a call is found by position, where it was found by name (83 call sites had the wrong caller).
+- Go: `pkg.F()` and a typed receiver go out with `qualifier` and `receiver_type_hint`, and the table binds each import to its directory, found exactly from the root `go.mod`; a path outside the module is a library and is not recorded (before, the import path's last component was matched against directory names, with no test of in or out of the module).
+Deleted in all four: the run-wide name lookup, last-wins and first-candidate tables, directory-suffix matching. `go.py` lost 525 lines net; `perl.py`, `ruby.py` and `lua.py` grew by 159, 30 and 274 (export and import readers, a screen, a scope binder).
+
+**The name step** is on for Lua and off for the other three. Lua bound 3,282 of its 3,627 calls by name alone; its adapter brings a screen of the standard library, LuaJIT and OpenResty names, and with the step on 411 binds remain, all calls on a receiver: of 15 read, 12 right, 2 wrong (methods of a heap library's and the Postgres client's objects), 1 not decidable from the source. Ruby was measured with it on (513 binds; 7 right of 15, the wrong ones a Rails model's columns and associations bound to the one class with a method of that name) and Go (457; 12 right of 15, the wrong ones standard-library methods its screen of interface names does not hold); for Perl it does nothing (subs are functions; the step binds methods). The Ruby and Lua screens were written without the documentation at hand and are not checked against it.
+
+**What the shared layer lacked, built in the batch** (each with a test that fails without it):
+- A module that is a directory. In a table of files a module written with a trailing slash means the files directly in it, and the caller's own directory is a scope after its file (`ImportScope.own_namespace`; `type_visibility.module_keys`). Go's package.
+- A method declared outside its type's file belongs to the type its declared name says, in its directory when two packages share that name. The method index gave it to the first type of that short name in the run: on caddy, `reverseproxy.Handler`'s methods in sibling files went to another package's `Handler` (16 typed calls open, 2 bound to an interface method of a third type; 4 wrong `dispatches_to` edges gone, 3 right ones new).
+- An analyzer that hands over a table is a declared input of the inherited-calls linker (Perl and Lua were not), derived by a test from who builds an `ImportScope`.
+And one thing NOT handed over: Lua's table binds no name. With its require bindings in it, the import step bound 2 calls to local functions a module does not export, and the name step, finding that a module does not declare a name, bound the one function of that name anywhere: 9 wrong of 10 read. The Lua analyzer resolves a require on what the file returns, which the linkers do not model.
+
+**Result on the 11 repositories, resolved `calls` before and after:** Go 9,352 and 10,531; Lua 3,627 and 3,655; Perl 2,898 and 2,859; Ruby 1,964 and 2,008. By mark: Go `name` 1,425 to 0, `import` 1,081 to 1,687, `receiver_type` 4,256 to 6,264; Lua `name` 3,282 to 411, `lexical_scope` 0 to 1,800, `import` 0 to 1,229; Perl `name` 731 to 0, `same_module` 0 to 507, `import` 0 to 201; Ruby `name` 362 to 0, `own_type` 1,394 to 1,810.
+
+**What moved, as judged** (15 call sites per row unless fewer exist):
+
+| | Perl | Ruby | Lua | Go |
+|---|---|---|---|---|
+| resolved before, not now (all) | 67 | 99 | 1,073 | 604 |
+| ... of 15: right before | 8 | 0 | 1 | 5 |
+| different target (all) | 26 | 1 | 329 | 291 |
+| ... of 15: wrong before, right now | 15 | 1 of 1 | 13 | 15 |
+| ... of 15: wrong both times, or not decidable now | 0 | 0 | 2 | 0 |
+| not resolved before, resolved now (all) | 28 | 143 | 1,101 | 1,783 |
+| ... of 15: right | 15 | 15 | 15 | 15 |
+
+No sampled edge went from right to wrong. Lua's counts include the 83 call sites whose caller moved.
+
+**Nothing else moved.** Ten repositories of languages outside the batch (knex, hocuspocus, mini-redis, jedis, detekt-core, Dapper, koel, and three Python trees) are identical in every edge and every symbol. In the four languages no declared symbol changed but for Perl's new `qualified_name`; edges other than calls are identical except the seven `dispatches_to` edges on caddy named above.
+
+**What is lost and why** (each filed with its count):
+- Perl: the indirect-object call `throw Error::Simple(..)`, which the grammar reads as a bare call (7 of the 8 right losses; 19 edges); Perl methods are invisible to the linkers (subs are functions, `use parent` / `@ISA` are not read, there is no walker: 96 `SUPER` and own-class stubs stay open).
+- Go: receivers the analyzer does not type: range variables, the result of an interface method, a two-value return (the 5 right losses); a type of a package the caller does not import cannot be named in a hint (27); a directory mixes a package, its `_test` package and its test files (8 calls tied on pgx).
+- Lua: a table is no type symbol and has no walker (232 stubs with a type or an own table stay open); a field assigned a function (`M.f = function`) and `function a.b.c()` make no symbol; globals have no form in the table.
+- Ruby: a send to `self` that is an `attr_reader` finds no field step in the walk (53 stubs); 84 of postal's 283 files declare no symbol and emit nothing.
+- The name step's fall-through for a module qualifier whose module lacks the name (built for Rust's inline modules) is the rule that misbound Lua; Go reports the same shape unmeasured. It makes no bind on the five repositories of the earlier batches checked.
+
+**What the rollout rules become.**
+- Inventory first. One reader per analyzer, facts with `file:line` and no proposals, before the design: it is what showed that the batch's premise was wrong for two of its five languages, and each adapter's brief was written from it.
+- "Delete what the pass replaced" needs the measurement of what it replaced. I briefed Python to delete its unique-suffix module match as a guess; on this repository that removed right edges only. A rule the language itself states in the file (a `sys.path.insert`) is evidence to read, not a guess to delete.
+- A list of library names that nothing reads is not kept (Ruby's Rails names), and a list written from memory is said to be so.
+- A language that is not green is pulled and does not hold the batch: Python.
+
 ## Open for the owner
 
 **O1. What a name-only bind becomes** (ruling 4's "then decide"). The sample: with several holders of the name, 57 wrong of 120; with one holder, 10 wrong of 96, nine of the ten being calls that leave the repository.
@@ -194,6 +246,7 @@ Batch 5a's judge found the linkers binding a typed call to the LAST overload of 
 - (c) Keep binding and lower the confidence of a `name` bind. Not recommended: the wrong edge stays in the graph, and a reader has to know to filter on a number to avoid following it. Which consumers (slice, dead-code, taint) filter on confidence today was not checked for this ADR.
 - *Measured by the pilot (see the section above):* (a), with the part of (b) the call facts support, is what the pilot branch does for JavaScript / TypeScript and Rust; C# has no name bind at all. It is one linker (`single_holder_name`) to remove or to widen once this is decided.
 - *Measured by batch 5a:* the name step is on for Kotlin (binds on calls nothing resolved before: 14 right of 15) and off for PHP, where it was measured on and bound calls on values a framework call returned (2 right of 15 new binds).
+- *Measured by batch 5b:* on for Lua (12 right, 2 wrong, 1 not decidable of 15 binds read; the wrong ones are methods of third-party library objects) and off for Ruby (measured on: 7 right of 15), Go (12 of 15; no screen of the standard library's concrete methods) and Perl (it binds nothing there). So far: on for JavaScript / TypeScript, Rust, Kotlin and Lua; off for C#, Java, PHP, Ruby, Go and Perl.
 - Whether (a) is applied in one PR across all analyzers (a refusal in the shared lookup; it moves about 20,000 edges at once, before any language has the pass to win them back) or per language in its batch is part of this decision. Recommended: per batch, so that each language's edges move once.
 
 **O2. `resolved_by`: a field of `Edge`, or the `meta` key it is today.** ADR-0024's fold-residue rule 3 promotes a key written by two or more producer modules to a field; this one is written by about 90. `call_construct`, written by 25, was left in `meta`. Every creation site passes it as a keyword to `Edge.create`, so no producer changes either way; the schema does (a field is an addition: patch under the 0.x rule). Recommended: a field, in the step 4 PR, when the first reader (the magnet detector, WI-topit) starts to depend on it.
