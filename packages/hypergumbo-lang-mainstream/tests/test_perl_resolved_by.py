@@ -9,7 +9,10 @@ evidence that chose a call-family edge's target. One fixture line per route:
 * ``$self->helper()`` (``$self`` typed by ``my $self = shift``) and
   ``$s->run()`` (``$s`` typed by ``Svc->new``) are ``receiver_type``;
 * ``shift->helper()``, the invocant itself, is ``own_type``;
-* a bare ``far_fn()`` the resolver found by name is ``name``.
+* a bare ``far_fn()`` is not bound by the analyzer (ADR-0064): it goes out as a
+  stub for the shared linkers, which look for it in ``Main`` and the file's
+  ``use`` lines (``test_perl_call_facts.py``). It was bound by name to
+  ``Far::far_fn``, which Perl does not call from package ``Main``.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/perl.py
 from __future__ import annotations
@@ -72,5 +75,6 @@ def test_every_route_of_one_file(tmp_path: Path) -> None:
     assert _mark(edges, 10, "Svc..new") == "qualified"
     assert _mark(edges, 11, "Svc..run") == "receiver_type"
     assert _mark(edges, 12, "Far..far_fn") == "qualified"
-    assert _mark(edges, 13, "Far..far_fn") == "name"
+    assert not [e for e in edges if e.line == 13 and e.is_resolved]
+    assert [e.dst for e in edges if e.line == 13] == ["perl:external:0-0:far_fn:unresolved"]
     assert _mark(edges, 14, "Svc..run") == "qualified"
