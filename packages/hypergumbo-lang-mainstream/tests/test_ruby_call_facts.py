@@ -23,7 +23,7 @@ linkers decide through the file's table (an empty one, of namespaces):
   the class's FULL path;
 * a library class's instance: ``receiver_type_hint`` as written;
 * any receiver nobody can type: nothing, and ``stdlib_member_name`` when Ruby's
-  core or Rails defines the name.
+  core defines the name.
 
 The first part pins each route at the analyzer; the second runs the whole
 pipeline with a NAMESAKE in another namespace or file beside each target, so
@@ -38,7 +38,6 @@ from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.import_scope import MODULES_ARE_NAMESPACES
 from hypergumbo_core.ir import Edge
 from hypergumbo_lang_mainstream.ruby import (
-    _RAILS_METHOD_NAMES,
     _RUBY_CORE_METHOD_NAMES,
     _RUBY_KERNEL_NAMES,
     analyze_ruby,
@@ -317,7 +316,7 @@ def test_an_untyped_receiver_carries_the_screen(tmp_path: Path) -> None:
     _, edges = _calls(tmp_path, {"a.rb": (
         "def go(x)\n"
         "  x.each\n"
-        "  x.where\n"
+        "  x.merge\n"
         "  x.frobnicate\n"
         "end\n"
     )})
@@ -328,13 +327,13 @@ def test_an_untyped_receiver_carries_the_screen(tmp_path: Path) -> None:
     assert "stdlib_member_name" not in plain.meta
 
 
-def test_the_screen_is_three_documented_lists() -> None:
-    """Kernel's names are core names; Rails adds names the core does not
-    define (``where``, ``blank?``)."""
+def test_the_screen_is_the_core_reference_and_no_framework() -> None:
+    """Kernel's names are core names. A framework's names (Rails ``where``,
+    ``find_by``, ``blank?``) are not the language's library and are not in it."""
     assert _RUBY_KERNEL_NAMES <= _RUBY_CORE_METHOD_NAMES
     assert {"puts", "require", "system", "respond_to?"} <= _RUBY_KERNEL_NAMES
     assert {"each", "map", "merge", "strip", "read", "call"} <= _RUBY_CORE_METHOD_NAMES
-    assert {"where", "find_by", "blank?", "present?"} <= _RAILS_METHOD_NAMES - _RUBY_CORE_METHOD_NAMES
+    assert not {"where", "find_by", "blank?", "present?"} & _RUBY_CORE_METHOD_NAMES
 
 
 def test_every_ruby_file_hands_over_an_empty_table_of_namespaces(tmp_path: Path) -> None:
