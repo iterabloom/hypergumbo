@@ -8,8 +8,8 @@ This analyzer uses tree-sitter to parse Lua files and extract:
   declaration enclosing the call, found by its POSITION (INV-mozas); a call
   outside every function (module-level setup code, or a function literal
   bound to a module-level local or table field) takes the file symbol
-- require statements (imports), and per file the table of what its
-  chunk-level ``require`` locals bind (``AnalysisResult.import_scopes``)
+- require statements (imports), and per file a table for the shared call
+  resolution that binds no name (``_import_scope`` says why)
 - One ``file`` symbol per module, plus per-symbol identity (``stable_id``;
   a function nested in another hashes the enclosing functions, INV-fabih,
   ``shape_id``) and metrics (cyclomatic complexity, line span)
@@ -68,8 +68,9 @@ for ``self``, ``receiver_type_hint`` for a constructed receiver,
 for a name the screens of the standard library (``LUA_BASIC_FUNCTIONS``,
 ``LUA_LIBRARY_TABLES``, ``LUA_VALUE_METHODS``) or of LuaJIT / OpenResty
 (``LUAJIT_OPENRESTY_TABLES``, ``OPENRESTY_VALUE_METHODS``) hold. The shared
-linkers decide those through the file's table; the last of them, the name
-step (``single_holder_name``), runs for Lua files because the table says the
+linkers decide those; the file's table binds no name (``_import_scope``), so
+the one that can act on a Lua stub is the name step (``single_holder_name``),
+for a call on a receiver: it runs for Lua files because the table says the
 names are screened (``LIBRARY_NAMES_SCREENED``).
 
 Not bound, and why: a call of a GLOBAL function or a field of a global table
@@ -92,7 +93,6 @@ from __future__ import annotations
 
 import time
 import warnings
-from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
@@ -1299,7 +1299,7 @@ def _report(
       = table.insert``); a module the name comes from as ``module_hint``.
     * ``M.f()`` / ``M:f()`` on a ``require`` binding: ``f``, the module as
       ``module_hint`` (and ``dst_ref``), and, for a module of the tree,
-      ``qualifier=M`` (the linkers ask the file's table what ``M`` is).
+      ``qualifier=M`` (a fact of the call; the file's table binds no ``M``).
     * ``self:f()`` the own table had no ``f``: ``enclosing_class=T``.
     * a constructed receiver: ``receiver_type_hint=R`` (as written).
     * ``x:m()`` on any other receiver: ``m``, ``call_construct="method"``,
@@ -1371,54 +1371,28 @@ def _module_of(meant: _Meant | None) -> str | None:
     return meant[2] if meant is not None and meant[0] == "module" else None
 
 
-def _import_scope(fa: "FileAnalysis", calls: _LuaCalls) -> tuple[ImportScope, Counter[str]]:
-    """The file's table for the shared call resolution (ADR-0064), and the
-    count of what went in and what was left out, by reason.
+def _import_scope() -> ImportScope:
+    """A file's table for the shared call resolution (ADR-0064): files as its
+    kind of module, the library's names screened, and NO binding.
 
-    A module is a FILE of the tree (``_module_names``), spelled as
-    ``Symbol.path``. Only a chunk-level ``local`` is recorded, since the
-    table has no scopes: ``local M = require("a.b")`` is
-    ``add_namespace(<file>, "M")``; ``local f = require("a.b").f`` and ``local
-    f = M.f`` (``M`` such a binding) are ``add_named(<file>, "f", alias)``. A
-    ``require`` of a library, of a name two files answer, or bound elsewhere
-    (inside a function, a bare ``require "x"`` statement, a global
-    ``X = require "x"``, a field) is left out and counted. Every file gets a
-    table, an empty one too: it says this analyzer hands its calls over.
+    Every file gets one: its presence says this analyzer hands its unbound
+    calls over, and that the name step may run for them. It binds no name
+    because Lua's export rule is what a module file RETURNS (``return M``,
+    ``return {f = f}``), and the analyzer already binds a call through a
+    ``require`` on that rule (``_LuaCalls``). The linkers do not model it:
+    they take "the file declares a function of that name", which on kong bound
+    ``reports.log(ctx)`` to the module's ``local function log`` while the
+    module exports ``log = function(ctx) ... end``, and ``endpoints.not_found()``
+    to a local function the module does not export; and where the module
+    declares no such name, the name step bound the one function of that name
+    anywhere in the tree (9 wrong of 10 read: ``rand.random_string()``, a field
+    the module fills by assignment). With no binding, a call through a
+    ``require`` that the analyzer could not bind stays unresolved: unresolved
+    beats a guess. The stub keeps its ``qualifier``, a fact of the call.
     """
-    scope = ImportScope(
+    return ImportScope(
         module_kind=MODULES_ARE_FILES, library_names_screened=LIBRARY_NAMES_SCREENED,
     )
-    counts: Counter[str] = Counter()
-    recorded: set[int] = set()
-    root = fa.tree.root_node  # type: ignore[attr-defined]
-    for entry in fa.scopes.declared_in(root):
-        if entry.form != "variable" or entry.value is None:
-            continue
-        meant = calls.denote_value(fa, entry.value)
-        if meant is not None and meant[0] == "module" and meant[1] is not None:
-            scope.add_namespace(meant[1], entry.name)
-            counts["add_namespace"] += 1
-        elif (
-            meant is not None and meant[0] == "member" and meant[1][0] == "module"
-            and meant[1][1] is not None
-        ):
-            scope.add_named(meant[1][1], meant[2], alias=entry.name)
-            counts["add_named"] += 1
-        else:
-            continue
-        recorded.update(n.id for n in iter_tree(entry.value) if _require_module(n, fa.source))
-    for node in iter_tree(root):
-        literal = _require_module(node, fa.source)
-        if literal is None or node.id in recorded:
-            continue
-        found = calls.modules.get(literal.replace("/", "."), [])
-        counts[
-            "require left out: library" if not found
-            else "require left out: two files answer the name" if len(found) > 1
-            else "require left out: not a chunk-level local"
-        ] += 1
-    counts["require recorded"] = len(recorded)
-    return scope, counts
 
 
 class LuaAnalyzer(TreeSitterAnalyzer):
@@ -1527,7 +1501,7 @@ class LuaAnalyzer(TreeSitterAnalyzer):
             if _df_config is not None:
                 annotate_dataflow(edges, fa.tree, fa.source, _df_config)
             all_edges.extend(edges)
-            import_scopes[fa.path], _ = _import_scope(fa, calls)
+            import_scopes[fa.path] = _import_scope()
 
         run.files_analyzed = files_analyzed
 
