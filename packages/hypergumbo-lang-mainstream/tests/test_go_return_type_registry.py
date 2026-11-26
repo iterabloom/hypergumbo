@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for Go return-type registry (history: WI-kuroj, INV-dihos).
 
-The return-type registry enables chained receiver-type resolution:
-when ``x := e.Query()`` and ``e`` has type ``Engine``, the registry
-maps ``Engine.Query → Result`` so ``x`` gets type ``Result`` and a
-subsequent ``x.Rows()`` resolves to ``Result.Rows``.
+A callee's declared return type types a binding to its call: when
+``x := e.Query()`` and ``e`` has type ``Engine``, ``Engine.Query``'s declared
+``Result`` (read in its own file, spelled in the caller's: ``_GoTree``) types
+``x``, and ``x.Rows()`` is reported with ``receiver_type_hint="Result"`` for
+the shared pass to bind (ADR-0064).
 
 These tests exercise:
 1. ``_go_return_type_from_signature`` — the signature parser
-2. Integration via ``analyze_go`` — chained method calls produce
-   ``typed_receiver_call`` edges
+2. ``_GoTree.ref`` / ``spell`` — a type read in one file, written in another
+3. Integration via ``analyze_go`` — chained method calls are reported with
+   the receiver's type
 """
 
 from __future__ import annotations
@@ -21,9 +23,19 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_lang_mainstream.go import (
-    _bare_go_type,
+    _GoTree,
+    _GoTypeRef,
     _go_return_type_from_signature,
 )
+
+
+def _hints(analysis, caller: str, callee: str) -> list:
+    """The ``receiver_type_hint`` of each call ``caller`` makes to ``callee``."""
+    return [
+        (e.meta or {}).get("receiver_type_hint") for e in analysis.edges
+        if e.edge_type == "calls" and f":{caller}:" in e.src
+        and e.dst.split(":")[-2].split(".")[-1] == callee
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +196,8 @@ def go_available():
 
 class TestGoReturnTypeRegistryIntegration:
     """End-to-end: analyze Go code with chained method calls and
-    verify that the return-type registry enables ``typed_receiver_call``
-    edges for the chained call.
+    verify that a callee's declared return type types the chained call's
+    receiver.
 
     The unit tests above cover what the registry holds; these cover whether
     the call-site lookup ever reaches it. That lookup must unwrap the
@@ -241,25 +253,10 @@ func main() {
         analysis = analyze_go(repo)
         assert not analysis.skipped
 
-        # Find edges where src contains "main" and dst contains "Result.Rows"
-        chained_edges = [
-            edge for edge in analysis.edges
-            if "main" in edge.src
-            and "Result.Rows" in edge.dst
-            and edge.edge_type == "calls"
-        ]
-        assert len(chained_edges) >= 1, (
-            f"Expected a call edge from main to Result.Rows via chained "
-            f"return-type resolution; got edges: "
-            f"{[(e.src, e.dst, e.evidence_type) for e in analysis.edges if 'Rows' in e.dst]}"
-        )
-        # Verify it was resolved via typed_receiver_call (not unresolved)
-        assert any(
-            (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("resolution_quality") == "typed_receiver") for e in chained_edges
-        ), (
-            f"Chained call should resolve as typed_receiver_call; "
-            f"got evidence types: {[e.evidence_type for e in chained_edges]}"
-        )
+        # ``result`` is typed by ``Engine.Query``'s declared return type, and
+        # ``result.Rows()`` is reported with it (ADR-0064).
+        assert _hints(analysis, "main", "Rows") == ["Result"]
+
 
     def test_constructor_return_type_enables_chaining(
         self, tmp_path: Path, go_available: None,
@@ -301,18 +298,10 @@ func main() {
         assert not analysis.skipped
 
         # The full chain: NewEngine → Engine, e.Query() → Result,
-        # result.Execute() → Result.Execute
-        execute_edges = [
-            edge for edge in analysis.edges
-            if "main" in edge.src
-            and "Result.Execute" in edge.dst
-            and edge.edge_type == "calls"
-        ]
-        assert len(execute_edges) >= 1, (
-            f"Expected call from main to Result.Execute via chained "
-            f"return-type resolution; got edges with Execute: "
-            f"{[(e.src, e.dst, e.evidence_type) for e in analysis.edges if 'Execute' in e.dst]}"
-        )
+        # result.Execute() reported on Result.
+        assert _hints(analysis, "main", "Query") == ["Engine"]
+        assert _hints(analysis, "main", "Execute") == ["Result"]
+
 
     def test_tuple_return_with_error_resolves(
         self, tmp_path: Path, go_available: None,
@@ -350,18 +339,8 @@ func main() {
         analysis = analyze_go(repo)
         assert not analysis.skipped
 
-        # result.Rows() should resolve via return-type registry
-        rows_edges = [
-            edge for edge in analysis.edges
-            if "main" in edge.src
-            and "Result.Rows" in edge.dst
-            and edge.edge_type == "calls"
-        ]
-        assert len(rows_edges) >= 1, (
-            f"Expected call from main to Result.Rows via tuple return "
-            f"registry resolution; got: "
-            f"{[(e.src, e.dst, e.evidence_type) for e in analysis.edges if 'Rows' in e.dst]}"
-        )
+        # (Result, error): the non-error type types ``result``.
+        assert _hints(analysis, "main", "Rows") == ["Result"]
 
 
 class TestExternalReturnTypeReachesTheModuleSlot:
@@ -374,23 +353,38 @@ class TestExternalReturnTypeReachesTheModuleSlot:
     placeholder matches no method row, leaving go's receive surface
     unreachable on code that assigns a stdlib handle from a factory.
 
-    In-repo symbols are stored unqualified, so the SYMBOL LOOKUP wants the
-    bare name while the MODULE SLOT needs the package. Storing only the bare
-    form would serve the slot a placeholder. So the registry stores the
-    qualified form, and the bare form is DERIVED where it is needed
-    (``_bare_go_type``), as the call-site receiver path does for declared
-    types (``bare_recv``) -- one stored form, so the two cannot drift apart
-    (history: WI-doluf, INV-linub).
+    The return type is stored as its declaration writes it (qualifier
+    kept) and read in that file's terms (``_GoTree.ref``): a library type
+    keeps its package for the slot, a type of the tree is spelled in the
+    caller's terms for the shared pass (history: WI-doluf, INV-linub).
     """
 
-    def test_the_fold_is_one_function(self) -> None:
-        """``_bare_go_type`` is the single place a qualified value becomes a
-        key. Asserted directly so an open-coded ``rsplit`` at a call site is a
-        visible divergence rather than an invisible one."""
-        assert _bare_go_type("net.Conn") == "Conn"
-        assert _bare_go_type("promql.Query") == "Query"
-        assert _bare_go_type("Result") == "Result"
-        assert _bare_go_type("") == ""
+    def test_a_type_is_read_where_it_is_written_and_spelled_where_it_is_used(self) -> None:
+        """A declaration's ``Result`` is its own package's; a caller in
+        another package writes it through its import of that package, and a
+        caller that does not import it gets the type's import path (which no
+        table binds). A library type keeps its package."""
+        tree = _GoTree(
+            module_path="example.com/m", module_dir="/r", root="/r",
+            imports={
+                "/r/q/q.go": {"net": "net"},
+                "/r/a/a.go": {"qq": "example.com/m/q", "net": "net"},
+                "/r/b/b.go": {},
+            },
+        )
+        result = tree.ref("Result", "/r/q/q.go")
+        assert result == _GoTypeRef("/r/q", "Result", True)
+        assert tree.spell(result, "/r/q/q.go") == "Result"
+        assert tree.spell(result, "/r/a/a.go") == "qq.Result"
+        assert tree.spell(result, "/r/b/b.go") == "example.com/m/q.Result"
+        assert tree.ref("example.com/m/q.Result", "/r/b/b.go") == result
+        conn = tree.ref("net.Conn", "/r/q/q.go")
+        assert conn == _GoTypeRef("net", "Conn", False)
+        assert tree.spell(conn, "/r/a/a.go") == "net.Conn"
+        assert tree.spell(conn, "/r/b/b.go") == "net.Conn"
+        assert tree.ref("error", "/r/q/q.go") is None
+        assert tree.ref("func(x int)", "/r/q/q.go") is None
+        assert tree.ref("nope.T", "/r/q/q.go") is None
 
     def test_signature_parser_keeps_the_package_qualifier(self) -> None:
         """The unit half. ``net.Conn`` must survive as ``net.Conn``."""
@@ -463,8 +457,8 @@ func readIt() {
     ) -> None:
         """THE CONTROL THAT COSTS SOMETHING.
 
-        A factory returning an IN-REPO type must still resolve to that repo's
-        symbol, not acquire a bogus package hint. Without this test, a change
+        A factory returning an IN-REPO type must still type the receiver as
+        that repo's type, not acquire a bogus package hint. Without this test, a change
         to the registry's stored form could trade one unreachable surface for
         another and leave the suite green.
         """
@@ -488,10 +482,7 @@ func useIt() {
         })
         analysis = analyze_go(repo)
         assert not analysis.skipped
-        assert any(
-            e.edge_type == "calls" and "Result.Rows" in e.dst and "useIt" in e.src
-            for e in analysis.edges
-        ), (
+        assert _hints(analysis, "useIt", "Rows") == ["Result"], (
             "in-repo factory chaining regressed: "
             f"{[(e.src, e.dst) for e in analysis.edges if 'Rows' in e.dst]}"
         )

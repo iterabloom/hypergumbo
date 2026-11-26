@@ -107,17 +107,35 @@ def test_a_value_receiver_does_not_bind_an_unreachable_kind(
     assert any(r[0] == name.split(".")[-1] and not r[2] for r in rows), rows
 
 
-@pytest.mark.parametrize("caller,name,kind", [
-    ("UseFuncField", "Widget.Handler", "field"),
-    ("UseMethod", "Widget.Frob", "method"),
-    ("UsePackage", "WithResource", "function"),
+@pytest.mark.parametrize("caller,name", [
+    ("UseFuncField", "Handler"),
+    ("UseMethod", "Frob"),
 ])
-def test_a_reachable_kind_still_binds(
-    calls: dict, caller: str, name: str, kind: str,
+def test_a_reachable_kind_is_not_bound_by_its_name_either(
+    calls: dict, caller: str, name: str,
 ) -> None:
-    """Controls: a func-typed field and a method on a value, and a package
-    function on the package, still resolve."""
-    assert (name, kind, True) in calls.get(caller, []), calls.get(caller)
+    """A func-typed field and a method of the repository's one ``Widget`` used
+    to bind here by their names; the receiver is a library value
+    (``corev1.SchemeGroupVersion``), so that bind was a guess, and ADR-0064
+    leaves the call unresolved (Go's name step is off)."""
+    assert calls.get(caller) == [(name, "unresolved", False)], calls.get(caller)
+
+
+def test_a_package_function_is_reported_on_its_package(tmp_path: Path) -> None:
+    """``logs.WithResource()`` is reported with its package as the qualifier,
+    which the file's import table binds to ``pkg/logs/`` (ADR-0064)."""
+    from hypergumbo_lang_mainstream.go import analyze_go
+
+    for name, text in _FILES.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    result = analyze_go(tmp_path)
+    [stub] = [
+        e for e in result.edges
+        if e.edge_type == "calls" and e.src.endswith(":UsePackage:function")
+    ]
+    assert (stub.is_resolved, stub.meta["qualifier"]) == (False, "logs")
+    assert result.import_scopes[str(tmp_path / "app" / "app.go")].namespace("logs") == "pkg/logs/"
 
 
 def test_a_stdlib_call_result_receiver_stays_unresolved(calls: dict) -> None:

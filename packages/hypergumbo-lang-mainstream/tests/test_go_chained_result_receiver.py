@@ -122,14 +122,15 @@ def test_control_a_result_of_unknown_type_keeps_the_package_slot(tmp_path: Path)
 
 
 def test_control_an_in_repo_result_type_is_resolved_as_before(tmp_path: Path) -> None:
-    """A result type INSIDE the module is the in-repo resolver's to bind."""
+    """A result type INSIDE the module is the shared pass's to bind (ADR-0064):
+    the call is reported with it, as the caller's file writes it."""
     (tmp_path / "a").mkdir()
     (tmp_path / "a" / "a.go").write_text(
         "package a\n\ntype Foo struct{}\n\nfunc NewFoo() *Foo { return &Foo{} }\n\n"
         "func (f *Foo) Bar() {}\n")
     edges = _edges(tmp_path, _IMPORTS + '\n\t"example.com/t/a"', "\ta.NewFoo().Bar()")
     edge = _the_call(edges, "Bar")
-    assert edge.dst.endswith("a/a.go:7-7:Foo.Bar:method")
+    assert (edge.is_resolved, (edge.meta or {}).get("receiver_type_hint")) == (False, "a.Foo")
 
 
 @pytest.mark.parametrize("body", [

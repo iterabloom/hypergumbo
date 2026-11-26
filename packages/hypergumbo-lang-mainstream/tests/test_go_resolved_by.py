@@ -1,31 +1,40 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-hirol: every route by which go.py binds a call-family edge states its mark.
+"""WI-hirol: every route by which a Go call-family edge is bound states its mark.
 
 ``Edge.meta["resolved_by"]`` names what scoped the choice of the callee
 (:mod:`hypergumbo_core.resolved_by`). One fixture repository holds one caller
 per route; each test finds that caller's edge to the expected callee (the edge
-must exist: a test that finds none fails) and pins the value:
+must exist: a test that finds none fails) and pins the value.
+
+Bound by go.py itself (``analyze_go`` alone):
 
 - a bare call found in the caller's file table: ``same_file``; in the caller's
-  own package (another file): ``same_module``; through a dot import: ``import``;
-- ``b.F()`` through the file's import of ``b``: ``import``;
-- a method on a typed receiver (a declaration, a field chain, a chained call's
-  return type): ``receiver_type``;
-- the interface-method preference among a method name's repo-wide candidates,
-  and a value receiver of unknown type: ``name``;
+  own package (another file): ``same_module``;
 - a function passed as an argument, a package-level alias, a struct field
   value: what scoped the referenced name (``same_file`` / ``same_module`` /
   ``import`` / ``qualified`` for a method expression / ``receiver_type`` for a
   method value);
 - a chi ``r.Mount`` handler found in the file: ``same_file``.
+
+Reported by go.py and bound by the shared pass (ADR-0064; the whole pipeline):
+
+- ``b.F()`` through the file's import of ``b``, and a bare call through a dot
+  import: ``import``;
+- a method on a typed receiver (a declaration, a field chain, a callee's
+  declared return type): ``receiver_type``;
+- a value receiver of unknown type, and a package-level variable (not typed):
+  not bound (the name step is off for Go).
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_lang_mainstream.go import analyze_go
 
 _FILES = {
@@ -136,16 +145,7 @@ def _edge(analysis, caller: str, callee: str, evidence: str | None = None):
 
 @pytest.mark.parametrize(("caller", "callee", "evidence", "mark"), [
     ("CallSameFile", "helper", "ast_call", "same_file"),
-    ("CallUntypedInFile", "Maker.Frob", "ast_call", "same_file"),
     ("CallSamePackage", "other", "ast_call", "same_module"),
-    ("CallImported", "Exported", "ast_call", "import"),
-    ("CallDotted", "Dotted", "ast_call", "import"),
-    ("CallTypedLocal", "Local.Do", "ast_call", "receiver_type"),
-    ("CallTypedOtherFile", "Store.Put", "ast_call", "receiver_type"),
-    ("Retry.CallFieldChain", "Integration.Notify", "ast_call", "receiver_type"),
-    ("CallChained", "Query.Exec", "ast_call", "receiver_type"),
-    ("CallUntypedValue", "Thing.Zork", "ast_call", "name"),
-    ("CallInterface", "Worker.Run", "interface_dispatch", "name"),
     ("RefSameFile", "helper", "function_reference_arg", "same_file"),
     ("RefSamePackage", "other", "function_reference_arg", "same_module"),
     ("RefImported", "Exported", "function_reference_arg", "import"),
@@ -163,6 +163,60 @@ def test_route_states_its_mark(analysis, caller, callee, evidence, mark) -> None
     assert edge.meta["resolved_by"] == mark
 
 
+@pytest.fixture(scope="module")
+def shared(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    """The whole pipeline's map of the fixture repository."""
+    root = tmp_path_factory.mktemp("go_mark_shared")
+    repo = root / "repo"
+    for rel, text in _FILES.items():
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    run_behavior_map(repo_root=repo, out_path=root / "map.json", include_sketch_precomputed=False)
+    return json.loads((root / "map.json").read_text())
+
+
+def _shared_marks(data: dict[str, Any], caller: str, callee: str) -> list[str]:
+    """The marks of the resolved ``calls`` edges from ``caller`` to ``callee``."""
+    names = {n["id"]: n.get("name") for n in data["nodes"]}
+    return [
+        (e.get("meta") or {}).get("resolved_by") for e in data["edges"]
+        if e["type"] == "calls" and e.get("is_resolved")
+        and names.get(e["src"]) == caller and names.get(e["dst"]) == callee
+    ]
+
+
+@pytest.mark.parametrize(("caller", "callee", "mark"), [
+    ("CallImported", "Exported", "import"),
+    ("CallDotted", "Dotted", "import"),
+    ("CallTypedLocal", "Local.Do", "receiver_type"),
+    ("CallTypedOtherFile", "Store.Put", "receiver_type"),
+    ("Retry.CallFieldChain", "Integration.Notify", "receiver_type"),
+    ("CallChained", "Query.Exec", "receiver_type"),
+    # ``b.NewThing()`` is declared to return ``*Thing``: a typed receiver.
+    ("CallUntypedValue", "Thing.Zork", "receiver_type"),
+])
+def test_a_reported_route_is_bound_by_the_shared_pass(shared, caller, callee, mark) -> None:
+    assert _shared_marks(shared, caller, callee) == [mark]
+
+
+@pytest.mark.parametrize(("caller", "callee"), [
+    ("CallUntypedInFile", "Maker.Frob"),
+    ("CallInterface", "Worker.Run"),
+])
+def test_an_untyped_receiver_is_bound_by_no_route(shared, analysis, caller, callee) -> None:
+    """``x[0].Frob()`` and ``wk.Run()`` on a package-level variable: the
+    analyzer does not type the receiver and nothing binds them by name."""
+    assert _shared_marks(shared, caller, callee) == []
+    by_id = {s.id: s.name for s in analysis.symbols}
+    stubs = [
+        e for e in analysis.edges
+        if e.edge_type == "calls" and by_id.get(e.src) == caller
+        and e.dst.split(":")[-2] == callee.split(".")[-1]
+    ]
+    assert [e.is_resolved for e in stubs] == [False]
+
+
 def test_route_mount_handler_states_its_mark(analysis) -> None:
     """``r.Mount`` carries its handler found in the file's table."""
     mounts = [
@@ -174,9 +228,9 @@ def test_route_mount_handler_states_its_mark(analysis) -> None:
     assert mounts[0].meta["resolved_by"] == "same_file"
 
 
-def test_an_import_of_the_module_root_filters_nothing(tmp_path: Path) -> None:
+def test_an_import_of_the_module_root_names_its_directory(tmp_path: Path) -> None:
     """``run(root.F)`` where ``root`` imports the module's root package: the
-    empty hint scopes no lookup, so the value is the lookup's own (``name``)."""
+    root is a directory like any other (ADR-0064), so the import scopes it."""
     repo = tmp_path / "repo"
     (repo / "sub").mkdir(parents=True)
     (repo / "go.mod").write_text("module example.com/fx\n\ngo 1.21\n")
@@ -186,4 +240,4 @@ def test_an_import_of_the_module_root_filters_nothing(tmp_path: Path) -> None:
         "func run(f any) {}\n\nfunc Ref() { run(root.Rooted) }\n"
     )
     edge = _edge(analyze_go(repo), "Ref", "Rooted", "function_reference_arg")
-    assert edge.meta["resolved_by"] == "name"
+    assert edge.meta["resolved_by"] == "import"

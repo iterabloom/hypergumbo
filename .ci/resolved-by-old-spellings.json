@@ -32,10 +32,7 @@
       "resolution_quality=type_inferred": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py": {
-      "receiver=typed_field": 1,
-      "resolution_quality=ambiguous": 1,
-      "resolution_quality=chained_return_type": 1,
-      "resolution_quality=typed_receiver": 2
+      "resolution_quality=typed_receiver": 1
     },
     "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/js_ts.py": {
       "evidence_type=ast_method_inferred": 3,

@@ -71,7 +71,9 @@ def _calls(edges, name: str, module: str):
     return [
         e for e in edges
         if e.edge_type == "calls"
-        and e.dst.startswith(f"go:{module}:")
+        # The slot names the package, or (ADR-0064: with or without a
+        # go.mod) the receiver's library type in it: ``go:bufio.Reader:``.
+        and (e.dst.startswith(f"go:{module}:") or e.dst.startswith(f"go:{module}."))
         and e.dst.split(":")[3] == name
     ]
 

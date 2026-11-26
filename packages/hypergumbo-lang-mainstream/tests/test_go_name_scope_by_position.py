@@ -239,9 +239,10 @@ _KUGAP = {
 def test_a_parameter_that_shadows_an_import_is_the_receiver(tmp_path: Path) -> None:
     r = _analyze(tmp_path, _KUGAP)
     shadow = _out(r, "ParamShadow")
-    assert [(_rel(e.dst), (e.meta or {}).get("call_construct")) for e in shadow] == [
-        ("k/k.go:T.Open", "method"),
-    ], [e.dst for e in shadow]
+    # A call on the parameter: reported with its type (ADR-0064), never the
+    # package's ``os.Open``.
+    assert [((e.meta or {}).get("receiver_type_hint"), (e.meta or {}).get("call_construct"))
+            for e in shadow] == [("T", "method")], [e.dst for e in shadow]
     control = _out(r, "NoShadow")
     assert [(e.dst, (e.meta or {}).get("call_construct")) for e in control] == [
         ("go:os:0-0:Open:unresolved", "function"),
@@ -284,18 +285,23 @@ _RESOLVED = {
 
 
 def test_a_resolved_receiver_call_is_stamped_method(tmp_path: Path) -> None:
+    """The construct is how the call is written, bound or not: a call on a
+    value is a method, a bare or package-qualified call a function. A call on
+    an untyped value (``xs["k"]``) is reported (ADR-0064 deleted the bind by
+    the caller's file's table of names), and so is ``q.Run()``, with its
+    package as the qualifier."""
     r = _analyze(tmp_path, _RESOLVED)
     for caller in ("SameFile", "OtherFile"):
-        frob = [e for e in _out(r, caller) if e.dst.endswith(":Thing.Frob:method")]
-        assert len(frob) == 1, (caller, [e.dst for e in _out(r, caller)])
-        assert (frob[0].meta or {}).get("call_construct") == "method", caller
+        frob = [e for e in _out(r, caller) if e.dst.split(":")[-2] == "Frob"]
+        assert [(e.is_resolved, (e.meta or {}).get("call_construct")) for e in frob] == [
+            (False, "method"),
+        ], (caller, [e.dst for e in _out(r, caller)])
     # Controls: a bare call and a package-qualified in-repo call are functions.
     helper = [e for e in _out(r, "SameFile") if e.dst.endswith(":helper:function")]
     assert [(e.meta or {}).get("call_construct") for e in helper] == ["function"]
     run = _out(r, "PkgCall")
-    assert [(_rel(e.dst), (e.meta or {}).get("call_construct")) for e in run] == [
-        ("q/q.go:Run", "function"),
-    ]
+    assert [(e.dst, (e.meta or {}).get("call_construct"), (e.meta or {}).get("qualifier"))
+            for e in run] == [("go:example.com/fx/q:0-0:Run:unresolved", "function", "q")]
 
 
 def test_an_attribute_read_on_a_shadowing_local_is_not_the_package(
@@ -335,8 +341,10 @@ def test_a_package_variable_receiver_under_a_shadowing_local_is_not_typed(
     })
     plain = [e.dst for e in _out(r, "Plain")]
     assert plain == ["go:net/http.Client:0-0:Do:unresolved"], plain
-    shadowed = [_rel(e.dst) for e in _out(r, "Shadowed")]
-    assert shadowed == ["v/v.go:Cl.Do"], shadowed
+    # On the parameter, a field chain: ``Box.DefaultClient`` is a ``*Cl``,
+    # reported as the receiver's type (ADR-0064).
+    shadowed = [(e.dst, (e.meta or {}).get("receiver_type_hint")) for e in _out(r, "Shadowed")]
+    assert shadowed == [("go:external:0-0:Do:unresolved", "Cl")], shadowed
 
 
 # --------------------------------------------------------------------------
@@ -501,47 +509,46 @@ _TYPED_PACKAGES = {
 def test_a_typed_receiver_binds_the_method_of_its_own_package(
     tmp_path: Path,
 ) -> None:
-    """Every package's ``SDConfig.Unmarshal`` shares one symbol key, and the
-    first of them was bound whatever the receiver's package. An unqualified
-    type is the caller's package's; a qualified one (``h.Ghost``) is its
-    import's, and a same-named type elsewhere (``g.Ghost``) is not it."""
+    """Every package's ``SDConfig.Unmarshal`` shares one symbol name, and the
+    first of them was bound whatever the receiver's package. Now (ADR-0064) a
+    CALL on a typed receiver is reported with its type as the caller's file
+    writes it (``SDConfig``, ``h.Ghost``, a callee's declared return type
+    spelled in the caller's terms: ``q.Result``, ``wa.AT``), for the shared
+    pass to find the method on that type, embedding included. A method VALUE
+    (``reg(config.Unmarshal)``) is bound here, to the one method declared on
+    that type in its own directory: never a same-named type elsewhere
+    (``g.Ghost``), never by a name the receiver's type does not declare
+    (``f.NewGhost()``'s result, ``at.Collector`` promoted by embedding)."""
     r = _analyze(tmp_path, _TYPED_PACKAGES)
-    use = sorted((_rel(e.dst), e.evidence_type) for e in _out(r, "Use"))
-    assert use == [
-        ("consul/c.go:SDConfig.Unmarshal", "ast_call"),
-        ("consul/c.go:SDConfig.Unmarshal", "function_reference_arg"),
-        ("consul/use.go:reg", "ast_call"),
-    ], use
-    wrong = sorted(_rel(e.dst) for e in _out(r, "Wrong"))
-    assert wrong == ["go:external:0-0:Serve:unresolved", "k/k.go:reg"], wrong
-    # An unqualified type from the return-type registry is the CALLEE's
-    # package's, so the first candidate still answers when the caller's
-    # package declares none.
-    registry = sorted(
-        (_rel(e.dst), e.evidence_type) for e in _out(r, "Registry")
-        if "Rows" in _rel(e.dst)
-    )
-    assert registry == [
-        ("q/q.go:Result.Rows", "ast_call"),
-        ("q/q.go:Result.Rows", "function_reference_arg"),
-    ], registry
-    # A qualifier that names no import keeps the historical first candidate.
-    assert _refs(r, "Unimported") == ["g/g.go:Ghost.Serve"]
-    # A method promoted by embedding (``struct{ *tu.AT }``) is found through
-    # the embedded type when it is the only one of that name; ``Dup.Go`` is
-    # declared on two embedded-able types and names nothing.
-    promoted = sorted(
-        (_rel(e.dst), e.evidence_type) for e in _out(r, "Promoted")
-        if "wa/wa.go" not in _rel(e.dst)
-    )
-    assert promoted == [
-        ("cc/cc.go:reg", "ast_call"),
-        ("cc/cc.go:reg", "ast_call"),
-        ("go:wa:0-0:Go:unresolved", "ast_call"),
-        ("go:wa:0-0:Missing:unresolved", "ast_call"),
-        ("tu/tu.go:AT.Collector", "ast_call"),
-        ("tu/tu.go:AT.Collector", "function_reference_arg"),
-    ], promoted
+
+    def out(caller: str) -> list[tuple[str, str, object]]:
+        return sorted(
+            (_rel(e.dst), e.evidence_type, (e.meta or {}).get("receiver_type_hint"))
+            for e in _out(r, caller)
+        )
+
+    assert out("Use") == [
+        ("consul/c.go:SDConfig.Unmarshal", "function_reference_arg", None),
+        ("consul/use.go:reg", "ast_call", None),
+        ("go:external:0-0:Unmarshal:unresolved", "ast_call_direct", "SDConfig"),
+    ]
+    assert out("Wrong") == [
+        ("go:external:0-0:Serve:unresolved", "ast_call_direct", "h.Ghost"),
+        ("k/k.go:reg", "ast_call", None),
+    ]
+    assert out("Registry") == [
+        ("go:external:0-0:Query:unresolved", "ast_call_direct", "q.Engine"),
+        ("go:external:0-0:Rows:unresolved", "ast_call_direct", "q.Result"),
+        ("k/k.go:reg", "ast_call", None),
+        ("q/q.go:Result.Rows", "function_reference_arg", None),
+    ]
+    assert _refs(r, "Unimported") == []
+    assert [x for x in out("Promoted") if x[2]] == [
+        ("go:external:0-0:Collector:unresolved", "ast_call_direct", "wa.AT"),
+        ("go:external:0-0:Go:unresolved", "ast_call_direct", "wa.W2"),
+        ("go:external:0-0:Missing:unresolved", "ast_call_direct", "wa.AT"),
+    ]
+    assert _refs(r, "Promoted") == []
 
 
 # --------------------------------------------------------------------------
