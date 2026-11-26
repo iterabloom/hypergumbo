@@ -1,0 +1,21 @@
+- op: create  # 53cd
+  at: '2026-11-26T03:34:46Z'  # 53cd
+  by: agent  # 53cd
+  actor: jgstern_agent  # 53cd
+  clock: 1  # 53cd
+  nonce: 53cd  # 53cd
+  data:  # 53cd
+    kind: work_item  # 53cd
+    title: "Perl methods are invisible to the shared linkers: subs are functions, packages are not types, use parent / @ISA unread (96 open stubs)"  # 53cd
+    status: todo_hard  # 53cd
+    priority: 3  # 53cd
+    parent:  # 53cd
+    tags:  # 53cd
+    - analysis_quality  # 53cd
+    - shared_call_resolution  # 53cd
+    isbefore: []  # 53cd
+    duplicate_of: []  # 53cd
+    not_duplicate_of: []  # 53cd
+    pr_ref:  # 53cd
+    description: "STATEMENT: a Perl method call reaches the method the class or its ancestors declare. OBSERVED: the shared linkers cannot see Perl methods. Every sub is kind function and every package kind module, which the linkers do not take as a type; build_method_index indexes kind method only; _MRO_WALKERS has no perl entry; use parent, use base and @ISA are not read, so no extends edge exists. The analyzer therefore keeps binding Pkg->m and a value typed by Pkg->new itself, by the exact key Pkg::m, and cannot go up to a parent: 96 stubs with SUPER or the enclosing class stay open on three trees, and the fixture's inherited cell is unresolved. Also: a one-segment type name in a hint is read relative to the caller's package by the declared-name rule, where a Perl package name is always absolute (read in the code, not met on the trees because nothing binds through it yet). Not changed in batch 5b: a symbol kind is part of a symbol id. Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 53cd
+    fields: {}  # 53cd

@@ -1,0 +1,21 @@
+- op: create  # 85ac
+  at: '2026-11-26T03:34:52Z'  # 85ac
+  by: agent  # 85ac
+  actor: jgstern_agent  # 85ac
+  clock: 1  # 85ac
+  nonce: 85ac  # 85ac
+  data:  # 85ac
+    kind: work_item  # 85ac
+    title: "Perl: an indirect-object call (throw Class(..)) is read as a bare call (19 right edges lost); several packages in one file; last declaration wins"  # 85ac
+    status: todo_hard  # 85ac
+    priority: 3  # 85ac
+    parent:  # 85ac
+    tags:  # 85ac
+    - analysis_quality  # 85ac
+    - shared_call_resolution  # 85ac
+    isbefore: []  # 85ac
+    duplicate_of: []  # 85ac
+    not_duplicate_of: []  # 85ac
+    pr_ref:  # 85ac
+    description: "STATEMENT: an indirect-object call (throw Error::Simple(..), throw $E, new Foo(..)) is the method call it is. OBSERVED: the grammar parses throw Class(..) as a bare function call throw and a second call Class(..). Before batch 5b the bare name throw was bound by the run-wide name lookup to Error::throw, right by luck; now it is unresolved: 19 edges on git's Perl, 7 of the 8 lost edges a blind judge found right before. Not built: recognising the form (a bare call whose first argument is a bareword package or a scalar, with no comma after it). Also from the same adapter, smaller: a file with several packages gets no own package in its table and the scope walk falls back to nesting (4 files, 1 bind through a parent package: Error::subs::try to Error::throw); the shared lookup of a bare call takes the FIRST declaration of a name in a file where Perl takes the last (seen on mkinstallvars.pl _pairs); %EXPORT_TAGS, require + import and use if are not read into the table. Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 85ac
+    fields: {}  # 85ac
