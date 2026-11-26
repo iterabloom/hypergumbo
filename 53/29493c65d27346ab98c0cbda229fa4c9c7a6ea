@@ -1,0 +1,41 @@
+Original commit body from 094b7b41ca02a40ab1fd81aacbc8012fe87f15b0:
+
+Overloads by the number of arguments written, for Java, Kotlin and C# (ADR-0064; the gap batch 5a's judge measured). The linkers bound a typed call to the last overload of a name on the receiver's type whatever the call wrote: `server.takeRequest()` landed on `takeRequest(timeout, unit)`.
+
+## What is in it
+
+- A call fact, `argument_count`, on the unresolved edge (schema 0.22.3, an addition), and `meta["parameters"]` on every Java, Kotlin and C# method, constructor and function, read from the declaration node. The choice itself already existed for C++, Elixir and Nim (`overload_arity`); the three languages now feed it and the linkers ask it.
+- One rule wherever an overload is chosen (the inherited-calls linker per type, the bare-call lookup, the extension linker, the recovery linker, each analyzer's bind of the enclosing type's own member): the overloads that can take the count, and of those the ones that need the least help (every parameter given an argument, before a default, before a variadic parameter): `overload_arity.best_by_arity`. A type none of whose overloads take the count holds no candidate, and the walk goes on to its ancestors. Among candidates that fit equally well, the one the call is written in is left out when another remains.
+- Found on the way and fixed: a Kotlin override cannot restate the defaults of what it overrides (a parameter's default may be "not known"); the recovery linker kept one member per name on a class.
+- `java.py`'s own argument-count pick from batch 5a, which walked the declaration node, is deleted for the shared one.
+- The types of the arguments are not read.
+
+## Measured (11 repositories; before = dev after batch 5a, after = this branch)
+
+| | Java | Kotlin | C# |
+|---|---|---|---|
+| resolved calls before to after | 46,191 to 46,665 | 19,031 to 19,078 | 7,621 to 7,831 |
+| call sites whose target changed | 5,419 | 705 | 1,706 |
+| of 15 of those: wrong before, right now | 11 | 13 | 7 |
+| ... wrong both times | 4 | 1 | 8 |
+| ... right before, wrong now | 0 | 1 | 0 |
+| of 15 resolved before and not now: wrong before | 14 | 15 | 14 |
+| of 15 newly resolved: right | 9 | 8 | 6 |
+
+The samples were read in the source by a judge who was given call and target only, shuffled, and not told which side a pair came from. They were drawn on the branch before its last three fixes (the totals above are the final commit's); what those changed was counted and partly read: 77 more own-member binds where an overload delegates to a sibling (11 right of 12 read), the one right Java edge that was lost is back, and 16 of 18 wrong second binds by the recovery linker are gone (six of Kotlin's seven wrong "newly resolved" among them).
+
+## What must not change
+
+Symbols of the 11 repositories: identical in every field and meta key but the new `parameters`. Edges other than calls: 57 more `uses` edges on jedis and commons-compress, made by the same linker beside a call bind; nothing else. PHP, Rust and JavaScript / TypeScript callers (six repositories): edge-for-edge identical, measured at the final commit (one of the late fixes had added a TypeScript edge through the recovery linker; corrected). Maps grow by 1 to 4 percent (the parameter lists).
+
+## Still wrong, and why (to be filed after the merge, each with its count)
+
+The wrong-both-times edges and most wrong new ones need the arguments' types (`String` against `byte[]`; a lambda's shape; Kotlin's one right-to-wrong edge is this), a call's explicit type arguments (`Policy.Timeout<T>(..)` is the generic overload), or the overloads of a library supertype (`InputStream.read(byte[])` where the repository declares only `read(byte[], int, int)`). Among three or more overloads that tie, the pick is still the last. C# `new T(..)` still chooses its constructor by reading the signature text.
+
+## Not checked
+
+No repository outside the 17 was run. Confidence values of moved edges, and slice, dead-code and taint output beyond the existing tests, were not compared. One run per tree, so analysis time (the workers saw 0 to 7 percent more) is not measured against its noise.
+
+## Also here: the red scheduled run
+
+The scheduled full suite is red at dev's head (`self-tree-validation`): the test-only-reachability gate flagged two methods of the recorded Rust crate in the rust-analyzer package. Its path check admitted any `/src/` below `packages/`, where its statement is `packages/*/src`; one commit makes the check that position (it carries `Fixes-scheduled-run: self-tree-validation`), and a second drops a baseline key the same run reports drained. On a map of this tree the cohort goes from 939 to 937 symbols, the two named ones and no other. Not checked: a map typed by the scip pass, which only the scheduled run builds. The cause on the Rust side (a method called through `Guard<Arc<T>>` is reported as the wrapper's own) is a gap of the Rust adapter and is filed after the merge.
