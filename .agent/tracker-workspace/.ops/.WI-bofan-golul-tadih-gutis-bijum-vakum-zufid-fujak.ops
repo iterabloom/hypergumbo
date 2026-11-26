@@ -1,0 +1,21 @@
+- op: create  # baef
+  at: '2026-11-26T00:07:50Z'  # baef
+  by: agent  # baef
+  actor: jgstern_agent  # baef
+  clock: 1  # baef
+  nonce: baef  # baef
+  data:  # baef
+    kind: work_item  # baef
+    title: "Overload adapters (java, kotlin, csharp): what was left as it was (C# new T() reads signature text, Kotlin constructors, Java T::new, ties of three)"  # baef
+    status: todo_hard  # baef
+    priority: 3  # baef
+    parent:  # baef
+    tags:  # baef
+    - analysis_quality  # baef
+    - shared_call_resolution  # baef
+    isbefore: []  # baef
+    duplicate_of: []  # baef
+    not_duplicate_of: []  # baef
+    pr_ref:  # baef
+    description: "STATEMENT: what the three overload adapters left as it was is each either built or decided against. OBSERVED (from the reports' NOT DONE): C#: new T(..) still chooses its constructor with _count_signature_params, a reader of Symbol.signature that core lists in signature_axis.LEGACY_VALUE_PARSERS; moving it onto meta[parameters] needs that entry removed. C# indexers (30 on six trees) and [Optional] parameters are not read; a parameter list holding #if or a parse error writes no key (52 callables on Serilog, 50 of them from one damaged file). Kotlin: a class symbol carries no constructor parameters (constructors have no symbols; a class with secondary constructors has several), so a construction is never narrowed; _member_of, which types val r = x.m() by m's return type, still keeps the first declaration of a name. Java: T::new method references carry no count (31 stubs). All three: when three or more overloads tie on count the pick is the last declared; no mark on the edge says that the pick was a tie. Evidence and method: ~/hypergumbo_lab_notebook/overloads_11252026/ (DESIGN.md; java_RESULTS.md, kotlin_RESULTS.md, csharp_RESULTS.md; maps mine_19de against base/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while building overload selection by argument count for Java, Kotlin and C#."  # baef
+    fields: {}  # baef
