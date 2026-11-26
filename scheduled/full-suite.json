@@ -2,11 +2,11 @@
   "schema": 1,
   "workflow": "full-suite",
   "leg": null,
-  "commit": "4b66bbfecdcbe18775e01ffdaeaf60a6b5103bf5",
-  "pipeline": 7014,
-  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/7014",
-  "finished_at": "2026-11-25T21:25:37Z",
-  "status": "failed",
+  "commit": "ed058397840f96dae650241ce2c390efe16658c5",
+  "pipeline": 7019,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/7019",
+  "finished_at": "2026-11-26T01:25:38Z",
+  "status": "passed",
   "steps": [
     {
       "name": "prepare-git",
@@ -22,7 +22,7 @@
     },
     {
       "name": "self-tree-validation",
-      "result": "not_passed"
+      "result": "passed"
     },
     {
       "name": "self-claims-gate",
@@ -43,7 +43,7 @@
   ],
   "coverage": {
     "percent": 100.0,
-    "statements": 109377,
+    "statements": 109517,
     "missing": 0,
     "uncovered": {},
     "uncovered_truncated": false
