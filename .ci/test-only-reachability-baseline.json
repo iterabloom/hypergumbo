@@ -294,7 +294,6 @@
   "packages/hypergumbo-core/src/hypergumbo_core/dataflow.py::DataflowConfig.build_node_type_map",
   "packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py::Pattern.matches",
   "packages/hypergumbo-core/src/hypergumbo_core/import_scope.py::ImportScope.add_aliased_module",
-  "packages/hypergumbo-core/src/hypergumbo_core/import_scope.py::ImportScope.add_wildcard",
   "packages/hypergumbo-core/src/hypergumbo_core/import_scope.py::ImportScope.dst_ref_for",
   "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py::IoBoundaryCatalog.all_boundaries_for",
   "packages/hypergumbo-core/src/hypergumbo_core/limits.py::Limits.add_ambiguous_path",
