@@ -125,8 +125,8 @@ How It Works
      variable or an earlier assignment in the scope; ``_is_ruby_local``;
      WI-misir). A receiver nobody can type gets the ``external``
      placeholder with ``call_construct: method``. A stub whose name Ruby's
-     core or Rails defines carries ``stdlib_member_name``
-     (``_RUBY_LIBRARY_METHOD_NAMES``). Direct recursion emits its self
+     core defines carries ``stdlib_member_name``
+     (``_RUBY_CORE_METHOD_NAMES``). Direct recursion emits its self
      edge. ``super``'s class is the one whose
      declaration contains it, by POSITION; its module slot is the
      superclass as written, read for a reopened ``class Foo`` that names
@@ -387,88 +387,6 @@ _RUBY_CORE_METHOD_NAMES: frozenset[str] = _RUBY_KERNEL_NAMES | frozenset({
     "backtrace", "backtrace_locations", "cause", "detailed_message",
     "exception", "full_message", "message", "set_backtrace", "to_tty?",
 })
-
-#: THE SCREEN OF LIBRARY NAMES (ADR-0064), part 3: Rails. ActiveSupport adds
-#: methods to the core classes themselves (``blank?``, ``present?``,
-#: ``squish``, ``deep_merge``, ``index_by``), and an ActiveRecord model or
-#: relation answers ``where``, ``find_by``, ``pluck``, ``update!``, whatever the
-#: repository declares; an untyped receiver in a Rails application is such a
-#: value as often as not. Taken from the Rails 7.1 API reference,
-#: api.rubyonrails.org, the pages named in each group below; NOT from any
-#: repository. A name here and in no core page is screened only because of
-#: Rails (the results file of the batch says what that changed).
-_RAILS_METHOD_NAMES: frozenset[str] = frozenset({
-    # ActiveSupport core extensions: Object (blank, try, inclusion, deep_dup,
-    # to_param / to_query, json, instance variables)
-    "acts_like?", "as_json", "blank?", "deep_dup", "duplicable?", "in?",
-    "instance_values", "instance_variable_names", "presence", "presence_in",
-    "present?", "to_param", "to_query", "try", "try!", "with_options",
-    # ActiveSupport core extensions: String (inflections, filters, access,
-    # conversions, output safety)
-    "camelcase", "camelize", "classify", "constantize", "dasherize",
-    "deconstantize", "demodulize", "exclude?", "foreign_key", "from",
-    "html_safe", "html_safe?", "humanize", "indent", "indent!", "inquiry",
-    "mb_chars", "parameterize", "pluralize", "remove", "remove!",
-    "safe_constantize", "singularize", "squish", "squish!", "strip_heredoc",
-    "tableize", "titlecase", "titleize", "to", "to_date", "to_datetime",
-    "to_time", "truncate_words", "underscore", "upcase_first",
-    # ActiveSupport core extensions: Array, Hash, Enumerable
-    "assert_valid_keys", "compact_blank", "compact_blank!", "deep_merge",
-    "deep_merge!", "deep_stringify_keys", "deep_symbolize_keys",
-    "deep_transform_keys", "deep_transform_values", "except!", "excluding",
-    "extract!", "extract_options!", "fifth", "forty_two", "fourth",
-    "in_groups", "in_groups_of", "including", "index_by", "index_with",
-    "many?", "maximum", "minimum", "pick", "pluck", "reverse_merge",
-    "reverse_merge!", "second", "second_to_last", "slice!", "sole",
-    "stringify_keys", "stringify_keys!", "symbolize_keys",
-    "symbolize_keys!", "third", "third_to_last", "to_formatted_s", "to_fs",
-    "to_options", "to_sentence", "with_indifferent_access", "without",
-    # ActiveSupport core extensions: Numeric, Integer, Date and Time
-    "ago", "beginning_of_day", "beginning_of_hour", "beginning_of_month",
-    "beginning_of_week", "beginning_of_year", "bytes", "day", "days",
-    "end_of_day", "end_of_hour", "end_of_month", "end_of_week",
-    "end_of_year", "from_now", "gigabytes", "hour", "hours", "in_time_zone",
-    "iso8601", "kilobytes", "megabytes", "minute", "minutes", "month",
-    "months", "multiple_of?", "ordinalize", "seconds", "since",
-    "until", "week", "weeks", "year", "years",
-    # ActiveSupport: Module (delegation, attribute accessors), Concern
-    "class_attribute", "class_methods", "cattr_accessor", "cattr_reader",
-    "cattr_writer", "delegate", "delegate_missing_to", "mattr_accessor",
-    "mattr_reader", "mattr_writer", "module_parent",
-    # ActiveRecord::QueryMethods, FinderMethods, Calculations, SpawnMethods,
-    # Relation, Batches (on a model class and on a relation)
-    "all", "average", "create_or_find_by", "create_with", "distinct",
-    "eager_load", "exists?", "extending", "find_by", "find_by!",
-    "find_each", "find_in_batches", "find_or_create_by",
-    "find_or_create_by!", "find_or_initialize_by", "group", "having",
-    "ids", "in_batches", "includes", "joins", "left_joins",
-    "left_outer_joins", "limit", "lock", "none", "not", "offset", "or",
-    "order", "preload", "readonly", "references", "regroup", "reorder",
-    "reselect", "rewhere", "scoping", "take!", "unscope", "unscoped",
-    "where",
-    # ActiveRecord::Persistence, Relation (bulk), Callbacks, Transactions
-    "becomes", "build", "create", "create!", "decrement", "decrement!",
-    "delete_all", "destroy", "destroy!", "destroy_all", "destroyed?",
-    "increment", "increment!", "insert_all", "insert_all!", "new_record?",
-    "persisted?", "previously_new_record?", "reload", "save", "save!",
-    "toggle", "toggle!", "touch", "touch_all", "transaction", "update!",
-    "update_all", "update_attribute", "update_column", "update_columns",
-    "upsert", "upsert_all", "with_lock",
-    # ActiveRecord::AttributeMethods (and Dirty), ActiveModel::Validations
-    "assign_attributes", "attribute_changed?", "attribute_names",
-    "attributes", "changed", "changed?", "changes", "errors",
-    "has_attribute?", "invalid?", "previous_changes", "read_attribute",
-    "saved_changes", "valid?", "validate!", "write_attribute",
-    # ActiveJob::Core and Enqueuing
-    "perform_later", "perform_now",
-    # ActionController::Metal, Base: rendering, redirecting, request data
-    "cookies", "flash", "head", "params", "redirect_to", "render",
-    "render_to_string", "request", "respond_to", "response", "session",
-    "url_for",
-})
-
-#: What a stub's ``stdlib_member_name`` is read from: core and Rails.
-_RUBY_LIBRARY_METHOD_NAMES: frozenset[str] = _RUBY_CORE_METHOD_NAMES | _RAILS_METHOD_NAMES
 
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
@@ -1069,9 +987,9 @@ def _ruby_stub(
     caller: Symbol, callee_name: str, line: int, run_id: str, **facts: object,
 ) -> Edge:
     """An unresolved call of ``callee_name`` from ``caller`` with the call's
-    facts (ADR-0064), marked ``stdlib_member_name`` when Ruby's core or Rails
-    defines the name (:data:`_RUBY_LIBRARY_METHOD_NAMES`): the single-holder
-    name linker then does not bind it to the repository's one ``m``."""
+    facts (ADR-0064), marked ``stdlib_member_name`` when Ruby's core defines
+    the name (:data:`_RUBY_CORE_METHOD_NAMES`): the single-holder name linker
+    would then not bind it to the repository's one ``m``."""
     return make_unresolved_edge(
         lang="ruby",
         src_id=caller.id,
@@ -1079,7 +997,7 @@ def _ruby_stub(
         line=line,
         pass_id=PASS_ID,
         run_id=run_id,
-        stdlib_member_name=callee_name in _RUBY_LIBRARY_METHOD_NAMES,
+        stdlib_member_name=callee_name in _RUBY_CORE_METHOD_NAMES,
         **facts,  # type: ignore[arg-type]
     )
 
@@ -4048,9 +3966,9 @@ def _ruby_import_scope() -> ImportScope:
     adopted the shared pass.
 
     ``library_names_screened`` stays False, so the single-holder name linker
-    binds no Ruby call, although every stub whose name Ruby's core or Rails
-    defines goes out with ``stdlib_member_name``
-    (:data:`_RUBY_LIBRARY_METHOD_NAMES`). Measured with it on (batch 5b of
+    binds no Ruby call, although every stub whose name Ruby's core defines
+    goes out with ``stdlib_member_name``
+    (:data:`_RUBY_CORE_METHOD_NAMES`). Measured with it on (batch 5b of
     ADR-0064, three trees, postal and two of mastodon's): of 15 calls the
     linker bound, read in the source, 7 were right. The wrong ones are calls
     on a model's column or association (``follow.target_account``,
@@ -4058,7 +3976,10 @@ def _ruby_import_scope() -> ImportScope:
     answers from its database schema and ``belongs_to``, bound to the one
     repository class that declares a method of that name, and a gem's method
     (OpenSSL's ``public_key``). No list of a library's names holds an
-    application's columns, and no stub fact says what a receiver is.
+    application's columns, and no stub fact says what a receiver is. A list
+    of Rails' own method names was tried with it (76 fewer binds; 12 of 15 of
+    those read were wrong) and is not kept: a framework's names are not the
+    language's library, and with the step off nothing reads them.
     """
     return ImportScope(library_names_screened=False)
 
