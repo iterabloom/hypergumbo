@@ -73,7 +73,7 @@ class TestPropertyReadEmission:
         assert e.is_resolved is False
         assert (e.meta or {}).get("receiver_type_hint") == "C"
         assert (e.meta or {}).get("call_construct") == "method"
-        assert e.evidence_type == "ast_call"
+        assert e.evidence_type == "ast_call_direct"  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_plain_method_read_not_called_emits_no_edge(
         self, tmp_path: Path
