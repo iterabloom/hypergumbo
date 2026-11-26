@@ -954,14 +954,18 @@ def _extract_method_short_name(callee_name: str) -> str:
     # A hand-copied snapshot of ``_MRO_WALKERS`` goes stale as soon as a
     # walker is added (history: WI-rasal).
     #
-    # Derived, not hand-copied, from the three emission paths:
+    # Derived, not hand-copied, from the four emission paths:
     #   Site 1  — ``enclosing_class`` producers INTERSECT ``_MRO_WALKERS``
     #             (dart/lua/zig stamp the hint but have no walker)
     #   Site 2  — ``receiver_type_hint`` producers; these need NO walker,
     #             because step 1 resolves the method directly on the inferred
     #             type (this is what adds ``d`` and ``kotlin``)
     #   Site 3  — ``inherited_field_receiver`` producers
-    # ``test_depends_on_producer_sets.py`` re-derives all three and fails when
+    #   Table   — an analyzer that hands over ``import_scopes`` (ADR-0064): a
+    #             bare call, a construction or an imported function is bound
+    #             through the caller's file's table, with no hint at all
+    #             (this is what adds ``perl``)
+    # ``test_depends_on_producer_sets.py`` re-derives all four and fails when
     # this list drifts from the registry. Note ``_MRO_WALKERS`` is keyed on
     # ``Symbol.language``, a wider vocabulary than pass ids: its ``typescript``
     # key maps onto the ``javascript`` pass.
@@ -975,7 +979,7 @@ def _extract_method_short_name(callee_name: str) -> str:
     depends_on=[
         [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "php", "python", "ruby", "rust",
+            "kotlin", "objc", "perl", "php", "python", "ruby", "rust",
             "rust_analyzer",  # WI-juzig: the second producer of rust
             "scala", "scip_python",  # WI-nanom: the second producer of python
             "swift",

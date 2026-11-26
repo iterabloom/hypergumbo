@@ -293,10 +293,21 @@ class TestInheritedCallsDeclaresItsWalkers:
         )
         assert sorted(producers - set(clause)) == []
 
+    def test_every_analyzer_that_hands_over_an_import_table_is_declared(self) -> None:
+        """ADR-0064: a bare call or a construction is bound through the
+        caller's file's table, with no hint and no walker. An analyzer that
+        builds an ``ImportScope`` can therefore make this linker emit. (The
+        constructor call is what every adopter has in common: some return the
+        tables as a keyword argument, some assign the attribute.)"""
+        clause = _clause_containing("inherited-calls-linker", "java")
+        adopters = _pass_ids_calling("ImportScope")
+        assert {"csharp", "javascript", "rust", "perl"} <= adopters
+        assert sorted(adopters - set(clause)) == []
+
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("inherited-calls-linker", "java") == [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "php", "python", "ruby", "rust",
+            "kotlin", "objc", "perl", "php", "python", "ruby", "rust",
             "rust_analyzer",  # WI-juzig: rust's second producer
             "scala", "scip_python",  # WI-nanom: python's second producer
             "swift",
