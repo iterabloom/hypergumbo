@@ -2,7 +2,8 @@
 """``super`` in Ruby names the superclass of the class that contains it (WI-gikuk).
 
 WI-misir hands a ``super`` call to the inherited-calls linker with the
-SUPERCLASS as its ``enclosing_class``. The superclass was read off the class
+SUPERCLASS in its module slot (since ADR-0064 its ``enclosing_class`` is the
+class the call is written in, with ``super_receiver``). The superclass was read off the class
 looked up by its bare name in the run-wide registry, which drops the module
 nesting: ``module A; class Foo < BaseA`` and ``module B; class Foo < BaseB``
 are two classes, and both ``super`` calls named whichever ``Foo`` registered
@@ -22,13 +23,14 @@ from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
 
 def _super_parents(root: Path) -> dict[str, str | None]:
-    """``{caller method id's file: enclosing_class hint}`` per ``super`` edge."""
+    """``{caller method id's file: the superclass in the module slot}`` per
+    ``super`` edge (``None``: ``external``, no superclass known)."""
     result = analyze_ruby(root)
     by_id = {s.id: s for s in result.symbols}
     out: dict[str, str | None] = {}
     for e in result.edges:
         if e.edge_type == "calls" and e.src in by_id and e.dst.endswith(":go:unresolved"):
-            out[Path(by_id[e.src].path).name] = (e.meta or {}).get("enclosing_class")
+            out[Path(by_id[e.src].path).name] = e.dst_ref.module_path if e.dst_ref else None
     return out
 
 

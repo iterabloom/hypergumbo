@@ -93,9 +93,15 @@ def _targets(tmp_path: Path, method: str) -> list[str]:
 
 
 def test_unknown_receiver_and_implicit_self_calls_get_the_external_placeholder(tmp_path: Path) -> None:
+    """An untyped receiver's call and a send to ``self`` of a Kernel name take
+    ``external``; any other send to ``self`` names the class it starts at
+    (ADR-0064: the slot follows the name's documented owner, not a table of
+    the repository's names)."""
     targets = _targets(tmp_path, "K#go")
-    for name in ("write", "current_user", "name", "params", "puts", "z"):
+    for name in ("write", "name", "puts"):
         assert f"ruby:external:0-0:{name}:unresolved" in targets, (name, targets)
+    for name in ("current_user", "params", "z"):
+        assert f"ruby:K:0-0:{name}:unresolved" in targets, (name, targets)
     meta = dict(_edges_from(tmp_path, "K#go"))
     assert meta["ruby:external:0-0:write:unresolved"].get("call_construct") == "method"
 
@@ -106,6 +112,7 @@ def test_locals_are_not_calls(tmp_path: Path) -> None:
     targets = _targets(tmp_path, "K#go")
     for name in ("x", "a", "y", "e", "obj"):
         assert f"ruby:external:0-0:{name}:unresolved" not in targets, (name, targets)
+        assert f"ruby:K:0-0:{name}:unresolved" not in targets, (name, targets)
 
 
 def test_an_ambiguous_bare_call_keeps_its_enclosing_class(tmp_path: Path) -> None:
@@ -119,7 +126,10 @@ def test_super_is_a_call_to_the_parent_s_method(tmp_path: Path) -> None:
     edges = _edges_from(tmp_path, "K#go") + _edges_from(tmp_path, "K#again")
     supers = [m for dst, m in edges if dst in (
         "ruby:Base:0-0:go:unresolved", "ruby:Base:0-0:again:unresolved")]
-    assert [m.get("enclosing_class") for m in supers] == ["Base", "Base"]
+    # The module slot is the superclass; the facts name the class the call is
+    # written in and say the walk starts at its parents (ADR-0064).
+    assert [m.get("enclosing_class") for m in supers] == ["K", "K"]
+    assert [m.get("super_receiver") for m in supers] == [True, True]
 
 
 def test_super_resolves_through_the_inherited_calls_linker(tmp_path: Path) -> None:

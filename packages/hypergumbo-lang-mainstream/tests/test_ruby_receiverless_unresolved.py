@@ -26,6 +26,14 @@ it does not: a name some project symbol carries resolves first (or, when three
 or more classes declare it, is withheld by the AMB-METHOD guard), so the
 placeholder is only ever emitted for a name the repository does not define.
 Both sides are pinned below.
+
+ADR-0064 (batch 5b) replaced "a name the repository defines" with Ruby's own
+library: no call is looked up by its name among the repository's methods any
+more, so the slot is chosen by the NAME's owner as Ruby documents it. A send to
+``self`` of a name ``Kernel`` defines (``puts``, ``system``, ``raise``,
+``Integer``, ``loop``) keeps ``external``; any other send to ``self`` from a
+class (``has_many``, ``blk``) names that class, with ``enclosing_class`` for the
+inherited-calls linker, since its owner is the class or an ancestor of it.
 """
 
 from __future__ import annotations
@@ -72,11 +80,8 @@ def test_a_receiverless_call_in_a_method_is_recorded(tmp_path: Path) -> None:
     (tmp_path / "app.rb").write_text(_APP)
     result = analyze_ruby(tmp_path)
     boot = _by_name(result)["App#boot"]
-    expected = {
-        7: "puts", 8: "has_many", 9: "system", 10: "raise",
-        11: "Integer", 12: "blk", 13: "loop",
-    }
-    for line, name in expected.items():
+    kernel = {7: "puts", 9: "system", 10: "raise", 11: "Integer", 13: "loop"}
+    for line, name in kernel.items():
         at = _calls_at(result, line)
         assert [e.dst for e in at] == [f"ruby:external:0-0:{name}:unresolved"], (
             line, [(e.src, e.dst) for e in at])
@@ -87,7 +92,13 @@ def test_a_receiverless_call_in_a_method_is_recorded(tmp_path: Path) -> None:
         # A receiverless call is a bare call: no ``method`` construct, which
         # would make both taint gates refuse a catalogued Kernel row.
         assert "call_construct" not in edge.meta
-        assert edge.dst_ref is None  # the owner is genuinely unknown
+        assert edge.dst_ref is None  # Kernel's, or the class's: not known
+        assert edge.meta["enclosing_class"] == "App"
+    for line, name in {8: "has_many", 12: "blk"}.items():
+        (edge,) = _calls_at(result, line)
+        assert (edge.src, edge.dst) == (boot, f"ruby:App:0-0:{name}:unresolved")
+        assert edge.meta["enclosing_class"] == "App"
+        assert edge.meta["call_construct"] == "method"
 
 
 def test_class_body_dsl_and_top_level_calls_are_recorded(tmp_path: Path) -> None:
@@ -95,9 +106,10 @@ def test_class_body_dsl_and_top_level_calls_are_recorded(tmp_path: Path) -> None
     result = analyze_ruby(tmp_path)
     app = _by_name(result)["App"]
     for line, name in {2: "has_many", 3: "validates", 4: "before_action"}.items():
-        at = [e for e in _calls_at(result, line) if e.dst.startswith("ruby:external:")]
+        at = [e for e in _calls_at(result, line) if not e.is_resolved]
         assert [(e.src, e.dst) for e in at] == [
-            (app, f"ruby:external:0-0:{name}:unresolved")], line
+            (app, f"ruby:App:0-0:{name}:unresolved")], line
+        assert at[0].meta["enclosing_class"] == "App"
     top = _calls_at(result, 19)
     assert [e.dst for e in top] == ["ruby:external:0-0:puts:unresolved"]
     assert top[0].src.startswith("ruby:app.rb:") and top[0].src.endswith(":file")

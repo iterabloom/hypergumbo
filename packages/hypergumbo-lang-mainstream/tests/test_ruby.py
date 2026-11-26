@@ -30,10 +30,14 @@ def _run_inherited_calls_pipeline(analyzer_result):
     )
     inh_result = link_inheritance(inh_ctx)
     combined = list(analyzer_result.edges) + list(inh_result.edges)
+    # The files' import tables, as the real pipeline hands them over: a stub
+    # that names its class by ``qualifier`` is read only for a file with one
+    # (ADR-0064).
     call_ctx = LinkerContext(
         repo_root=Path("/"),
         symbols=analyzer_result.symbols,
         edges=combined,
+        import_scopes=analyzer_result.import_scopes,
     )
     call_result = link_inherited_calls(call_ctx)
     return combined + list(call_result.edges)
@@ -4548,7 +4552,10 @@ end
         assert edge.confidence >= 0.75
 
     def test_find_factory_type_tracking(self, tmp_path: Path) -> None:
-        """var = ClassName.find(id) resolves var.method to ClassName#method."""
+        """``var = ClassName.find(id)`` does NOT type ``var``: what ``find``
+        returns is ActiveRecord's convention, not the source's (ADR-0064:
+        unresolved beats a guess). Only a construction types a variable. The
+        call goes out with no type and no bind."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "app.rb").write_text("""
@@ -4573,14 +4580,12 @@ end
         assert show is not None
         assert email is not None
 
-        edge = next(
-            (e for e in result.edges if e.src == show.id and e.dst == email.id),
-            None,
-        )
-        assert edge is not None, (
-            "Expected edge from UsersController#show to User#email"
-        )
-        assert (edge.evidence_type == "ast_call" and edge.meta.get("call_construct") == "method" and edge.meta.get("resolution_quality") == "typed_receiver")
+        assert not [e for e in result.edges if e.src == show.id and e.dst == email.id]
+        (stub,) = [
+            e for e in result.edges
+            if e.src == show.id and e.dst == "ruby:external:0-0:email:unresolved"
+        ]
+        assert "receiver_type_hint" not in stub.meta
 
     def test_variable_receiver_without_type_no_false_edge(self, tmp_path: Path) -> None:
         """Variable calls without tracked type still don't create false edges."""

@@ -6,8 +6,12 @@ evidence that chose a call-family edge's target. One fixture line per route:
 
 * ``self.helper``, and a receiverless ``helper`` / ``helper()`` that finds a
   method of the caller's own class, are ``own_type``;
-* a receiverless send found in the file's bare-name table is ``same_file``;
-  one the resolver found by name across the repository is ``name``;
+* a receiverless send from a top-level method to a top-level ``def`` of the
+  same file is ``same_file``;
+* since ADR-0064 (batch 5b) nothing is looked up by its name across the
+  repository, nor in a table of the file's other names: ``top_helper`` sent
+  from a method of ``Main`` and ``far_helper`` (another file's only
+  top-level ``def``) stay unresolved, reported with ``enclosing_class``;
 * ``Svc.make`` and ``Svc.new`` (bound to ``Svc#initialize``) on the constant
   the call site writes are ``qualified``;
 * a local assigned from ``Svc.new`` and then sent ``run`` is
@@ -42,6 +46,12 @@ class Main
     s = Svc.new
     s.run
   end
+end
+
+def top_caller
+  top_helper
+  top_helper()
+  far_helper
 end
 """
 
@@ -80,10 +90,14 @@ def test_every_route_of_one_file(tmp_path: Path) -> None:
     assert _mark(edges, 11, "Main#helper") == "own_type"
     assert _mark(edges, 12, "Main#helper") == "own_type"
     assert _mark(edges, 13, "Main#helper") == "own_type"
-    assert _mark(edges, 14, "top_helper") == "same_file"
-    assert _mark(edges, 15, "top_helper") == "same_file"
-    assert _mark(edges, 16, "far_helper") == "name"
-    assert _mark(edges, 17, "far_helper") == "name"
+    for line, name in ((14, "top_helper"), (15, "top_helper"), (16, "far_helper"), (17, "far_helper")):
+        (stub,) = [e for e in edges if e.edge_type == "calls" and e.line == line]
+        assert (stub.is_resolved, stub.dst) == (False, f"ruby:Main:0-0:{name}:unresolved")
+        assert stub.meta["enclosing_class"] == "Main"
+    assert _mark(edges, 25, "top_helper") == "same_file"
+    assert _mark(edges, 26, "top_helper") == "same_file"
+    (far,) = [e for e in edges if e.edge_type == "calls" and e.line == 27]
+    assert (far.is_resolved, far.dst) == (False, "ruby:external:0-0:far_helper:unresolved")
     assert _mark(edges, 18, "Svc.make") == "qualified"
     assert _mark(edges, 19, "Svc#initialize", "instantiates") == "qualified"
     assert _mark(edges, 20, "Svc#run") == "receiver_type"
