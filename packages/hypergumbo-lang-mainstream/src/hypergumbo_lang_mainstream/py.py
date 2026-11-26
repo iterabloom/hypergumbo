@@ -38,6 +38,15 @@ Analysis proceeds in two passes for cross-file resolution:
   (``_collect_django_property_managers``, a monotone fixed point, WI-valav),
   then type ``setUp`` fixture fields (``self.x = Model.objects.create(...)``)
 
+- Map every dotted module to the ONE file it names (``_ModuleFiles``: the
+  importer's own ``sys.path`` directory and pytest's configured
+  ``pythonpath`` first, then the source roots, every ``src`` directory and
+  the repository root; several files are a tie, none is a library). A file's
+  calls look an import up there (``_ImportedFileResolver``), never by a
+  dotted-suffix match over every module of the run (ADR-0064)
+- Hand each file's imports to the shared call resolution as a table of files
+  (``_import_scope``, ``AnalysisResult.import_scopes``)
+
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites. Three kinds of block are
   walked: each function body (under its symbol), module code (under the file
@@ -112,7 +121,14 @@ Detected Patterns
 - Builtin and unknown callees: bare calls to builtins (``print``, ``open``) emit
   unresolved ``calls`` edges whose dst module is ``builtins``, and bare names
   that are not imported or locally bound emit ``external`` unresolved edges;
-  names bound in an enclosing scope are skipped
+  names bound in an enclosing scope are skipped (no stub fact says "a local
+  value": the shared pass would read the name through the file's table)
+- Every unresolved call goes out through ``make_unresolved_edge``
+  (``_call_stub``) with the facts of its site: ``qualifier`` for
+  ``mod.f()`` / ``name.m()`` / ``root.a.m()`` on an import,
+  ``enclosing_class`` (+ ``super_receiver`` for ``super().m()``),
+  ``receiver_type_hint``, ``inherited_field_receiver``; a bare call carries
+  none (ADR-0064)
 - External receiver typing: a receiver built by a catalogued or imported
   constructor (``f = open(p)``, ``s = socket.socket()``, ``Path(raw)``), an
   annotated parameter, or an allowlisted derivation of one (``d / "f"``) makes
@@ -307,7 +323,7 @@ import warnings
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator, Mapping, NamedTuple, Sequence, TypeVar
+from typing import Callable, Iterator, Mapping, NamedTuple, Sequence, TypeVar
 
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
@@ -319,6 +335,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
+    make_unresolved_edge,
     mint_shape_id,
     make_route_symbol,
     make_typed_stable_id,
@@ -334,13 +351,12 @@ from hypergumbo_core.analyze.registry import (
     last_segment,
     register_analyzer,
 )
+from hypergumbo_core.import_scope import MODULES_ARE_FILES, ImportScope
 from hypergumbo_core.library_signatures import load_library_member_types, load_library_tuple_returns
 from hypergumbo_core.qualified_name_axis import QUALIFIED_NAME_SEPARATORS
 from hypergumbo_core import resolved_by
+from hypergumbo_core.symbol_resolution import LookupResult, SymbolResolver
 from hypergumbo_lang_mainstream._pyscope import NestedDef, Scope, ScopeStack
-
-if TYPE_CHECKING:
-    from hypergumbo_core.symbol_resolution import SymbolResolver
 
 
 def find_python_files(
@@ -3412,6 +3428,314 @@ def _importer_sys_path_dir(
     return ".".join(dirs) or None
 
 
+#: How many files a name is followed through when a module passes on a name
+#: it imports (``from .impl import Thing`` in a package ``__init__.py``): a
+#: chain longer than this is not code a person wrote.
+_REEXPORT_DEPTH = 8
+
+
+def _in_test_tree(py_file: Path, repo_root: Path) -> bool:
+    """Is ``py_file`` a file pytest collects or a module of a test directory
+    (the test tree of ``_importer_sys_path_dir``)?"""
+    name = py_file.stem
+    try:
+        dirs = py_file.relative_to(repo_root).parts[:-1]
+    except ValueError:  # pragma: no cover - every analysed file is under the root
+        dirs = ()
+    return (
+        name.startswith("test_") or name.endswith("_test") or name == "conftest"
+        or any(d in ("tests", "test") for d in dirs)
+    )
+
+
+class _ModuleFiles:
+    """Which file of the tree a dotted module names, by Python's own rule
+    (ADR-0064: an import names a FILE, exactly, or nothing of the tree).
+
+    Python takes a module from the first entry of ``sys.path`` that holds it.
+    The analyzer models the entries it can know, and only those:
+
+    1. the directory the importer's own run puts first
+       (``_importer_sys_path_dir``: pytest's ``prepend`` basedir for a test
+       file, a script's own directory), then, for a file of a test tree, the
+       directories pytest is configured to put on the path
+       (``[tool.pytest.ini_options] pythonpath`` of each ``pyproject.toml``
+       from the file's directory up to the root);
+    2. the module roots: the deepest source root that covers the file
+       (``_module_name_from_path``), every directory named ``src`` above it
+       (a namespace package under ``src/`` is not detected as a source root
+       there), and the repository root. ``pkg/__init__.py`` is also ``pkg``.
+
+    A module is the file it names under (1), else under (2). Two files that
+    carry one module name under (2) (two ``src`` directories each holding
+    ``pkg/util.py``) are a TIE: the module names no file and nothing is bound
+    through it. A module that names no file is a library's, and nothing in
+    the tree is bound to it, however many in-tree modules END with its name:
+    the dotted-suffix match this replaces bound ``from app.crud import X`` to
+    ``backend.app.crud`` and ``from json import dumps`` to an in-tree
+    ``pkg/json.py`` alike.
+
+    A name asked of a module is the declaration the file makes of it (its
+    module-level registry key), else the name the file itself imports under
+    that name, followed to where it is declared (``from .impl import Thing``
+    in ``pkg/__init__.py``; a facade module's ``from .tier import parse``).
+    The run-wide ``global_symbols`` registry (last file registered wins) is
+    not read for a bind. Not modelled: ``sys.path`` changed by code
+    (``sys.path.insert``), ``.pth`` files, ``setup.cfg`` / ``pytest.ini``
+    pytest settings.
+    """
+
+    def __init__(
+        self,
+        analyses: "dict[Path, FileAnalysis]",
+        repo_root: Path,
+        source_roots: list[Path],
+        module_to_file_id: dict[str, str],
+    ) -> None:
+        self.analyses = analyses
+        self.repo_root = repo_root
+        self.module_of: dict[Path, str] = {}
+        self._files_by_module: dict[str, list[Path]] = {}
+        self._sys_dir: dict[Path, str | None] = {}
+        self._pytest_dirs: dict[Path, tuple[Path, ...]] = {}
+        for py_file, analysis in analyses.items():
+            module_name = _module_name_from_path(py_file, repo_root, source_roots)
+            self.module_of[py_file] = module_name
+            names = [module_name]
+            # A ``src`` directory is a root whether or not what it holds is a
+            # regular package: ``src/poetry/`` with no ``__init__.py`` is the
+            # namespace package ``poetry`` once ``src`` is installed.
+            try:
+                rel_parts = py_file.relative_to(repo_root).parts
+            except ValueError:  # pragma: no cover - every analysed file is under the root
+                rel_parts = ()
+            names += [
+                ".".join(rel_parts[i + 1:]).removesuffix(".py")
+                for i, part in enumerate(rel_parts[:-1]) if part == "src"
+            ]
+            names.append(".".join(rel_parts).removesuffix(".py"))
+            for name in list(names):
+                if name.endswith(".__init__"):
+                    names.append(name.rsplit(".__init__", 1)[0])
+            for name in dict.fromkeys(names):
+                if name:
+                    self._files_by_module.setdefault(name, []).append(py_file)
+            tree = analysis.tree if isinstance(analysis.tree, ast.Module) else None
+            self._sys_dir[py_file] = (
+                _importer_sys_path_dir(module_name, tree, module_to_file_id)
+                if tree is not None else None
+            )
+
+    def rel(self, py_file: Path) -> str:
+        """``py_file`` spelled as its symbols' ``path`` is once the run
+        relativises it: the name a table binding gives a module."""
+        try:
+            return py_file.relative_to(self.repo_root).as_posix()
+        except ValueError:  # pragma: no cover - every analysed file is under the root
+            return py_file.as_posix()
+
+    def _pytest_pythonpath(self, directory: Path) -> tuple[Path, ...]:
+        """The ``pythonpath`` entries of the pytest settings in the
+        ``pyproject.toml`` files of ``directory`` and of every directory above
+        it up to the root, nearest first."""
+        if directory in self._pytest_dirs:
+            return self._pytest_dirs[directory]
+        from hypergumbo_lang_mainstream.py_deps import _load_pyproject
+
+        found: list[Path] = []
+        config = _load_pyproject(directory / "pyproject.toml") or {}
+        entries = config.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("pythonpath", [])
+        if isinstance(entries, str):
+            entries = [entries]
+        found += [directory / entry for entry in entries if isinstance(entry, str)]
+        if directory != self.repo_root and self.repo_root in directory.parents:
+            found += self._pytest_pythonpath(directory.parent)
+        self._pytest_dirs[directory] = tuple(found)
+        return self._pytest_dirs[directory]
+
+    def candidates(self, module: str, importer: Path | None) -> tuple[list[Path], list[Path]]:
+        """The files ``module`` can name from ``importer``: under the
+        importer's own ``sys.path`` directory (or, failing it, under the
+        directories pytest puts on the path for a file of a test tree), and
+        under the module roots."""
+        sys_dir = self._sys_dir.get(importer) if importer is not None else None
+        first = (
+            list(self._files_by_module.get(f"{sys_dir}.{module}", ()))
+            if sys_dir else []
+        )
+        if not first and importer is not None and _in_test_tree(importer, self.repo_root):
+            relative = Path(*module.split("."))
+            for directory in self._pytest_pythonpath(importer.parent):
+                for candidate in (
+                    directory / relative.with_suffix(".py"), directory / relative / "__init__.py",
+                ):
+                    if candidate in self.analyses and candidate not in first:
+                        first.append(candidate)
+        return first, list(self._files_by_module.get(module, ()))
+
+    def file_for(self, module: str, importer: Path | None) -> Path | None:
+        """The one file ``module`` names from ``importer``, or ``None`` (a
+        library's module, or a tie)."""
+        if not module:
+            return None
+        first, rooted = self.candidates(module, importer)
+        found = first or rooted
+        return found[0] if len(found) == 1 else None
+
+    def symbol(
+        self, module: str, name: str, importer: Path | None, depth: int = 0,
+    ) -> Symbol | None:
+        """The declaration ``name`` of ``module`` means from ``importer``."""
+        py_file = self.file_for(module, importer)
+        if py_file is None or name == "<module>":
+            return None
+        analysis = self.analyses[py_file]
+        declared = analysis.symbol_by_name.get(name)
+        if declared is not None:
+            return declared
+        passed_on = analysis.imports.get(name)
+        if passed_on is None or depth >= _REEXPORT_DEPTH:
+            return None
+        return self.symbol(passed_on[0], passed_on[1], py_file, depth + 1)
+
+
+class _ImportedFileResolver(SymbolResolver):
+    """The module lookup of ONE importing file's calls: ``lookup`` asks
+    ``_ModuleFiles`` (the exact file the import names), never the dotted
+    suffix match of the shared resolver. ``module_in_tree`` is not a bind
+    (it decides whether a receiver path is spelled into an unresolved
+    stub) and stays the shared resolver's."""
+
+    def __init__(
+        self, modules: _ModuleFiles, importer: Path, shared: SymbolResolver,
+    ) -> None:
+        super().__init__(shared.registry)
+        self._modules = modules
+        self._importer = importer
+        self._shared = shared
+
+    def lookup(
+        self,
+        module: str,
+        name: str,
+        *,
+        path_hints: dict[str, str] | None = None,
+        allow_suffix: bool = True,
+        allow_ambiguous: bool = False,
+    ) -> LookupResult:
+        return LookupResult(symbol=self._modules.symbol(module, name, self._importer))
+
+    def module_in_tree(self, module: str) -> bool:
+        return self._shared.module_in_tree(module)
+
+
+def _import_scope(
+    py_file: Path, analysis: "FileAnalysis", modules: _ModuleFiles,
+    counts: Counter[str] | None = None,
+) -> ImportScope:
+    """What the file's imports bind, for the shared call resolution
+    (ADR-0064, piece b): a table of FILES (``module_kind=MODULES_ARE_FILES``),
+    every module spelled as the repository-relative path of the file
+    ``_ModuleFiles`` says the import names. An import of a module that names
+    no file of the tree (a library, a tie) is not recorded.
+
+    - ``import a.b`` binds ``a`` and makes ``a.b`` reachable through it:
+      ``add_namespace`` of each of ``a`` and ``a.b`` that names a file, under
+      its dotted spelling (the owner of ``a.b.f()`` is looked up whole; the
+      analyzer's map holds ``a.b`` and ``a`` for it);
+      ``import a.b as c``: ``add_namespace(<a.b>, "c")``.
+    - ``from a import f [as g]``: a module of the tree (``a/f.py``,
+      ``a/f/__init__.py``) that ``a`` itself does not declare or import as
+      ``f`` is a namespace binding of that file; otherwise
+      ``add_named(<a>, "f", "g")``. What an ``__init__.py`` imports and passes
+      on is recorded the same way: the shared lookup reads a file's own named
+      imports when it follows a name through it.
+    - ``from a import *``: ``add_wildcard`` with ``a``'s ``__all__`` when it
+      is a literal list, else ``add_open_wildcard``.
+    - Relative imports are resolved against the file's own module name
+      (``_resolve_relative_import``), as the analyzer's own maps are.
+    - The named and namespace bindings are read from the analyzer's own maps
+      (``_extract_imports``): every import at any depth (``ast.walk``), so a
+      function-local or conditional import is a binding of the file, and of
+      two bindings of one name the later in walk order is kept, a library's
+      included (it then binds nothing in the table).
+
+    ``counts``, when given (a measurement), is told per module looked up: ``recorded``, ``library``
+    (names no file), ``tie`` (several files), ``sys_dir_and_root`` (the
+    importer's ``sys.path`` directory and a module root both hold one; the
+    directory's is taken), ``relative_unresolved`` (a relative import above
+    the top-level module).
+    """
+    scope = ImportScope(module_kind=MODULES_ARE_FILES)
+    importing_module = modules.module_of[py_file]
+    if counts is None:
+        counts = Counter()
+
+    def file_of(module: str) -> Path | None:
+        first, rooted = modules.candidates(module, py_file)
+        if first and rooted and first != rooted:
+            counts["sys_dir_and_root"] += 1
+        found = first or rooted
+        if len(found) > 1:
+            counts["tie"] += 1
+        return found[0] if len(found) == 1 else None
+
+    # The names: the analyzer's own maps (``_extract_imports``), which hold the
+    # binding of each local name that the file's LAST import of it in walk
+    # order makes, a library's included. Built from them, the table never
+    # says in-tree where the analyzer's maps say library (a function-local
+    # ``from tree_sitter_language_pack import get_language`` after a
+    # module-level ``from ..taxonomy import get_language``).
+    for alias, module in analysis.module_imports.items():
+        target = file_of(module)
+        counts["recorded" if target else "library"] += 1
+        if target is not None:
+            scope.add_namespace(modules.rel(target), alias)
+    for local, (module, original) in analysis.imports.items():
+        if original == "*":
+            continue
+        target = file_of(module)
+        # ``from a import f`` is the attribute ``f`` of ``a`` when ``a`` has
+        # one, else the submodule ``a.f`` (Python's order).
+        submodule = (
+            file_of(f"{module}.{original}")
+            if target is None or modules.symbol(module, original, py_file) is None
+            else None
+        )
+        if submodule is not None:
+            scope.add_namespace(modules.rel(submodule), local)
+            counts["recorded"] += 1
+            continue
+        counts["recorded" if target else "library"] += 1
+        if target is not None:
+            scope.add_named(modules.rel(target), original, alias=local)
+    # The star imports, every one of them (the maps keep only the last ``*``).
+    tree = analysis.tree if analysis.tree is not None else ast.Module(body=[], type_ignores=[])
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = _resolve_relative_import(node.module, node.level, importing_module)
+        if not module:
+            counts["relative_unresolved"] += 1
+            continue
+        if not any(alias.name == "*" for alias in node.names):
+            continue
+        target = file_of(module)
+        counts["recorded" if target else "library"] += 1
+        if target is None:
+            continue
+        target_tree = modules.analyses[target].tree
+        exports = (
+            _extract_module_all(target_tree)
+            if isinstance(target_tree, ast.Module) else None
+        )
+        if exports is not None:
+            scope.add_wildcard(modules.rel(target), sorted(exports))
+        else:
+            scope.add_open_wildcard(modules.rel(target))
+    return scope
+
+
 def _extract_import_edges(
     tree: ast.AST,
     file_path: str,
@@ -3557,59 +3881,42 @@ def _resolve_base_class(
     child_sym: Symbol,
     class_by_name: dict[str, list[Symbol]],
     sym_file_imports: dict[str, dict[str, tuple[str, str]]],
+    module_files: "_ModuleFiles",
+    import_scopes: Mapping[str, ImportScope],
 ) -> Symbol | None:
-    """Resolve a base class name to a specific Symbol, disambiguating collisions.
+    """The class a bare base name of ``child_sym`` means, by Python's rule
+    for a name in a module's global scope, or ``None`` (ADR-0064):
 
-    When multiple classes share the same name (e.g., the many test classes
-    named 'Model' in Django), uses a priority cascade:
+    1. a class of that name declared in the child's own file (one; two are
+       a tie);
+    2. else the class the file's import of that name binds
+       (``from m import Base [as B]``): the exact file the import names
+       (``_ModuleFiles``), the name followed through what that file passes on;
+    3. else the one class of that name declared in the files the child's
+       file star-imports (``from m import *``; two are a tie).
 
-    1. Same-file match: base class defined in the same file as the child
-    2. Import match: child's file imports match a candidate's module path
-    3. First by ID: deterministic fallback (sorted by symbol ID)
-
-    Args:
-        base_name: The base class name to resolve (e.g., 'Model')
-        child_sym: The child class symbol (for file context)
-        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
-        sym_file_imports: Maps symbol ID -> file-level imports dict
-            (imported_name -> (module_name, original_name))
-
-    Returns:
-        The resolved base class Symbol, or None if no match found.
+    A class elsewhere in the repository that merely has the name is not the
+    base: the name with ONE holder run-wide, the candidate whose path ends
+    with the import's module path and the first candidate by id are not
+    evidence the language reads. A base found by none of the three is left
+    to the caller (an external base, or no edge).
     """
-    candidates = class_by_name.get(base_name)
-    if not candidates:
-        return None
-
-    if len(candidates) == 1:
-        return candidates[0]
-
-    # Extract file path from child symbol ID for same-file check
+    candidates = class_by_name.get(base_name, [])
     child_path = child_sym.path or ""
-
-    # 1. Same-file match: prefer base class in the same file
     same_file = [c for c in candidates if c.path == child_path]
-    if len(same_file) == 1:
-        return same_file[0]
-
-    # 2. Import match: check if child's file imports resolve to a candidate
-    child_imports = sym_file_imports.get(child_sym.id, {})
-    if base_name in child_imports:
-        import_module, _original_name = child_imports[base_name]
-        # Match import module against candidate file paths
-        # e.g., import_module="db.models" matches candidate path "db/models.py"
-        module_as_path = import_module.replace(".", "/")
-        for cand in candidates:
-            cand_path = cand.path or ""
-            # Check if candidate path contains the module path
-            # e.g., "db/models.py" contains "db/models"
-            cand_no_ext = cand_path.rsplit(".py", 1)[0]
-            if cand_no_ext.endswith(module_as_path):
-                return cand
-
-    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
-    candidates_sorted = sorted(candidates, key=lambda c: c.id)
-    return candidates_sorted[0]
+    if same_file:
+        return same_file[0] if len(same_file) == 1 else None
+    importer = Path(child_path)
+    binding = sym_file_imports.get(child_sym.id, {}).get(base_name)
+    if binding is not None:
+        found = module_files.symbol(binding[0], binding[1], importer)
+        return found if found is not None and found.kind == "class" else None
+    scope = import_scopes.get(child_path)
+    starred = set(scope.passed_on_modules) if scope is not None else set()
+    supplied = [
+        c for c in candidates if module_files.rel(Path(c.path)) in starred
+    ]
+    return supplied[0] if len(supplied) == 1 else None
 
 
 def _base_module_is_in_tree(
@@ -3761,6 +4068,8 @@ def _extract_inheritance_edges(
     run: AnalysisRun,
     module_to_file_id: dict[str, str],
     sym_file_module_imports: dict[str, dict[str, str]],
+    module_files: "_ModuleFiles",
+    import_scopes: Mapping[str, ImportScope],
 ) -> list[Edge]:
     """Extract extends edges from class inheritance.
 
@@ -3774,9 +4083,12 @@ def _extract_inheritance_edges(
     the type hierarchy honest ("what is this a subclass of" does not answer
     "nothing" for a class whose bases are all external).
 
-    When multiple classes share the same name (common in large repos like Django,
-    where many test stubs are named 'Model'), uses import-aware disambiguation
-    via ``_resolve_base_class()`` to find the correct target.
+    A bare base name means the class Python's global scope gives it: one of
+    the child's own file, the one its import binds (the exact file the import
+    names), or the one a star-import supplies (``_resolve_base_class``). A
+    namesake elsewhere in the repository is never taken for it: with two
+    candidates, or with a name nothing in the file binds, there is no edge to
+    an in-repo class (ADR-0064).
 
     A base named THROUGH AN IMPORT (bare ``TestCase`` from ``from unittest
     import TestCase``, or dotted ``unittest.TestCase`` / ``models.Model``) is
@@ -3868,7 +4180,8 @@ def _extract_inheritance_edges(
 
             # Resolve to the correct base class, handling name collisions
             base_sym = _resolve_base_class(
-                base_name, sym, class_by_name, sym_file_imports
+                base_name, sym, class_by_name, sym_file_imports,
+                module_files, import_scopes,
             )
             if base_sym is not None and base_sym.id != sym.id:
                 edges.append(Edge.create(
@@ -3901,25 +4214,9 @@ def _extract_inheritance_edges(
                 continue
 
             if imported_base is not None:
-                # Import-bound to an IN-TREE module but not resolved by name.
-                # Aliased import (``from x import Base as B``): re-resolve on the
-                # ORIGINAL name so an aliased IN-TREE base binds to its real class.
-                _module_path, original_name = imported_base
-                if original_name != base_name:
-                    re_sym = _resolve_base_class(
-                        original_name, sym, class_by_name, sym_file_imports
-                    )
-                    if re_sym is not None and re_sym.id != sym.id:
-                        edges.append(Edge.create(
-                            src=sym.id,
-                            dst=re_sym.id,
-                            edge_type="extends",
-                            line=sym.span.start_line if sym.span else 0,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_extends",
-                        ))
-                        continue
+                # Import-bound to an IN-TREE module but not resolved through
+                # the import (an aliased import is resolved on its original
+                # name by ``_resolve_base_class`` itself).
                 # In-tree guard (INV-nuzas): a base imported from an in-tree module
                 # that was simply not extracted as a class (a module-level
                 # variable, a failed-parse file) must be DROPPED, not minted as a
@@ -6437,6 +6734,43 @@ def _is_super_call(expr: ast.expr) -> bool:
     )
 
 
+def _super_call_class(
+    receiver: ast.expr,
+    caller: Symbol,
+    caller_locals: frozenset[str],
+    caller_decorators: set[str | None],
+) -> str | None:
+    """The class whose PARENTS a ``super().m()`` call is made on: the short
+    name of the class the calling method is declared in, when ``receiver`` is
+    ``super()`` or ``super(C, self)`` / ``super(C, cls)`` with ``C`` that
+    class, written directly in a method that has the instance (or class) it
+    needs. ``None`` otherwise: a ``super()`` in a nested function or a
+    ``@staticmethod`` has neither, and ``super(Other, self)`` starts its walk
+    above a class the call site names, which a stub cannot say."""
+    if not (
+        isinstance(receiver, ast.Call)
+        and isinstance(receiver.func, ast.Name)
+        and receiver.func.id == "super"
+        and "super" not in caller_locals
+        and caller.kind == "method"
+        and "staticmethod" not in caller_decorators
+        and caller.qualified_name
+        and "." in caller.qualified_name
+    ):
+        return None
+    enclosing = caller.qualified_name.split(".")[-2]
+    if not receiver.args and not receiver.keywords:
+        return enclosing
+    first = receiver.args[0] if len(receiver.args) == 2 else None
+    second = receiver.args[1] if len(receiver.args) == 2 else None
+    if (
+        isinstance(first, ast.Name) and first.id == enclosing
+        and isinstance(second, ast.Name) and second.id in caller_locals
+    ):
+        return enclosing
+    return None
+
+
 class _DjangoReceiverOracle:
     """The per-code-block half of the Django manager question.
 
@@ -6736,6 +7070,7 @@ def _extract_edges(
     ] | None = None,
     django_index: DjangoRelationIndex | None = None,
     imports_by_path: dict[str, dict[str, tuple[str, str]]] | None = None,
+    call_resolver: "SymbolResolver | None" = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -6769,7 +7104,14 @@ def _extract_edges(
         global_symbols: All symbols across the project
         module_imports: Module imports (import X, import X as Y)
         resolver: Optional SymbolResolver for efficient cross-file lookups
+            made by the edges that are not calls (decorators, signal
+            receivers, function references, module attribute references)
+        call_resolver: the module lookup of this file's CALLS and of the
+            typing that feeds them (``_ImportedFileResolver``: the exact file
+            an import names, ADR-0064); ``resolver`` when not given
     """
+    if call_resolver is None:
+        call_resolver = resolver
     # tree comes from ast.parse (mode="exec") → always an ast.Module; the
     # ast.AST annotation is loose (FileAnalysis.tree is ast.AST). Narrow it here
     # so the tree.body scans below type-check, without tightening the signature
@@ -7530,23 +7872,13 @@ def _extract_edges(
             )
             if hint != DJANGO_ORM_MODULE:
                 return
-            edges.append(Edge.create(
-                src=caller_symbol.id,
-                dst=f"python:{DJANGO_ORM_MODULE}:0-0:{dunder}:unresolved",
-                edge_type="calls",
-                line=lineno,
-                evidence_type="ast_call",
-                is_resolved=False,
+            edges.append(_call_stub(
+                caller_symbol, dunder, lineno, run_id,
+                module=DJANGO_ORM_MODULE, call_construct="protocol",
                 meta={
-                    "call_construct": "protocol",
                     "framework_dispatch": "django_orm",
                     "resolution_quality": "type_inferred",
                 },
-                dst_ref=ExternalRef(
-                    lang="python", module_path=DJANGO_ORM_MODULE, name=dunder
-                ),
-                origin=PASS_ID,
-                origin_run_id=run_id,
             ))
 
         for node in block_nodes:
@@ -7709,7 +8041,7 @@ def _extract_edges(
                         assigned_class = _resolve_call_target(
                             node.value, local_symbols,
                             _scope_live(imports, _value_shadow), global_symbols,
-                            _scope_live(module_imports, _value_shadow), resolver,
+                            _scope_live(module_imports, _value_shadow), call_resolver,
                             inner_scope=_frame_defs(stack),
                             sym_by_path_name=_sym_by_path_name,
                             var_types=var_types,
@@ -7730,7 +8062,7 @@ def _extract_edges(
                             # track the variable's type from that annotation.
                             ret_class = _returned_class(
                                 assigned_class, local_symbols, imports,
-                                global_symbols, resolver, _sym_by_path_name,
+                                global_symbols, call_resolver, _sym_by_path_name,
                                 imports_by_path,
                             )
                             if ret_class:
@@ -7808,7 +8140,7 @@ def _extract_edges(
                 _edges_before_call = len(edges)
                 _process_call(
                     node, caller_symbol, local_symbols, imports, global_symbols,
-                    module_imports, var_types, edges, resolver,
+                    module_imports, var_types, edges, call_resolver,
                     sym_by_path_name=_sym_by_path_name,
                     imports_by_path=imports_by_path,
                     run_id=run_id,
@@ -7883,12 +8215,12 @@ def _extract_edges(
                     local_symbols, _sym_by_path_name,
                     property_getter_by_path_name,
                 )
-                if _getter is not None:
+                if _getter is not None and not _import_shadowed(
+                    var_types[node.value.id], imports, module_imports, local_symbols,
+                ):
                     _prop_recv = var_types[node.value.id]
                     _prop_meta: dict[str, str] = {
-                        "call_construct": "method",
                         "resolution_quality": "type_inferred",
-                        "receiver_type_hint": _prop_recv.name,
                     }
                     # WI-supat: stamp the concrete receiver-type id only when
                     # trustworthy (file-unique short name AND not import-shadowed),
@@ -7900,16 +8232,10 @@ def _extract_edges(
                         local_symbols,
                     ):
                         _prop_meta["receiver_type_id"] = _prop_recv.id
-                    edges.append(Edge.create(
-                        src=caller_symbol.id,
-                        dst=f"python:external:0-0:{node.attr}:unresolved",
-                        edge_type="calls",
-                        line=node.lineno,
-                        evidence_type="ast_call",
-                        is_resolved=False,
-                        meta=_prop_meta,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
+                    edges.append(_call_stub(
+                        caller_symbol, node.attr, node.lineno, run_id,
+                        call_construct="method",
+                        receiver_type_hint=_prop_recv.name, meta=_prop_meta,
                     ))
 
             # Function references in dict values: {"GET": handle_get}
@@ -7948,7 +8274,7 @@ def _extract_edges(
         _annotation_module_hint,
         _extract_external_param_types,
     ) = _make_param_type_helpers(
-        local_symbols, imports, global_symbols, module_imports, resolver,
+        local_symbols, imports, global_symbols, module_imports, call_resolver,
         interprocedural_param_types,
     )
 
@@ -8157,7 +8483,7 @@ def _extract_edges(
     if class_maps is None:
         class_maps = _collect_class_field_maps(
             tree, local_symbols, imports, global_symbols, module_imports,
-            resolver, class_name_counts, interprocedural_param_types,
+            call_resolver, class_name_counts, interprocedural_param_types,
             class_symbol_by_node_id=class_symbol_by_node_id,
         )
     class_field_types, class_own_field_names, class_external_field_types = class_maps
@@ -8182,7 +8508,7 @@ def _extract_edges(
         if _alias_target is None and _rhs_name in imports:
             _mod, _orig = imports[_rhs_name]
             _alias_target = _lookup_symbol_by_module(
-                global_symbols, _mod, _orig, resolver=resolver
+                global_symbols, _mod, _orig, resolver=call_resolver
             )
         if _alias_target is None or _alias_target.kind not in ("function", "method"):
             continue
@@ -9911,6 +10237,7 @@ def _collect_call_site_param_types(
     imports: dict[str, tuple[str, str]],
     module_imports: dict[str, str],
     global_symbols: dict[tuple[str, str], "Symbol"],
+    resolver: "SymbolResolver | None" = None,
 ) -> dict[tuple[str, int], set[str]]:
     """``{(callee symbol id, positional index): {external types passed}}``.
 
@@ -9959,7 +10286,7 @@ def _collect_call_site_param_types(
                 if callee is None and sub.func.id in imports:
                     module_name, original = imports[sub.func.id]
                     callee = _lookup_symbol_by_module(
-                        global_symbols, module_name, original,
+                        global_symbols, module_name, original, resolver=resolver,
                     )
                 if callee is None or callee.kind not in ("function", "class"):
                     continue
@@ -10101,15 +10428,28 @@ def _receiver_type_id_trustworthy(
     When it returns ``False`` the producer omits the id and the linker falls back
     to the safe name+ambiguity-guard path (biases to unresolved on a collision).
     """
-    name = recv_sym.name
-    if class_name_counts.get(name, 0) > 1:
+    if class_name_counts.get(recv_sym.name, 0) > 1:
         return False
-    if (
-        local_symbols.get(name) is recv_sym
-        and _import_binding_for(name, imports, module_imports) is not None
-    ):
-        return False
-    return True
+    return not _import_shadowed(recv_sym, imports, module_imports, local_symbols)
+
+
+def _import_shadowed(
+    recv_sym: Symbol,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+    local_symbols: dict[str, Symbol],
+) -> bool:
+    """Is ``recv_sym`` a class of this file whose name an import of the file
+    also binds? Python's later binding wins, so the local-first typing that
+    produced ``recv_sym`` may name the wrong class; and the shared pass, asked
+    for that NAME (``receiver_type_hint``), answers with the file's own
+    declaration first (ADR-0064's rule for a table of files, where declaring
+    and importing one name is not code that compiles). Such a receiver goes
+    out with no type at all: unresolved rather than a guess."""
+    return (
+        local_symbols.get(recv_sym.name) is recv_sym
+        and _import_binding_for(recv_sym.name, imports, module_imports) is not None
+    )
 
 
 def _is_django_model_instance(
@@ -10395,6 +10735,50 @@ def _stamp_call_arg_shape(
         meta = dict(edge.meta or {})
         meta["call_arg_shape"] = shape
         edge.meta = meta
+
+
+def _call_stub(
+    caller: Symbol,
+    callee: str,
+    line: int,
+    run_id: str,
+    *,
+    module: str = "external",
+    dst_ref: ExternalRef | None = None,
+    call_construct: str | None = None,
+    instantiates: bool = False,
+    receiver_type_hint: str | None = None,
+    enclosing_class: str | None = None,
+    inherited_field_receiver: str | None = None,
+    qualifier: str | None = None,
+    super_receiver: bool = False,
+    meta: Mapping[str, str] | None = None,
+) -> Edge:
+    """A call (or construction) of a Python caller that the analyzer does not
+    bind, reported as every analyzer reports one: ``make_unresolved_edge``,
+    with the facts the shared call resolution reads (ADR-0064): the type of
+    a typed receiver, the owner the call site names (``qualifier``), the
+    class a ``self`` / ``super()`` call is made in, the field of a
+    ``self.field.m()``. ``module`` is the module slot of the stub's id (a
+    module or receiver type the call is known to leave the tree for, else
+    ``external``); ``dst_ref`` is passed only where it is not the one the
+    slot implies.
+
+    ``meta``: the keys that are this analyzer's own and no fact of the shared
+    pass: ``framework_dispatch``, ``resolution_quality``, ``io_target_kind``,
+    and the class ids ``receiver_type_id`` / ``enclosing_class_id`` beside a
+    hint (WI-supat)."""
+    edge = make_unresolved_edge(
+        "python", caller.id, callee, line, PASS_ID, run_id,
+        module_hint=module, dst_ref=dst_ref, call_construct=call_construct,
+        instantiates=instantiates, receiver_type_hint=receiver_type_hint,
+        enclosing_class=enclosing_class,
+        inherited_field_receiver=inherited_field_receiver,
+        qualifier=qualifier, super_receiver=super_receiver,
+    )
+    if meta and edge.meta is not None:
+        edge.meta.update(meta)
+    return edge
 
 
 def _process_call(
@@ -10862,26 +11246,15 @@ def _process_call(
                 )
             )
         ):
-            _orm_method = func.attr
-            edges.append(Edge.create(
-                src=caller_symbol.id,
-                dst=f"python:{DJANGO_ORM_MODULE}:0-0:{_orm_method}:unresolved",
-                edge_type="calls",
-                line=call_node.lineno,
-                evidence_type="ast_call",
-                is_resolved=False,
+            edges.append(_call_stub(
+                caller_symbol, func.attr, call_node.lineno, run_id,
+                module=DJANGO_ORM_MODULE, call_construct="method",
                 meta={
-                    "call_construct": "method",
                     "framework_dispatch": "django_orm",
                     "resolution_quality": _orm_resolution_quality(
                         func.value, _manager_prov_here,
                     ),
                 },
-                dst_ref=ExternalRef(
-                    lang="python", module_path=DJANGO_ORM_MODULE, name=_orm_method
-                ),
-                origin=PASS_ID,
-                origin_run_id=run_id,
             ))
         elif (
             isinstance(func, ast.Attribute)
@@ -10909,24 +11282,13 @@ def _process_call(
             # method -- there the call lands on that base's override and the
             # write is typed at ITS ``super()`` call instead, so one logical
             # write is counted once.
-            _super_write = func.attr
-            edges.append(Edge.create(
-                src=caller_symbol.id,
-                dst=f"python:{DJANGO_ORM_MODULE}:0-0:{_super_write}:unresolved",
-                edge_type="calls",
-                line=call_node.lineno,
-                evidence_type="ast_call",
-                is_resolved=False,
+            edges.append(_call_stub(
+                caller_symbol, func.attr, call_node.lineno, run_id,
+                module=DJANGO_ORM_MODULE, call_construct="method",
                 meta={
-                    "call_construct": "method",
                     "framework_dispatch": "django_orm",
                     "resolution_quality": "type_inferred",
                 },
-                dst_ref=ExternalRef(
-                    lang="python", module_path=DJANGO_ORM_MODULE, name=_super_write
-                ),
-                origin=PASS_ID,
-                origin_run_id=run_id,
             ))
         elif (
             isinstance(func, ast.Attribute)
@@ -10954,7 +11316,6 @@ def _process_call(
                 func.value, external_var_types, _ctor_type_here, _manager_root_here,
             )
             _inline_meta = {
-                "call_construct": "method",
                 # Only an ORM slot can have been filled from an accessor
                 # NAME; every other module here came from a typed root, and
                 # asking otherwise would stamp a Django provenance on a
@@ -10968,19 +11329,10 @@ def _process_call(
             _dotted_recv = _dotted_receiver_name(func.value)
             if _dotted_recv is not None and _medium_key(_dotted_recv) in external_var_types:
                 _inline_meta["io_target_kind"] = external_var_types[_medium_key(_dotted_recv)]
-            edges.append(Edge.create(
-                src=caller_symbol.id,
-                dst=f"python:{ext_module}:0-0:{func.attr}:unresolved",
-                edge_type="calls",
-                line=call_node.lineno,
-                evidence_type="ast_call",
-                is_resolved=False,
+            edges.append(_call_stub(
+                caller_symbol, func.attr, call_node.lineno, run_id,
+                module=ext_module or "", call_construct="method",
                 meta=_inline_meta,
-                dst_ref=ExternalRef(
-                    lang="python", module_path=ext_module or "", name=func.attr,
-                ),
-                origin=PASS_ID,
-                origin_run_id=run_id,
             ))
         elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
             receiver_name = func.value.id
@@ -10988,26 +11340,18 @@ def _process_call(
 
             # Case: module.func() where module is imported but func not found
             if receiver_name in module_imports:
-                module_name = module_imports[receiver_name]
-                dst_id = f"python:{module_name}:0-0:{attr_name}:unresolved"
                 # WI-jubag (instantiates half): module.ClassName() where the member
                 # is PascalCase is an external construction (argparse.ArgumentParser,
                 # …) — type it ``instantiates`` (``ast_new``, no call_construct meta);
-                # snake_case module functions (os.getcwd) stay ``calls``.
+                # snake_case module functions (os.getcwd) stay ``calls``. The
+                # module the call names is the ``qualifier`` as written: the
+                # shared pass reads the file's table for it (ADR-0064).
                 _is_ctor = attr_name[:1].isupper()
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=dst_id,
-                    edge_type="instantiates" if _is_ctor else "calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_new" if _is_ctor else "ast_call",
-                    is_resolved=False,
-                    meta=None if _is_ctor else {"call_construct": "method"},
-                    dst_ref=ExternalRef(
-                        lang="python", module_path=module_name, name=attr_name
-                    ),
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
+                edges.append(_call_stub(
+                    caller_symbol, attr_name, call_node.lineno, run_id,
+                    module=module_imports[receiver_name],
+                    call_construct=None if _is_ctor else "method",
+                    instantiates=_is_ctor, qualifier=receiver_name,
                 ))
             # Case: imported_name.method() where imported_name not resolved
             #
@@ -11066,23 +11410,13 @@ def _process_call(
                     # ``urllib``'s grant, which does not cover
                     # ``urllib.request``: a clean verdict over a real network
                     # send.
-                    owner_module = f"{module_name}.{original_name}"
-                    dst_id = f"python:{owner_module}:0-0:{attr_name}:unresolved"
-                    edges.append(Edge.create(
-                        src=caller_symbol.id,
-                        dst=dst_id,
-                        edge_type="calls",
-                        line=call_node.lineno,
-                        evidence_type="ast_call",
-                        is_resolved=False,
-                        meta={"call_construct": "method"},
-                        dst_ref=ExternalRef(
-                            lang="python",
-                            module_path=owner_module,
-                            name=attr_name,
-                        ),
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
+                    # The owner as written is the ``qualifier``: the shared
+                    # pass reads which module or class the file's table binds
+                    # to it.
+                    edges.append(_call_stub(
+                        caller_symbol, attr_name, call_node.lineno, run_id,
+                        module=f"{module_name}.{original_name}",
+                        call_construct="method", qualifier=receiver_name,
                     ))
             # WI-fuvuj: local_var.method() where the receiver was typed by a
             # known I/O constructor (``f = open(p)`` / ``s = socket.socket()``,
@@ -11095,39 +11429,30 @@ def _process_call(
             # CLI consumer drops dst_ref on serialize/reload and falls back to
             # parsing the dst id.
             elif receiver_name in external_var_types:
-                ext_module = external_var_types[receiver_name]
-                dst_id = f"python:{ext_module}:0-0:{attr_name}:unresolved"
-                _typed_meta = {"call_construct": "method", "resolution_quality": "type_inferred"}
+                _typed_meta = {"resolution_quality": "type_inferred"}
                 _medium = external_var_types.get(_medium_key(receiver_name))
                 if _medium is not None:
                     _typed_meta["io_target_kind"] = _medium  # WI-himim
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call",
-                    is_resolved=False,
-                    meta=_typed_meta,
-                    dst_ref=ExternalRef(
-                        lang="python", module_path=ext_module, name=attr_name
-                    ),
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
+                edges.append(_call_stub(
+                    caller_symbol, attr_name, call_node.lineno, run_id,
+                    module=external_var_types[receiver_name],
+                    call_construct="method", meta=_typed_meta,
                 ))
             # Case: local_var.method() where type cannot be inferred.
             # Emit unresolved edge using the attribute name so that IO
             # boundary analysis and taint-flow analysis can detect it.
             # Lower confidence since we don't know the receiver type.
             else:
-                dst_id = f"python:external:0-0:{attr_name}:unresolved"
+                _stub_module = "external"
                 # resolution_quality is NOT stamped here — it is derived AFTER
                 # the hint chain below from whether a receiver type/hint was
                 # actually established (WI-javus). Stamping ``type_inferred``
                 # unconditionally would label this give-up branch a success.
-                unresolved_meta = {
-                    "call_construct": "method",
-                }
+                # The facts of the shared pass (``enclosing_class``,
+                # ``receiver_type_hint``) go to ``make_unresolved_edge``; the
+                # analyzer's own keys ride beside them.
+                _site_facts: dict[str, str] = {}
+                unresolved_meta: dict[str, str] = {}
                 # When the receiver's type is GENUINELY
                 # inferred, stamp a receiver_type_hint so the inherited_calls
                 # linker's strict INV-fahub Site-2 mode can resolve the method
@@ -11191,7 +11516,7 @@ def _process_call(
                     and "self" in _caller_locals
                     and "staticmethod" not in _caller_decos
                 ):
-                    unresolved_meta["enclosing_class"] = (
+                    _site_facts["enclosing_class"] = (
                         caller_symbol.qualified_name.split(".")[-2]
                     )
                     # WI-supat: stamp the AUTHORITATIVE enclosing class id
@@ -11201,9 +11526,11 @@ def _process_call(
                     _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
                     if _encl_id is not None:
                         unresolved_meta["enclosing_class_id"] = _encl_id
-                elif receiver_name in var_types:
+                elif receiver_name in var_types and not _import_shadowed(
+                    var_types[receiver_name], imports, module_imports, local_symbols,
+                ):
                     _rt = var_types[receiver_name]
-                    unresolved_meta["receiver_type_hint"] = _rt.name
+                    _site_facts["receiver_type_hint"] = _rt.name
                     # WI-supat: stamp the concrete receiver-type id only when
                     # it is trustworthy (file-unique short name AND not shadowed by
                     # a same-name import); else omit and fall back to name+guard.
@@ -11215,7 +11542,7 @@ def _process_call(
                 elif receiver_name not in _caller_locals:
                     _recv_sym = _lexical_def(receiver_name, stack, local_symbols)
                     if _recv_sym is not None and _recv_sym.kind == "class":
-                        unresolved_meta["receiver_type_hint"] = receiver_name
+                        _site_facts["receiver_type_hint"] = receiver_name
                         if _receiver_type_id_trustworthy(
                             _recv_sym, class_name_counts, imports,
                             module_imports, local_symbols,
@@ -11228,10 +11555,7 @@ def _process_call(
                 # duck receiver, INV-fahub-biased to unresolved) established none, so
                 # it carries NO resolution_quality: the field names the resolution
                 # pathway (spec §903 / MetaKeySpec), and here there was none.
-                if (
-                    "enclosing_class" in unresolved_meta
-                    or "receiver_type_hint" in unresolved_meta
-                ):
+                if _site_facts:
                     unresolved_meta["resolution_quality"] = "type_inferred"
                 # WI-sozoj: a ``self.save()``/``self.delete()`` on a django
                 # model instance is an ORM instance write — re-key the dst to
@@ -11250,7 +11574,6 @@ def _process_call(
                 # non-Django class's edge is unaffected. The
                 # module-qualified dst_ref survives serialization for the
                 # io-boundary CLI consumer (which reparses the dst id).
-                _orm_dst_ref: ExternalRef | None = None
                 # And NOT when the model's project lineage overrides the
                 # method. Case 2a answers only from the class's own body
                 # (WI-kutal), so an inherited override reaches this branch, and
@@ -11265,7 +11588,7 @@ def _process_call(
                         # model), not its short name: the fallback reads the
                         # file registry.
                         caller_symbol.qualified_name.rsplit(".", 1)[0]
-                        if "enclosing_class" in unresolved_meta
+                        if "enclosing_class" in _site_facts
                         and caller_symbol.qualified_name
                         else None,
                         local_symbols,
@@ -11274,22 +11597,14 @@ def _process_call(
                         func.value, attr_name, django_oracle,
                     )
                 ):
-                    dst_id = f"python:{DJANGO_ORM_MODULE}:0-0:{attr_name}:unresolved"
+                    _stub_module = DJANGO_ORM_MODULE
                     unresolved_meta["framework_dispatch"] = "django_orm"
-                    _orm_dst_ref = ExternalRef(
-                        lang="python", module_path=DJANGO_ORM_MODULE, name=attr_name
-                    )
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call",
-                    is_resolved=False,
+                edges.append(_call_stub(
+                    caller_symbol, attr_name, call_node.lineno, run_id,
+                    module=_stub_module, call_construct="method",
+                    receiver_type_hint=_site_facts.get("receiver_type_hint"),
+                    enclosing_class=_site_facts.get("enclosing_class"),
                     meta=unresolved_meta,
-                    dst_ref=_orm_dst_ref,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
                 ))
         elif (
             isinstance(func, ast.Attribute)
@@ -11342,21 +11657,14 @@ def _process_call(
                 # WI-kufok: a typed relation or fixture field's write. Carries
                 # no ``inherited_field_receiver``: the ORM row is the answer,
                 # and that stamp would route the call to the parent-field walk.
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=f"python:{DJANGO_ORM_MODULE}:0-0:{method_name}:unresolved",
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call",
-                    is_resolved=False,
+                edges.append(_call_stub(
+                    caller_symbol, method_name, call_node.lineno, run_id,
+                    module=DJANGO_ORM_MODULE, dst_ref=_orm_ref,
+                    call_construct="method",
                     meta={
-                        "call_construct": "method",
                         "framework_dispatch": "django_orm",
                         "resolution_quality": "type_inferred",
                     },
-                    dst_ref=_orm_ref,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
                 ))
             elif (
                 caller_symbol.kind == "method"
@@ -11365,12 +11673,12 @@ def _process_call(
                 and "staticmethod" not in _caller_decos
                 and f"self.{field_name}" not in var_types
             ):
-                _site3_meta: dict[str, str] = {"call_construct": "method"}
+                _site3_meta: dict[str, str] = {}
+                _inherited_field: str | None = None
+                _site3_class: str | None = None
                 if field_name not in own_field_names:
-                    _site3_meta["inherited_field_receiver"] = field_name
-                    _site3_meta["enclosing_class"] = (
-                        caller_symbol.qualified_name.split(".")[-2]
-                    )
+                    _inherited_field = field_name
+                    _site3_class = caller_symbol.qualified_name.split(".")[-2]
                     # WI-supat: the authoritative enclosing-class id (same
                     # contract as Site-1) lets the linker start the parent-field
                     # walk from exactly the caller's lexical class, skipping the
@@ -11388,16 +11696,11 @@ def _process_call(
                 # shape, an inherited field or an own field the class never
                 # typed, and per WI-javus it keeps saying nothing was inferred,
                 # because that is what happened.
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=f"python:external:0-0:{method_name}:unresolved",
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call",
-                    is_resolved=False,
-                    meta=_site3_meta,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
+                edges.append(_call_stub(
+                    caller_symbol, method_name, call_node.lineno, run_id,
+                    call_construct="method",
+                    inherited_field_receiver=_inherited_field,
+                    enclosing_class=_site3_class, meta=_site3_meta,
                 ))
         elif isinstance(func, ast.Attribute):
             # WI-zigah: multi-segment chain like `urllib.request.urlopen(x)`
@@ -11429,26 +11732,39 @@ def _process_call(
                 # the edge carries that class as its receiver hint, the way
                 # the assigned form ``b = A.B(); b.inherited()`` does, so the
                 # inherited-calls linker walks the MRO from it.
-                _rooted_meta = {"call_construct": "method"}
-                _inline_owner = _owner_class_here(func.value)
-                if _inline_owner is not None:
-                    _rooted_meta["receiver_type_hint"] = _inline_owner.name
+                #
+                # ``super().m()`` (and ``super(C, self).m()`` written in ``C``)
+                # is a call on the enclosing class's PARENTS: it goes out with
+                # the enclosing class and ``super_receiver``, and the
+                # inherited-calls linker starts its walk above that class.
+                _rooted_meta: dict[str, str] = {}
+                _rooted_hint: str | None = None
+                _super_class = _super_call_class(
+                    func.value, caller_symbol, _caller_locals, _caller_decos,
+                )
+                _inline_owner = (
+                    _owner_class_here(func.value) if _super_class is None else None
+                )
+                if _inline_owner is not None and not _import_shadowed(
+                    _inline_owner, imports, module_imports, local_symbols,
+                ):
+                    _rooted_hint = _inline_owner.name
                     if _receiver_type_id_trustworthy(
                         _inline_owner, class_name_counts, imports,
                         module_imports, local_symbols,
                     ):
                         _rooted_meta["receiver_type_id"] = _inline_owner.id
                     _rooted_meta["resolution_quality"] = "type_inferred"
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=f"python:external:0-0:{func.attr}:unresolved",
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call_direct",
-                    is_resolved=False,
+                elif _super_class is not None:
+                    _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
+                    if _encl_id is not None:
+                        _rooted_meta["enclosing_class_id"] = _encl_id
+                edges.append(_call_stub(
+                    caller_symbol, func.attr, call_node.lineno, run_id,
+                    call_construct="method", receiver_type_hint=_rooted_hint,
+                    enclosing_class=_super_class,
+                    super_receiver=_super_class is not None,
                     meta=_rooted_meta,
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
                 ))
             else:
                 root_name_node, chain_attrs = chain
@@ -11498,21 +11814,13 @@ def _process_call(
                         origin_run_id=run_id,
                     ))
                 elif _root_path is not None and len(chain_attrs) >= 2:
-                    submodule = _root_path + "." + ".".join(chain_attrs[:-1])
-                    callee = chain_attrs[-1]
-                    dst_id = f"python:{submodule}:0-0:{callee}:unresolved"
-                    edges.append(Edge.create(
-                        src=caller_symbol.id,
-                        dst=dst_id,
-                        edge_type="calls",
-                        line=call_node.lineno,
-                        evidence_type="ast_call_direct",
-                        is_resolved=False,
-                        dst_ref=ExternalRef(
-                            lang="python", module_path=submodule, name=callee
-                        ),
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
+                    # The owner as written (``root.a`` of ``root.a.m()``) is
+                    # the ``qualifier``: the shared pass looks it up whole in
+                    # the file's table.
+                    edges.append(_call_stub(
+                        caller_symbol, chain_attrs[-1], call_node.lineno, run_id,
+                        module=_root_path + "." + ".".join(chain_attrs[:-1]),
+                        qualifier=".".join([root_name, *chain_attrs[:-1]]),
                     ))
                 else:
                     # A chain whose root is NOT an imported module —
@@ -11550,7 +11858,8 @@ def _process_call(
                     # is a ``Store`` — and the linker should filter on it (WI-fikoh) rather
                     # than pick ``TrackerSet.add`` by line proximity. A failed
                     # walk returns None and the plain placeholder is emitted.
-                    chain_meta = {"call_construct": "method"}
+                    chain_meta: dict[str, str] = {}
+                    chain_hint: str | None = None
                     chain_cls = (
                         _chain_receiver_class_from_return_types(
                             chain_attrs, var_types[root_name], local_symbols,
@@ -11565,8 +11874,10 @@ def _process_call(
                     # body of its own.
                     if chain_cls is None:
                         chain_cls = _owner_class_here(func.value)
-                    if chain_cls is not None:
-                        chain_meta["receiver_type_hint"] = chain_cls.name
+                    if chain_cls is not None and not _import_shadowed(
+                        chain_cls, imports, module_imports, local_symbols,
+                    ):
+                        chain_hint = chain_cls.name
                         # WI-supat: the concrete id only when it is safe —
                         # same gate as the one-hop branch, not a looser one.
                         if _receiver_type_id_trustworthy(
@@ -11581,22 +11892,16 @@ def _process_call(
                     _orm_ref = _django_orm_attribute_write(func, django_oracle)
                     if _orm_ref is not None:
                         _chain_module = DJANGO_ORM_MODULE
+                        chain_hint = None
                         chain_meta = {
-                            "call_construct": "method",
                             "framework_dispatch": "django_orm",
                             "resolution_quality": "type_inferred",
                         }
-                    edges.append(Edge.create(
-                        src=caller_symbol.id,
-                        dst=f"python:{_chain_module}:0-0:{callee}:unresolved",
-                        edge_type="calls",
-                        line=call_node.lineno,
-                        evidence_type="ast_call_direct",
-                        is_resolved=False,
+                    edges.append(_call_stub(
+                        caller_symbol, callee, call_node.lineno, run_id,
+                        module=_chain_module, dst_ref=_orm_ref,
+                        call_construct="method", receiver_type_hint=chain_hint,
                         meta=chain_meta,
-                        dst_ref=_orm_ref,
-                        origin=PASS_ID,
-                        origin_run_id=run_id,
                     ))
         elif isinstance(func, ast.Name):
             # WI-zigah: bare call like `urlopen(x)` after
@@ -11607,7 +11912,6 @@ def _process_call(
             callee_name = func.id
             if callee_name in imports:
                 module_name, original_name = imports[callee_name]
-                dst_id = f"python:{module_name}:0-0:{original_name}:unresolved"
                 # WI-jubag (instantiates half): a bare call to an imported EXTERNAL
                 # name whose original name is PascalCase (Python's strong class-
                 # naming convention: Path, MagicMock, Popen, ...) is a CONSTRUCTION,
@@ -11616,18 +11920,9 @@ def _process_call(
                 # ``calls``; snake_case/lower callables (helpers, factories) stay
                 # ``calls``. The target is external/unresolved either way.
                 _is_ctor = original_name[:1].isupper()
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=dst_id,
-                    edge_type="instantiates" if _is_ctor else "calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_new" if _is_ctor else "ast_call_direct",
-                    is_resolved=False,
-                    dst_ref=ExternalRef(
-                        lang="python", module_path=module_name, name=original_name
-                    ),
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
+                edges.append(_call_stub(
+                    caller_symbol, original_name, call_node.lineno, run_id,
+                    module=module_name, instantiates=_is_ctor,
                 ))
             elif (
                 callee_name in PY_BUILTIN_CALLABLES
@@ -11664,19 +11959,9 @@ def _process_call(
                 # holding when it does. ``_external_constructor_type`` refuses
                 # the same names through its INV-kipor binding check; both
                 # consumers must agree on what membership licenses.
-                dst_id = f"python:builtins:0-0:{callee_name}:unresolved"
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call_direct",
-                    is_resolved=False,
-                    dst_ref=ExternalRef(
-                        lang="python", module_path="builtins", name=callee_name
-                    ),
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
+                edges.append(_call_stub(
+                    caller_symbol, callee_name, call_node.lineno, run_id,
+                    module="builtins",
                 ))
             elif callee_name not in _caller_shadow:
                 # The residual arm (INV-foluz). A bare name that is not
@@ -11702,18 +11987,16 @@ def _process_call(
                 # names nothing. This refusal is what keeps
                 # `function(request, ...)` (an enclosing decorator's parameter)
                 # out of the graph. Left unemitted rather than guessed.
-                edges.append(Edge.create(
-                    src=caller_symbol.id,
-                    dst=f"python:external:0-0:{callee_name}:unresolved",
-                    edge_type="calls",
-                    line=call_node.lineno,
-                    evidence_type="ast_call_direct",
-                    is_resolved=False,
+                #
+                # The ``dst_ref`` stays stated (module ``external``): the
+                # recovery linker refuses a stub whose ``dst_ref`` states a
+                # module, and a bare call of an unknown name is not its to bind
+                # by name.
+                edges.append(_call_stub(
+                    caller_symbol, callee_name, call_node.lineno, run_id,
                     dst_ref=ExternalRef(
                         lang="python", module_path="external", name=callee_name
                     ),
-                    origin=PASS_ID,
-                    origin_run_id=run_id,
                 ))
 
     _stamp_call_arg_shape(
@@ -11927,9 +12210,25 @@ def analyze_python(
             package_name = module_name.rsplit(".__init__", 1)[0]
             module_to_file_id[package_name] = file_id
 
-    # Create resolver for efficient lookups in Pass 2 (with cached indexes)
-    from hypergumbo_core.symbol_resolution import SymbolResolver
+    # Create resolver for efficient lookups in Pass 2 (with cached indexes).
+    # It keeps the dotted-suffix match for what is not a call: ``imports``
+    # edges, decorators, route handlers, the Django relation index. A file's
+    # CALLS look a module up through ``_ModuleFiles`` (the exact file the
+    # import names; ADR-0064), one resolver per importing file.
     resolver = SymbolResolver(global_symbols)
+    module_files = _ModuleFiles(
+        file_analyses, repo_root, source_roots, module_to_file_id,
+    )
+    call_resolvers: dict[Path, SymbolResolver] = {
+        py_file: _ImportedFileResolver(module_files, py_file, resolver)
+        for py_file in file_analyses
+    }
+    # What each file's imports bind, handed to the shared call resolution
+    # (ADR-0064, piece b): every file has a table, an empty one included.
+    import_scopes: dict[str, ImportScope] = {
+        str(py_file): _import_scope(py_file, analysis, module_files)
+        for py_file, analysis in file_analyses.items()
+    }
 
     # Build (path, name) -> symbol index for O(1) lookups in typed method
     # resolution, instead of an O(n) scan of global_symbols.items() per lookup.
@@ -11986,6 +12285,7 @@ def analyze_python(
         for _cs_key, _cs_seen in _collect_call_site_param_types(
             _cs_analysis.tree, _cs_analysis.symbol_by_name,
             _cs_analysis.imports, _cs_analysis.module_imports, global_symbols,
+            call_resolvers[_cs_file],
         ).items():
             _call_site_types.setdefault(_cs_key, set()).update(_cs_seen)
     interprocedural_param_types: dict[tuple[str, int], str] = {
@@ -12013,7 +12313,8 @@ def analyze_python(
         _cm_counts = _class_name_counts(_cm_analysis.tree)
         _cm_maps = _collect_class_field_maps(
             _cm_analysis.tree, _cm_analysis.symbol_by_name, _cm_analysis.imports,
-            global_symbols, _cm_analysis.module_imports, resolver, _cm_counts,
+            global_symbols, _cm_analysis.module_imports, call_resolvers[_cm_file],
+            _cm_counts,
             interprocedural_param_types,
             class_symbol_by_node_id=_cm_analysis.class_symbol_by_node_id,
         )
@@ -12089,6 +12390,7 @@ def analyze_python(
                 _field_types_by_class_id, _external_field_types_by_class_id,
             ),
             django_index=_django_index,
+            call_resolver=call_resolvers[py_file],
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
@@ -12134,7 +12436,7 @@ def analyze_python(
     # Create extends edges with import-aware disambiguation
     inheritance_edges = _extract_inheritance_edges(
         all_symbols, class_by_name, sym_file_imports, run, module_to_file_id,
-        sym_file_module_imports,
+        sym_file_module_imports, module_files, import_scopes,
     )
     all_edges.extend(inheritance_edges)
 
@@ -12155,4 +12457,5 @@ def analyze_python(
         usage_contexts=all_usage_contexts,
         run=run,
         dependency_manifest=py_manifest if py_manifest.entries else None,
+        import_scopes=import_scopes,
     )

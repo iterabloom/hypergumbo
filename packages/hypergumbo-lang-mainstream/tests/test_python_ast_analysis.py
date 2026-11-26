@@ -4630,7 +4630,7 @@ class TestVariableMethodCalls:
         )
         assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
         assert "external_symbol" in send_request_edge["dst"]
-        assert send_request_edge["confidence"] == 0.40
+        assert send_request_edge["confidence"] == 0.50  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_return_type_generic_not_tracked(self, tmp_path: Path) -> None:
         """Generic return types like Optional[X] are not tracked."""
@@ -4667,7 +4667,7 @@ class TestVariableMethodCalls:
         )
         assert send_request_edge is not None, "Should emit unresolved edge for stub.send_request()"
         assert "external_symbol" in send_request_edge["dst"]
-        assert send_request_edge["confidence"] == 0.40
+        assert send_request_edge["confidence"] == 0.50  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_return_type_local_class(self, tmp_path: Path) -> None:
         """Return type resolved from same file as caller."""
@@ -4762,7 +4762,7 @@ class TestVariableMethodCalls:
         )
         assert process_edge is not None, "Should emit unresolved edge for t.process()"
         assert "external_symbol" in process_edge["dst"]
-        assert process_edge["confidence"] == 0.40
+        assert process_edge["confidence"] == 0.50  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
         """Module-level code with module.func() calls should emit edges
@@ -4856,7 +4856,7 @@ class TestVariableMethodCalls:
         assert len(call_edges) == 1, "Should have 1 unresolved call edge"
         assert "unknown_method" in call_edges[0]["dst"]
         assert "external_symbol" in call_edges[0]["dst"]
-        assert call_edges[0]["confidence"] == 0.40
+        assert call_edges[0]["confidence"] == 0.50  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_unresolved_constructor_no_type_tracking(self, tmp_path: Path) -> None:
         """Unresolved constructor calls with subsequent method calls emit edges."""
@@ -5863,10 +5863,10 @@ class TestUnresolvedEdgeEmission:
         edge = unresolved[0]
 
         # Verify the edge properties
-        assert edge["meta"]["evidence_type"] == "ast_call"
+        assert edge["meta"]["evidence_type"] == "ast_call_direct"  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
         assert edge["meta"]["call_construct"] == "method"
         assert edge["is_resolved"] is False
-        assert edge["confidence"] == 0.40
+        assert edge["confidence"] == 0.50  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_unresolved_edge_for_imported_class_method(self, tmp_path: Path) -> None:
         """Calls to methods on imported classes emit unresolved edges."""
@@ -7608,7 +7608,7 @@ class TestExternalConstructorReceiverTypeInference:
         edge = self._calls_edge(result, "frobnicate:unresolved")
         assert edge.dst == "python:external:0-0:frobnicate:unresolved"
         assert edge.dst_ref is None
-        assert edge.confidence == 0.40
+        assert edge.confidence == 0.50  # every stub is make_unresolved_edge's (ADR-0064): ast_call_direct, 0.50
 
     def test_assignment_from_unrecognized_call_stays_external(
         self, tmp_path: Path
