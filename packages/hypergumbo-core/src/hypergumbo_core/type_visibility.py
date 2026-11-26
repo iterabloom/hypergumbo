@@ -49,6 +49,14 @@ because its declarations carry no namespace:
    before the last segment, looked up whole (``crate::db::Conn`` asks for the
    binding ``crate.db``).
 
+A MODULE MAY BE A DIRECTORY. Where a package is the files of one directory
+(Go), a binding's module is that directory written with a trailing slash
+(``pkg/log/``) and means the declarations of the files directly in it
+(``module_keys``). The caller's own package is then a scope of its own, after
+its file and before its imports: the table names it
+(``ImportScope.own_namespace``, the caller's directory), and a bare name its
+sibling files declare is bound as ``same_module``.
+
 A file that an import names and that does not declare the name is followed
 to the file that does (``declaring_files``: a barrel ``index.ts``, a crate's
 ``pub use``), when the caller passes every file's table. Nothing else is
@@ -161,6 +169,17 @@ def _enclosing_scopes(caller_qualified_name: str | None, own_namespace: str | No
     package = dotted(own_namespace)
     inside = [s for s in scopes if not package or s == package or s.startswith(f"{package}.")]
     return inside or [package]
+
+
+def module_keys(path: str) -> tuple[str, str]:
+    """The modules the declarations of the file ``path`` belong to, in a
+    table whose modules are files: the file itself, and its directory, written
+    with a trailing slash (``pkg/log/``; ``/`` for the root of the tree). The
+    directory is the module where a package is the files directly in one
+    directory (Go: an import names a directory, never a file). An index of
+    declarations by module registers each under both keys, and an import that
+    names a directory finds them without knowing the files."""
+    return path, f"{path.rpartition('/')[0]}/"
 
 
 #: How many files a name is followed through before the search gives up: a
@@ -309,14 +328,14 @@ def _by_file(
     scopes: Mapping[str, "ImportScope"],
 ) -> tuple[list["Symbol"], str]:
     def declares(file: str, wanted: str) -> bool:
-        return any(c.path == file for c in candidates_named(wanted))
+        return any(file in module_keys(c.path) for c in candidates_named(wanted))
 
     def declared(module: str, wanted: str) -> list["Symbol"]:
         """The declarations ``wanted`` of ``module`` means, re-exports followed."""
         return [
             c
             for file, original in declaring_files(module, wanted, declares, scopes)
-            for c in candidates_named(original) if c.path == file
+            for c in candidates_named(original) if file in module_keys(c.path)
         ]
 
     name, _ = _written_name(written)
@@ -325,6 +344,12 @@ def _by_file(
         own = [c for c in candidates_named(head) if c.path == caller_path]
         if own:
             return own, resolved_by.SAME_FILE
+        package = [
+            c for c in candidates_named(head)
+            if scope.own_namespace and scope.own_namespace in module_keys(c.path)
+        ]
+        if package:
+            return package, resolved_by.SAME_MODULE
         bound = scope.named(head)
         if bound is not None:
             return declared(bound.module, bound.name), resolved_by.IMPORT

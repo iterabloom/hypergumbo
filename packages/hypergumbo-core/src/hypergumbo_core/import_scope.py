@@ -82,7 +82,9 @@ from hypergumbo_core.ir import ExternalRef
 #: names) or a file of the repository (a JavaScript, TypeScript or Rust
 #: import: the declarations are the ones in that file). The two are looked up
 #: by different rules (``type_visibility``), and the scope says which it holds
-#: so that no reader has to guess from the strings.
+#: so that no reader has to guess from the strings. A module of the file kind
+#: written with a trailing slash is a directory: the files directly in it
+#: (a Go package; ``type_visibility.module_keys``).
 MODULES_ARE_NAMESPACES = "namespace"
 MODULES_ARE_FILES = "file"
 
@@ -140,6 +142,9 @@ class ImportScope:
     #: (C#), or the file has more than one. Read by the declared-name rule
     #: (``type_visibility``), which also takes it as the scope of a caller
     #: that records no qualified name (a call at the top of the file).
+    #: In a table whose modules are FILES it is the file's own directory,
+    #: written with a trailing slash, where a package is the files of one
+    #: directory (Go): the sibling files' declarations are in scope.
     own_namespace: Optional[str] = None
     #: PHP: a function called by a bare name that the caller's namespace does
     #: not declare is the global namespace's (a class is not looked for there).

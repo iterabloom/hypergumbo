@@ -188,8 +188,8 @@ from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..overload_arity import best_by_arity
 from ..symbol_kinds import type_like_kind_names
 from ..type_visibility import (
-    call_language, declaring_files, dotted, visible_declarations, visible_types,
-    without_type_arguments, written_arity,
+    call_language, declaring_files, dotted, module_keys, visible_declarations,
+    visible_types, without_type_arguments, written_arity,
 )
 from .method_call_recovery import parse_unresolved_name, short_name
 from .registry import (
@@ -1053,13 +1053,15 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
 
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in ctx.symbols}
 
-    # Functions by (file, name), for a call to a function by its imported
-    # name. Built only when some file's table names files.
+    # Functions by (module, name), for a call to a function by its imported
+    # name: the file, and the directory an import may name instead
+    # (``module_keys``). Built only when some file's table names files.
     functions_in_file: dict[tuple[str, str], list[Symbol]] = {}
     if any(s.module_kind == MODULES_ARE_FILES for s in ctx.import_scopes.values()):
         for s in ctx.symbols:
             if s.kind == "function":
-                functions_in_file.setdefault((s.path, s.name), []).append(s)
+                for module in module_keys(s.path):
+                    functions_in_file.setdefault((module, s.name), []).append(s)
 
     # Functions by short name, and the constructions already bound, for a
     # declaration named by a bare call or a ``new`` (``_declaration_named``).
