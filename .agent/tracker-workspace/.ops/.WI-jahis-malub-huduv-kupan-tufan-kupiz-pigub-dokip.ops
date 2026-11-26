@@ -1,0 +1,21 @@
+- op: create  # 7489
+  at: '2026-11-26T03:33:46Z'  # 7489
+  by: agent  # 7489
+  actor: jgstern_agent  # 7489
+  clock: 1  # 7489
+  nonce: '7489'  # 7489
+  data:  # 7489
+    kind: work_item  # 7489
+    title: "The import step binds a call to a function the imported file declares, not one the module exports (2 wrong Lua binds; Lua bindings are no longer handed over)"  # 7489
+    status: todo_hard  # 7489
+    priority: 3  # 7489
+    parent:  # 7489
+    tags:  # 7489
+    - analysis_quality  # 7489
+    - shared_call_resolution  # 7489
+    isbefore: []  # 7489
+    duplicate_of: []  # 7489
+    not_duplicate_of: []  # 7489
+    pr_ref:  # 7489
+    description: "STATEMENT: the import step binds a call through an import only to something the imported module EXPORTS. OBSERVED: inherited_calls._imported_function asks whether the file the import names declares a function of that name (functions_in_file, kind function, by full name). In Lua a module exports what its file returns: on kong the step bound reports.log(ctx) to a local function log the module does not export (it exports log = function(ctx) .. end, which has no symbol) and endpoints.not_found() to a local function that is not exported. Batch 5b stopped handing Lua's require bindings over because of this (the analyzer binds through what the file returns itself), so today no Lua call takes this path; the rule is still what a Python table (a module's __all__, a name deleted or rebound) and a JavaScript one (a function declared and not exported, which the language rejects at the import) would meet. The table has no way to say what a file exports beyond what it passes on (add_reexport). Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 7489
+    fields: {}  # 7489

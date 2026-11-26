@@ -26,3 +26,10 @@
   clock: 2  # 0e95
   nonce: '0e95'  # 0e95
   message: "Overload step: a stub merged from several call sites keeps the argument_count of its first site (Java worker: argument_count 2 with call_lines [341, 343], where line 343 writes one argument). For Java the linkers run before that merge and the binds are right; for Kotlin the stubs of one name from one caller collapse BEFORE the linkers (this item), so the second call is narrowed by the first call's count as well as losing its receiver type. Evidence: ~/hypergumbo_lab_notebook/overloads_11252026/java_RESULTS.md (what the shared layer lacks, 4)."  # 0e95
+- op: discuss  # 6905
+  at: '2026-11-26T03:33:39Z'  # 6905
+  by: agent  # 6905
+  actor: jgstern_agent  # 6905
+  clock: 3  # 6905
+  nonce: '6905'  # 6905
+  message: "Batch 5b, Perl: one more instance. Git.pm:902 writes $self->ident(..) and ident(..) on one line in one sub; the two stubs share name, caller and line and become one, and the bare call, which the caller's own package would bind, stays unresolved (1 of the 8 lost edges a blind judge found right before)."  # 6905

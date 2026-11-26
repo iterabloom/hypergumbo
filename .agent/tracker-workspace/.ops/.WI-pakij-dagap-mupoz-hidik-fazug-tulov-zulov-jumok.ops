@@ -1,0 +1,21 @@
+- op: create  # 4b23
+  at: '2026-11-26T03:33:39Z'  # 4b23
+  by: agent  # 4b23
+  actor: jgstern_agent  # 4b23
+  clock: 1  # 4b23
+  nonce: 4b23  # 4b23
+  data:  # 4b23
+    kind: work_item  # 4b23
+    title: "The name step binds a function of another module when a module qualifier does not declare the name (Lua: 9 wrong of 10; built for Rust inline modules)"  # 4b23
+    status: todo_hard  # 4b23
+    priority: 2  # 4b23
+    parent:  # 4b23
+    tags:  # 4b23
+    - analysis_quality  # 4b23
+    - shared_call_resolution  # 4b23
+    isbefore: []  # 4b23
+    duplicate_of: []  # 4b23
+    not_duplicate_of: []  # 4b23
+    pr_ref:  # 4b23
+    description: "STATEMENT: a call whose text names a module of the tree is not bound to a function of another module. OBSERVED: single_holder_name, for a qualifier that is a namespace binding of the file (or a bare name that is an explicit binding), asks whether that module leads to a function of the name; when it does NOT, it binds the one function of that name anywhere in the repository. The branch was built for Rust, where the table cannot express an inline module. Measured for Lua in batch 5b, before Lua's table stopped handing bindings over: 10 binds on kong, 9 wrong (log.error, random_string, join: the module sets the field by assignment, which makes no symbol), 1 right. Go's adapter reports the same shape, unmeasured (its name step is off). On the baseline maps of knex, hocuspocus, mini-redis, koel and detekt-core the branch makes 0 binds. The linker's own stated rule is that it refuses when the call's text points elsewhere. Not measured: how many Rust binds rest on it (the pilot's Rust trees were not rerun for this). Evidence and method: ~/hypergumbo_lab_notebook/batch5b_11262026/ (DESIGN.md with its log; <lang>.md inventories; <lang>_RESULTS.md; maps mine_5b5d against before/; blind judgments judge/judgments_<lang>.jsonl scored by judge/score.py, samples seed 20261125). Found while moving Perl, Ruby, Lua and Go to the shared call resolution (ADR-0064, batch 5b; merged in PR #2426)."  # 4b23
+    fields: {}  # 4b23

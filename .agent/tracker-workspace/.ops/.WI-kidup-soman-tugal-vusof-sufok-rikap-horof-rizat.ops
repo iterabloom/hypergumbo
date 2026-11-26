@@ -51,3 +51,10 @@
   clock: 5  # 2079
   nonce: '2079'  # 2079
   message: "Batch 5a measurement for decision 1 (the name step, option a). Kotlin: ON, with a screen of 353 standard-library names; 1,301 binds on okhttp and detekt-core; a blind judge read 15 of the binds on calls nothing resolved before: 14 right, 1 wrong (okio's BufferedSink.writeUtf8, a dependency's name, bound to the repository's DerWriter.writeUtf8); the Kotlin worker's own 15: 12 right. PHP: OFF. Measured on: 2 of 15 new binds right, 9 of 15 kept binds right (calls on values a framework call returned); 294 single-holder calls are unresolved for it. Java: OFF, no screen (typed language; the name bound nothing before). Evidence: ~/hypergumbo_lab_notebook/batch5a_11262026/ (DESIGN.md, judge/)."  # 2079
+- op: discuss  # 1c9d
+  at: '2026-11-26T03:33:38Z'  # 1c9d
+  by: agent  # 1c9d
+  actor: jgstern_agent  # 1c9d
+  clock: 6  # 1c9d
+  nonce: 1c9d  # 1c9d
+  message: "Measured by batch 5b (perl, ruby, lua, go; ADR-0064 section \"What batch 5b built and measured\"): the name step is ON for Lua (411 binds on kong and pandoc's Lua, all calls on a receiver; a blind judge read 15: 12 right, 2 wrong, 1 not decidable; the wrong ones are methods of third-party library objects) and OFF for Ruby (measured on: 513 binds, 7 right of 15: a Rails model's columns and associations), Go (measured on: 457 binds, 12 right of 15; no screen of the standard library's concrete methods) and Perl (it binds nothing there: subs are functions). Standing after 5b: on for JavaScript / TypeScript, Rust, Kotlin, Lua; off for C#, Java, PHP, Ruby, Go, Perl. Lua's 12 of 15 is the lowest rate among the languages it is on for; keeping it on was the orchestrator's call, stated in the pull request."  # 1c9d
