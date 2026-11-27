@@ -3,9 +3,9 @@
   "workflow": "nightly",
   "leg": "3.11",
   "commit": "755d8fcfe1a11ac8eb3f9d6614d486cddc8271e9",
-  "pipeline": 7034,
-  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/7034",
-  "finished_at": "2026-11-26T05:49:58Z",
+  "pipeline": 7037,
+  "url": "https://ci.revolving-tactile.com.de/repos/1/pipeline/7037",
+  "finished_at": "2026-11-27T06:18:34Z",
   "status": "passed",
   "steps": [
     {
